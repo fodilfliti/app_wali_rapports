@@ -1,0 +1,206 @@
+const express = require("express");
+const { requireAuth, attachUser, requireRole, checkBlocked } = require("../middleware/auth");
+const { requirePermission } = require("../middleware/requirePermission");
+const { validateBody } = require("../middleware/validateBody");
+const { waliRespondSchema } = require("../validation/schemas/adminCrud");
+const { singleUpload } = require("../middleware/upload");
+const rapportService = require("../modules/rapports/rapportService");
+const navigationService = require("../modules/rapports/navigationService");
+const calendarEventService = require("../modules/rapports/calendarEventService");
+const rapportViewService = require("../modules/rapports/rapportViewService");
+const broadcastService = require("../modules/rapports/broadcastService");
+const { generateRapportPdf } = require("../services/rapportPdfService");
+const { generateRapportDocx } = require("../services/rapportDocxService");
+
+const waliRouter = express.Router();
+waliRouter.use(requireAuth, attachUser, checkBlocked, requireRole(["WALI", "ADMIN"]));
+
+waliRouter.get("/office-users", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json({ officeUsers: await navigationService.listOfficeUsersForWali() });
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.get("/office-users/:userId/services", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json(await navigationService.getServiceTreeForUser(req.params.userId, "OFFICE_USER"));
+  } catch (e) {
+    next(e);
+  }
+});
+
+const workspaceService = require("../modules/rapports/workspaceService");
+
+waliRouter.get("/rapports/:id/view", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    const showHidden = req.query.showHidden === "1";
+    res.json(await workspaceService.getRapportView(req.params.id, showHidden, req.user));
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.get("/rapports", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json(await rapportService.listRapports(req.query, { inboxOnly: true }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.get("/rapports/:id", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    await rapportService.markUnderReview(req.params.id, req.user);
+    await rapportViewService.recordView(req.params.id, req.user);
+    const rapport = await rapportService.getRapportDetail(req.params.id);
+    const views = await rapportViewService.listViewsForRapport(req.params.id);
+    res.json({ rapport, views });
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.post(
+  "/rapports/:id/respond",
+  requirePermission("rapports.inbox.respond", "manage"),
+  validateBody(waliRespondSchema),
+  async (req, res, next) => {
+    try {
+      const rapport = await rapportService.waliRespond(req.params.id, req.validatedBody, req.user, req);
+      res.json({ rapport });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+waliRouter.get("/calendar", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json(await calendarEventService.listForWaliCalendar(req.query));
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.get("/rapports/:id/views", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json({ views: await rapportViewService.listViewsForRapport(req.params.id) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.get("/rapports/:id/export.pdf", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    const showHidden = req.query.showHidden === "1";
+    const locale = req.query.locale === "fr" ? "fr" : "ar";
+    const { buffer, filename } = await generateRapportPdf(req.params.id, {
+      locale,
+      showHidden,
+      actor: req.user,
+      req
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+waliRouter.get("/rapports/:id/export.docx", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    const showHidden = req.query.showHidden === "1";
+    const locale = req.query.locale === "fr" ? "fr" : "ar";
+    const { buffer, filename } = await generateRapportDocx(req.params.id, {
+      locale,
+      showHidden,
+      actor: req.user,
+      req
+    });
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+waliRouter.get("/broadcasts", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json({ broadcasts: await broadcastService.listForWali() });
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.get("/broadcasts/:id", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json({ broadcast: await broadcastService.getBroadcastDetail(req.params.id, req.user) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+waliRouter.post("/broadcasts", requirePermission("rapports.inbox.respond", "manage"), singleUpload("file"), async (req, res, next) => {
+  try {
+    if (!req.file?.buffer) return res.status(400).json({ error: "File required" });
+    let body = {};
+    try {
+      body = req.body.payload ? JSON.parse(req.body.payload) : req.body;
+    } catch {
+      body = req.body;
+    }
+    const broadcast = await broadcastService.createBroadcast(
+      {
+        fileBuffer: req.file.buffer,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        body
+      },
+      req.user,
+      req
+    );
+    res.status(201).json({ broadcast });
+  } catch (e) {
+    if (e.status === 413) return res.status(413).json({ error: e.message });
+    next(e);
+  }
+});
+
+waliRouter.post("/broadcasts/:id/comments", requirePermission("rapports.inbox.respond", "manage"), async (req, res, next) => {
+  try {
+    const broadcast = await broadcastService.addComment(req.params.id, req.body?.body_text, req.user);
+    res.json({ broadcast });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: e.message });
+    next(e);
+  }
+});
+
+waliRouter.post("/broadcasts/:id/remind", requirePermission("rapports.inbox.respond", "manage"), async (req, res, next) => {
+  try {
+    res.json(await broadcastService.notifyUnreadRecipients(req.params.id, req.user));
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    next(e);
+  }
+});
+
+waliRouter.get("/office-users-for-share", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    const users = await broadcastService.listOfficeUsers();
+    res.json({ users });
+  } catch (e) {
+    next(e);
+  }
+});
+
+module.exports = { waliRouter };

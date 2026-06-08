@@ -1,0 +1,17 @@
+export const V = {
+  fixFields: 'validationFixFields',
+  required: 'validationRequired',
+  maxLength: 'validationMaxLength',
+  municipalityNameArRequired: 'municipalityNameArRequired',
+  municipalityNameFrRequired: 'municipalityNameFrRequired',
+  municipalityCodeRequired: 'municipalityCodeRequired',
+  municipalityCodeDigitsOnly: 'municipalityCodeDigitsOnly',
+  usernameRequired: 'usernameRequired',
+  errorUsernameFormat: 'errorUsernameFormat',
+  userNameRequired: 'userNameRequired',
+  userRoleInvalid: 'userRoleInvalid',
+  rapportTitleRequired: 'rapportTitleRequired',
+  waliResponseRequired: 'waliResponseRequired',
+  waliDecisionInvalid: 'waliDecisionInvalid',
+  passwordMinLength: 'passwordMinLength',
+} as const

@@ -1,0 +1,108 @@
+## Module: Schema configuration (generic data model)
+
+### Purpose
+
+Admin defines **reusable table column schemas** and **rapport types** per service. Office users fill data against those schemas — **no separate module per domain** (Finance, Hydraulique, etc. are examples in seed data only).
+
+### Data model
+
+#### `rapport_table_schemas`
+
+| Field | Description |
+| ----- | ----------- |
+| `slug` | Unique key (e.g. `consommation-credits`) |
+| `name_ar`, `name_fr` | Display name |
+| `columns_json` | Array of column defs (see below) |
+| `layout_json` | Optional table presentation (see below) |
+| `service_id` | Optional link to one service |
+| `is_system` | Seed/demo schemas; admin cannot delete |
+
+#### Column definition (`columns_json[]`)
+
+| Field | Required | Notes |
+| ----- | -------- | ----- |
+| `key` | yes | Row field name |
+| `type` | yes | `text` \| `number` \| `date` \| `choice` \| `commune_ref` \| `formula` |
+| `label_ar`, `label_fr` | yes | Header labels |
+| `format` | no | `currency` \| `percent` \| `integer` |
+| `formula` | if type=formula | Expression using column keys |
+| `merge_vertical_suggested` | no | Default merge column for new tables |
+
+#### `layout_json` (optional)
+
+| Field | Notes |
+| ----- | ----- |
+| `header_groups[]` | `{ label_ar, label_fr, column_keys[] }` — grouped column headers |
+| `default_title_ar/fr` | Default table title when rapport is created |
+| `default_subtitle_ar/fr` | Default subtitle |
+
+#### Table data (`data_json.tables[]`)
+
+| Field | Notes |
+| ----- | ----- |
+| `title_ar`, `title_fr` | Per-rapport title |
+| `subtitle_ar`, `subtitle_fr` | Per-rapport subtitle |
+| `merge_column_keys[]` | Column keys to vertically merge repeated values |
+| `rows[]` | Row data |
+
+#### `rapport_types` (per service)
+
+| Field | Notes |
+| ----- | ----- |
+| `content_kind` | `table_grid` \| `document_compose` \| `fiche_lecture` \| `commune_list` |
+| `versioning_mode` | `versioned` \| `standalone` |
+| `schema_json` | For `table_grid`: `{ table_schema_slug, table_key }`. For documents: optional `default_blocks` |
+
+**Fiche lecture rule:** every **leaf service** has exactly one rapport type with `content_kind = fiche_lecture`, slug `fiche_lecture`.
+
+### Admin API
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/admin/table-schemas` | List schemas (`?q=` search) |
+| `POST` | `/admin/table-schemas` | Create schema |
+| `PATCH` | `/admin/table-schemas/:id` | Update name/columns |
+| `DELETE` | `/admin/table-schemas/:id` | Delete (non-system only) |
+| `GET` | `/admin/services/:serviceId/rapport-types` | List types for service |
+| `POST` | `/admin/services/:serviceId/rapport-types` | Add type (links schema for table_grid) |
+| `PATCH` | `/admin/rapport-types/:id` | Update type |
+
+### Office schema API (editors only, `manage` on service)
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/office/services/:id/schemas` | Service schemas + system templates |
+| `POST` | `/office/services/:id/schemas` | Create schema for service |
+| `PATCH` | `/office/schemas/:id` | Update owned schema (not `is_system`) |
+| `POST` | `/office/services/:id/schemas/duplicate` | Copy template into service |
+| `GET` | `/office/services/:id/rapport-types` | List types |
+| `POST` | `/office/services/:id/rapport-types` | Add type |
+
+### Office data flow
+
+1. Admin creates schema → creates `rapport_type` on service with `table_schema_slug`.
+2. Office opens service hub → **Tableaux** → grid loads schema columns; rows saved in `rapport_versions.data_json`.
+3. Formulas recalculated on save server-side.
+4. **Documents** / **Fiches lecture** use block JSON (same storage, different `content_kind` filter).
+
+### UI
+
+- Admin hub → **Schémas & types** → `/admin/schemas`
+- Office editor → service hub → **Configuration** → `/office/services/:id/config`
+- Office → service → hub tiles per content kind
+
+### Audit
+
+| Action | When |
+| ------ | ---- |
+| `TABLE_SCHEMA_CREATE` | POST schema |
+| `TABLE_SCHEMA_UPDATE` | PATCH schema |
+| `TABLE_SCHEMA_DELETE` | DELETE schema |
+| `RAPPORT_TYPE_CREATE` | POST rapport type |
+| `RAPPORT_TYPE_UPDATE` | PATCH rapport type |
+
+### Migrations
+
+- `20260609_000005_*` — demo example seeds only
+- `20260610_000006_fiche_lecture_all_services.js` — attach fiche to all leaf services
+- `20260613_000009_table_layout_json.js` — `layout_json` column + demo header groups

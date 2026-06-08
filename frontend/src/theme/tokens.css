@@ -1,0 +1,16 @@
+:root {
+  --color-primary: #0d4f4f;
+  --color-primary-light: #156565;
+  --color-accent: #c9a227;
+  --color-accent-soft: #f5ecd3;
+  --color-bg: #f4f7f7;
+  --color-surface: #ffffff;
+  --color-text: #1a2e2e;
+  --color-muted: #5a7070;
+  --color-border: #d0dede;
+  --color-danger: #b42318;
+  --color-success: #067647;
+  --radius-card: 12px;
+  --shadow-card: 0 4px 16px rgba(13, 79, 79, 0.08);
+  --font-family: 'Tajawal', system-ui, sans-serif;
+}

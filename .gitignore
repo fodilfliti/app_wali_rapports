@@ -1,0 +1,57 @@
+# --- Dependencies ---
+**/node_modules/
+
+# --- Build outputs ---
+**/dist/
+**/build/
+**/.next/
+**/.nuxt/
+**/.output/
+**/out/
+
+# --- Tool caches ---
+**/.cache/
+**/.parcel-cache/
+**/.turbo/
+**/.vite/
+**/.eslintcache
+**/.tsbuildinfo
+
+# --- Logs ---
+**/logs/
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Environment files / secrets ---
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# --- Runtime / uploads (adjust if you want to version these) ---
+**/uploads/
+**/storage/
+**/tmp/
+**/temp/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+.idea/
+*.iml
+
+# --- Misc ---
+**/*.pid
+**/*.seed
+**/*.bak
