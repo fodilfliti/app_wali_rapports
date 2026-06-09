@@ -4,6 +4,7 @@ export const V = {
   maxLength: 'validationMaxLength',
   municipalityNameArRequired: 'municipalityNameArRequired',
   municipalityNameFrRequired: 'municipalityNameFrRequired',
+  bilingualLabelRequired: 'bilingualLabelRequired',
   municipalityCodeRequired: 'municipalityCodeRequired',
   municipalityCodeDigitsOnly: 'municipalityCodeDigitsOnly',
   usernameRequired: 'usernameRequired',
@@ -12,6 +13,7 @@ export const V = {
   userRoleInvalid: 'userRoleInvalid',
   rapportTitleRequired: 'rapportTitleRequired',
   waliResponseRequired: 'waliResponseRequired',
+  waliFollowUpInvalid: 'waliFollowUpInvalid',
   waliDecisionInvalid: 'waliDecisionInvalid',
   passwordMinLength: 'passwordMinLength',
 } as const

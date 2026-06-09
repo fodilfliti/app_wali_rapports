@@ -25,6 +25,17 @@ function absFilePath(file) {
   return fs.existsSync(abs) ? abs : null;
 }
 
+/** Resolve uploaded image path from editor src URL (/files/uploads/...). */
+function absPathFromUploadsUrl(src) {
+  if (!src) return null;
+  const normalized = String(src).replace(/^https?:\/\/[^/]+/i, "");
+  const match = normalized.match(/\/files\/(uploads\/[^?#]+)/i);
+  if (!match) return null;
+  const rel = match[1].replace(/\\/g, "/");
+  const abs = path.join(storageRoot(), rel);
+  return fs.existsSync(abs) ? abs : null;
+}
+
 function imageTypeFromFile(file, absPath) {
   const mime = file?.mime_type || "";
   if (mime.includes("png")) return "png";
@@ -55,14 +66,20 @@ async function loadExportData(rapportId, showHidden) {
     dataJson = { tables: [table] };
   } else if (DOCUMENT_KINDS.has(kind)) {
     viewPart = await workspaceService.getWaliDocumentView(rapportId, false);
-    dataJson = { blocks: viewPart.blocks };
+    const dj = rapport.currentVersion?.data_json || {};
+    dataJson = {
+      blocks: viewPart.blocks,
+      rich_html_ar: dj.rich_html_ar,
+      rich_html_fr: dj.rich_html_fr,
+      embedded_tables: dj.embedded_tables || []
+    };
   } else {
     const err = new Error("Export not supported for this rapport type");
     err.status = 400;
     throw err;
   }
 
-  const { files } = await enrichDataJsonWithFiles(dataJson);
+  const { files } = await enrichDataJsonWithFiles(dataJson, rapportId);
   const calendarEvents = await RapportCalendarEvent.findAll({
     where: { rapport_id: rapportId },
     order: [["event_date", "ASC"]]
@@ -72,6 +89,7 @@ async function loadExportData(rapportId, showHidden) {
     rapport,
     kind,
     viewPart,
+    dataJson,
     files,
     calendarEvents: calendarEvents.map((e) => e.toJSON())
   };
@@ -82,6 +100,7 @@ module.exports = {
   pickText,
   blockText,
   absFilePath,
+  absPathFromUploadsUrl,
   imageTypeFromFile,
   loadExportData
 };

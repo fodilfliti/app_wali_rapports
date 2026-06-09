@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
+import { TablePagination } from '../components/TablePagination'
 import { FieldErrorText } from '../components/FieldErrorText'
 import { FormErrorBlock } from '../components/FormErrorBlock'
 import { useSnackbar } from '../snackbar/SnackbarContext'
@@ -67,8 +68,6 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
     }
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / 20))
-
   return (
     <div className="page">
       <div className="pageHeader row">
@@ -123,20 +122,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
         </table>
       </div>
 
-      <div className="pagination">
-        <button type="button" className="btn btn-secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-          {'<'}
-        </button>
-        <span>{t('paginationSummary', { page, totalPages, total })}</span>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          {'>'}
-        </button>
-      </div>
+      <TablePagination page={page} total={total} onPageChange={setPage} />
 
       {modalOpen ? (
         <div className="modalOverlay">

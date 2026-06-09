@@ -69,8 +69,21 @@ function serializeFile(row) {
     mime_type: plain.mime_type,
     size_bytes: plain.size_bytes,
     media_kind: plain.media_kind,
+    storage_rel_path: plain.storage_rel_path,
     url_path: `/files/${plain.storage_rel_path}`
   };
+}
+
+function collectFileIdsFromRichHtml(html) {
+  const ids = new Set();
+  if (!html || typeof html !== "string") return ids;
+  const attrRe = /data-file-id=["'](\d+)["']/gi;
+  let match = attrRe.exec(html);
+  while (match) {
+    ids.add(Number(match[1]));
+    match = attrRe.exec(html);
+  }
+  return ids;
 }
 
 async function getFilesByIds(ids) {
@@ -79,6 +92,20 @@ async function getFilesByIds(ids) {
   const rows = await UploadedFile.findAll({ where: { id: unique } });
   const map = new Map(rows.map((r) => [Number(r.id), serializeFile(r)]));
   return unique.map((id) => map.get(id)).filter(Boolean);
+}
+
+function collectStoragePathsFromRichHtml(html) {
+  const paths = new Set();
+  if (!html || typeof html !== "string") return paths;
+  const srcRe = /src=["']([^"']+)["']/gi;
+  let match = srcRe.exec(html);
+  while (match) {
+    const normalized = match[1].replace(/^https?:\/\/[^/]+/i, "");
+    const pathMatch = normalized.match(/\/files\/(uploads\/[^?#]+)/i);
+    if (pathMatch) paths.add(pathMatch[1].replace(/\\/g, "/"));
+    match = srcRe.exec(html);
+  }
+  return paths;
 }
 
 async function collectFileIdsFromDataJson(dataJson) {
@@ -95,13 +122,32 @@ async function collectFileIdsFromDataJson(dataJson) {
       for (const it of row.items || []) if (it.file_id) ids.add(Number(it.file_id));
     }
   }
+  for (const id of collectFileIdsFromRichHtml(dataJson?.rich_html_ar)) ids.add(id);
+  for (const id of collectFileIdsFromRichHtml(dataJson?.rich_html_fr)) ids.add(id);
   return [...ids];
 }
 
-async function enrichDataJsonWithFiles(dataJson) {
+async function enrichDataJsonWithFiles(dataJson, rapportId) {
   if (!dataJson) return { dataJson, files: {} };
-  const ids = await collectFileIdsFromDataJson(dataJson);
-  const files = await getFilesByIds(ids);
+  const ids = new Set(await collectFileIdsFromDataJson(dataJson));
+
+  if (rapportId) {
+    const rapportRows = await UploadedFile.findAll({ where: { rapport_id: Number(rapportId) } });
+    for (const row of rapportRows) ids.add(Number(row.id));
+  }
+
+  const storagePaths = new Set([
+    ...collectStoragePathsFromRichHtml(dataJson?.rich_html_ar),
+    ...collectStoragePathsFromRichHtml(dataJson?.rich_html_fr)
+  ]);
+  if (storagePaths.size) {
+    const byPath = await UploadedFile.findAll({
+      where: { storage_rel_path: [...storagePaths] }
+    });
+    for (const row of byPath) ids.add(Number(row.id));
+  }
+
+  const files = await getFilesByIds([...ids]);
   const fileMap = Object.fromEntries(files.map((f) => [f.id, f]));
   return { dataJson, files: fileMap };
 }
@@ -111,6 +157,7 @@ module.exports = {
   serializeFile,
   getFilesByIds,
   collectFileIdsFromDataJson,
+  collectFileIdsFromRichHtml,
   enrichDataJsonWithFiles,
   classifyMime,
   maxBytesForMime

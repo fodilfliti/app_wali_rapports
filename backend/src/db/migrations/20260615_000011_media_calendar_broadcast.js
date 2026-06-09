@@ -151,6 +151,10 @@ module.exports = {
       onUpdate: "CASCADE",
       onDelete: "CASCADE"
     });
+    await queryInterface.sequelize.query(`
+      ALTER TABLE notifications
+      ALTER COLUMN rapport_id DROP NOT NULL
+    `);
     await queryInterface.addColumn("notifications", "broadcast_id", {
       type: Sequelize.BIGINT,
       allowNull: true,

@@ -4,7 +4,10 @@ import * as api from '../api'
 import { ApiError } from '../api'
 import { AdminOrgTabs } from '../components/AdminOrgTabs'
 import { BackButton } from '../components/BackButton'
+import { TablePagination } from '../components/TablePagination'
 import { useSnackbar } from '../snackbar/SnackbarContext'
+import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
+import { hasBilingualText } from '../utils/bilingual'
 
 type Props = { token: string }
 
@@ -17,6 +20,7 @@ export function AdminDepartmentsPage({ token }: Props) {
   const [deptModalOpen, setDeptModalOpen] = useState(false)
   const [editingDepartmentId, setEditingDepartmentId] = useState<number | null>(null)
   const [deptForm, setDeptForm] = useState(emptyDeptForm())
+  const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
     try {
@@ -44,20 +48,20 @@ export function AdminDepartmentsPage({ token }: Props) {
   }
 
   async function saveDepartment() {
-    if (!deptForm.name_ar.trim() || !deptForm.name_fr.trim()) {
-      snack.show(t('schemaMetaRequired'), 'error')
+    if (!hasBilingualText(deptForm.name_ar, deptForm.name_fr)) {
+      snack.show(t('bilingualLabelRequired'), 'error')
       return
     }
     try {
       if (editingDepartmentId) {
         await api.patchAdminDepartment(token, editingDepartmentId, {
-          name_ar: deptForm.name_ar.trim(),
-          name_fr: deptForm.name_fr.trim(),
+          name_ar: deptForm.name_ar.trim() || deptForm.name_fr.trim(),
+          name_fr: deptForm.name_fr.trim() || deptForm.name_ar.trim(),
         })
       } else {
         await api.createAdminDepartment(token, {
-          name_ar: deptForm.name_ar.trim(),
-          name_fr: deptForm.name_fr.trim(),
+          name_ar: deptForm.name_ar.trim() || deptForm.name_fr.trim(),
+          name_fr: deptForm.name_fr.trim() || deptForm.name_ar.trim(),
         })
       }
       setDeptModalOpen(false)
@@ -71,6 +75,8 @@ export function AdminDepartmentsPage({ token }: Props) {
       }
     }
   }
+
+  const pagedDepartments = paginateSlice(departments, page, DEFAULT_PAGE_SIZE)
 
   return (
     <div className="page">
@@ -96,8 +102,8 @@ export function AdminDepartmentsPage({ token }: Props) {
             </tr>
           </thead>
           <tbody>
-            {departments.length ? (
-              departments.map((d) => (
+            {pagedDepartments.length ? (
+              pagedDepartments.map((d) => (
                 <tr key={d.id}>
                   <td>{d.name_ar}</td>
                   <td>{d.name_fr}</td>
@@ -118,6 +124,7 @@ export function AdminDepartmentsPage({ token }: Props) {
           </tbody>
         </table>
       </div>
+      <TablePagination page={page} total={departments.length} onPageChange={setPage} />
 
       {deptModalOpen ? (
         <div className="modalOverlay">

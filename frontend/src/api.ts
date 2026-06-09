@@ -140,17 +140,63 @@ export function resetUserPassword(token: string, id: number) {
   )
 }
 
-export function listOfficeRapports(token: string, params: { page?: number; service_id?: number }) {
+export function listOfficeRapports(
+  token: string,
+  params: {
+    page?: number
+    pageSize?: number
+    service_id?: number
+    rapport_type_id?: number
+    content_kind?: string
+    search?: string
+    has_version?: boolean
+    importable?: boolean
+  },
+) {
   const q = new URLSearchParams()
   if (params.page) q.set('page', String(params.page))
+  if (params.pageSize) q.set('pageSize', String(params.pageSize))
   if (params.service_id) q.set('service_id', String(params.service_id))
-  return request<{ rapports: any[]; total: number }>(`/office/rapports?${q}`, { token })
+  if (params.rapport_type_id) q.set('rapport_type_id', String(params.rapport_type_id))
+  if (params.content_kind) q.set('content_kind', params.content_kind)
+  if (params.search?.trim()) q.set('search', params.search.trim())
+  if (params.has_version) q.set('has_version', '1')
+  if (params.importable) q.set('importable', '1')
+  return request<{ rapports: any[]; total: number; page?: number; pageSize?: number }>(`/office/rapports?${q}`, { token })
 }
 
-export function listWaliRapports(token: string, params: { page?: number }) {
+export function listAdminRapports(
+  token: string,
+  params: { page?: number; pageSize?: number; service_id?: number; search?: string } = {},
+) {
   const q = new URLSearchParams()
   if (params.page) q.set('page', String(params.page))
-  return request<{ rapports: any[]; total: number }>(`/wali/rapports?${q}`, { token })
+  if (params.pageSize) q.set('pageSize', String(params.pageSize))
+  if (params.service_id) q.set('service_id', String(params.service_id))
+  if (params.search?.trim()) q.set('search', params.search.trim())
+  return request<{ rapports: any[]; total: number; page?: number; pageSize?: number }>(
+    `/admin/rapports?${q}`,
+    { token },
+  )
+}
+
+export function getRapportTableSnapshot(token: string, rapportId: number) {
+  return request<{ snapshot: import('./types/embeddedTable').TableImportSnapshot }>(
+    `/office/rapports/${rapportId}/table-snapshot`,
+    { token },
+  )
+}
+
+export function listWaliRapports(
+  token: string,
+  params: { page?: number; pageSize?: number; service_id?: number; rapport_type_id?: number },
+) {
+  const q = new URLSearchParams()
+  if (params.page) q.set('page', String(params.page))
+  if (params.pageSize) q.set('pageSize', String(params.pageSize))
+  if (params.service_id) q.set('service_id', String(params.service_id))
+  if (params.rapport_type_id) q.set('rapport_type_id', String(params.rapport_type_id))
+  return request<{ rapports: any[]; total: number; page?: number; pageSize?: number }>(`/wali/rapports?${q}`, { token })
 }
 
 export function listOfficeServices(token: string) {
@@ -164,6 +210,18 @@ export function createRapport(
   return request<{ rapport: any }>('/office/rapports', { method: 'POST', token, body: JSON.stringify(body) })
 }
 
+export function patchOfficeRapport(
+  token: string,
+  id: number,
+  body: { title?: string; reference_date?: string | null },
+) {
+  return request<{ rapport: any }>(`/office/rapports/${id}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(body),
+  })
+}
+
 export function submitRapport(token: string, id: number) {
   return request<{ rapport: any }>(`/office/rapports/${id}/submit`, { method: 'POST', token })
 }
@@ -171,7 +229,7 @@ export function submitRapport(token: string, id: number) {
 export function waliRespond(
   token: string,
   id: number,
-  body: { decision: string; body_text?: string },
+  body: { decision: string; follow_up_status?: string; body_text?: string },
 ) {
   return request<{ rapport: any }>(`/wali/rapports/${id}/respond`, {
     method: 'POST',
@@ -193,16 +251,51 @@ export function listOfficeNotifications(token: string, unreadOnly = false) {
   return request<{ notifications: any[] }>(`/office/notifications${q}`, { token })
 }
 
+export type OfficeHubCounts = {
+  unread_notifications: number
+  changes_requested_rapports: number
+  unread_shared_files: number
+  services_action_count: number
+}
+
+export type WaliHubCounts = {
+  inbox_pending: number
+  office_users_pending: number
+}
+
+export function getOfficeHubCounts(token: string) {
+  return request<OfficeHubCounts>('/office/hub-counts', { token })
+}
+
+export function getWaliHubCounts(token: string) {
+  return request<WaliHubCounts>('/wali/hub-counts', { token })
+}
+
 export function markNotificationRead(token: string, id: number) {
   return request<{ notification: any }>(`/office/notifications/${id}/read`, { method: 'PATCH', token })
+}
+
+export function markRapportNotificationsRead(token: string, rapportId: number) {
+  return request<{ ok: boolean }>(`/office/rapports/${rapportId}/mark-notifications-read`, {
+    method: 'POST',
+    token,
+  })
 }
 
 export function getRapportVersion(token: string, rapportId: number, versionId: number) {
   return request<{ version: any }>(`/office/rapports/${rapportId}/versions/${versionId}`, { token })
 }
 
-export function getCommuneWorkspace(token: string, serviceId: number) {
-  return request<any>(`/office/services/${serviceId}/commune-workspace`, { token })
+export function getCommuneWorkspace(
+  token: string,
+  serviceId: number,
+  opts?: { rapportTypeId?: number; rapportId?: number },
+) {
+  const q = new URLSearchParams()
+  if (opts?.rapportTypeId) q.set('rapport_type_id', String(opts.rapportTypeId))
+  if (opts?.rapportId) q.set('rapport_id', String(opts.rapportId))
+  const qs = q.toString()
+  return request<any>(`/office/services/${serviceId}/commune-workspace${qs ? `?${qs}` : ''}`, { token })
 }
 
 export function getCommuneRows(token: string, rapportId: number, municipalityCode: string) {
@@ -212,7 +305,18 @@ export function getCommuneRows(token: string, rapportId: number, municipalityCod
 export function saveCommuneData(
   token: string,
   rapportId: number,
-  body: { municipality_code: string; rows: any[] },
+  body: {
+    municipality_code: string
+    rows?: any[]
+    rich_html_ar?: string
+    rich_html_fr?: string
+    embedded_tables?: unknown[]
+    calendar_events?: unknown[]
+    title_ar?: string
+    title_fr?: string
+    subtitle_ar?: string
+    subtitle_fr?: string
+  },
 ) {
   return request<{ rapport: any }>(`/office/rapports/${rapportId}/commune-data`, {
     method: 'PATCH',
@@ -229,8 +333,16 @@ export function listOfficeServiceTree(token: string) {
   return request<{ services: any[] }>('/office/services/tree', { token })
 }
 
-export function getTableWorkspace(token: string, serviceId: number) {
-  return request<any>(`/office/services/${serviceId}/table-workspace`, { token })
+export function getTableWorkspace(
+  token: string,
+  serviceId: number,
+  opts?: { rapportTypeId?: number; rapportId?: number },
+) {
+  const q = new URLSearchParams()
+  if (opts?.rapportTypeId) q.set('rapport_type_id', String(opts.rapportTypeId))
+  if (opts?.rapportId) q.set('rapport_id', String(opts.rapportId))
+  const qs = q.toString()
+  return request<any>(`/office/services/${serviceId}/table-workspace${qs ? `?${qs}` : ''}`, { token })
 }
 
 export function saveTableData(
@@ -254,12 +366,25 @@ export function saveTableData(
   })
 }
 
-export function getDocumentList(token: string, serviceId: number, contentKind = 'document_compose') {
-  return request<any>(`/office/services/${serviceId}/documents?content_kind=${contentKind}`, { token })
+export function getDocumentList(
+  token: string,
+  serviceId: number,
+  opts?: { contentKind?: string; rapportTypeId?: number; page?: number; pageSize?: number },
+) {
+  const q = new URLSearchParams()
+  if (opts?.rapportTypeId) q.set('rapport_type_id', String(opts.rapportTypeId))
+  else q.set('content_kind', opts?.contentKind || 'document_compose')
+  if (opts?.page) q.set('page', String(opts.page))
+  if (opts?.pageSize) q.set('pageSize', String(opts.pageSize))
+  return request<any>(`/office/services/${serviceId}/documents?${q}`, { token })
 }
 
 export function getServiceContentHub(token: string, serviceId: number) {
   return request<any>(`/office/services/${serviceId}/content`, { token })
+}
+
+export function getWaliServiceContentHub(token: string, userId: number, serviceId: number) {
+  return request<any>(`/wali/office-users/${userId}/services/${serviceId}/content`, { token })
 }
 
 export function listTableSchemas(
@@ -363,11 +488,68 @@ export function saveServiceGrants(token: string, serviceId: number, grants: { us
   })
 }
 
-export function createDocument(token: string, serviceId: number, rapportTypeId: number) {
+export function createDocument(
+  token: string,
+  serviceId: number,
+  rapportTypeId: number,
+  opts?: { templateId?: number | null; skipDefault?: boolean },
+) {
   return request<{ rapport: any }>(`/office/services/${serviceId}/documents`, {
     method: 'POST',
     token,
-    body: JSON.stringify({ rapport_type_id: rapportTypeId }),
+    body: JSON.stringify({
+      rapport_type_id: rapportTypeId,
+      template_id: opts?.templateId ?? undefined,
+      skip_default: opts?.skipDefault ?? false,
+    }),
+  })
+}
+
+export function listOfficeDocumentTemplates(token: string, serviceId: number) {
+  return request<{ templates: any[] }>(`/office/services/${serviceId}/document-templates`, { token })
+}
+
+export function listDocumentTemplatesForCreate(token: string, serviceId: number, rapportTypeId: number) {
+  const q = new URLSearchParams({ rapport_type_id: String(rapportTypeId) })
+  return request<{ templates: any[] }>(
+    `/office/services/${serviceId}/document-templates/for-create?${q}`,
+    { token },
+  )
+}
+
+export function createOfficeDocumentTemplate(token: string, serviceId: number, body: Record<string, unknown>) {
+  return request<{ template: any }>(`/office/services/${serviceId}/document-templates`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  })
+}
+
+export function patchOfficeDocumentTemplate(token: string, templateId: number, body: Record<string, unknown>) {
+  return request<{ template: any }>(`/office/document-templates/${templateId}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteOfficeDocumentTemplate(token: string, templateId: number) {
+  return request<{ ok: boolean }>(`/office/document-templates/${templateId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+export function applyDocumentTemplate(
+  token: string,
+  rapportId: number,
+  templateId: number,
+  mode: 'replace' | 'append' = 'replace',
+) {
+  return request<{ rapport: any }>(`/office/rapports/${rapportId}/document/apply-template`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ template_id: templateId, mode }),
   })
 }
 
@@ -375,11 +557,15 @@ export function getRapport(token: string, id: number) {
   return request<{ rapport: any; accessLevel?: string }>(`/office/rapports/${id}`, { token })
 }
 
-export function saveDocument(token: string, rapportId: number, blocks: any[]) {
+export function saveDocument(
+  token: string,
+  rapportId: number,
+  payload: { blocks?: any[]; rich_html_ar?: string; rich_html_fr?: string; embedded_tables?: unknown[] },
+) {
   return request<{ rapport: any }>(`/office/rapports/${rapportId}/document`, {
     method: 'PATCH',
     token,
-    body: JSON.stringify({ blocks }),
+    body: JSON.stringify(payload),
   })
 }
 
@@ -431,6 +617,14 @@ export function listOfficeServiceRapportTypes(token: string, serviceId: number) 
 export function createOfficeServiceRapportType(token: string, serviceId: number, body: Record<string, unknown>) {
   return request<{ rapportType: any }>(`/office/services/${serviceId}/rapport-types`, {
     method: 'POST',
+    token,
+    body: JSON.stringify(body),
+  })
+}
+
+export function patchOfficeRapportType(token: string, rapportTypeId: number, body: Record<string, unknown>) {
+  return request<{ rapportType: any }>(`/office/rapport-types/${rapportTypeId}`, {
+    method: 'PATCH',
     token,
     body: JSON.stringify(body),
   })
@@ -517,35 +711,41 @@ export function addOfficeBroadcastComment(token: string, id: number, body_text: 
   })
 }
 
-export async function downloadRapportPdf(
-  token: string,
-  rapportId: number,
-  opts: { locale?: string; wali?: boolean; showHidden?: boolean } = {},
-) {
-  const q = new URLSearchParams()
-  if (opts.locale === 'fr') q.set('locale', 'fr')
-  if (opts.showHidden) q.set('showHidden', '1')
-  const base = opts.wali ? `/wali/rapports/${rapportId}/export.pdf` : `/office/rapports/${rapportId}/export.pdf`
-  const res = await fetch(`${API_BASE}${base}?${q}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, data.error || 'errorGeneric', data.fieldErrors)
-  }
-  const blob = await res.blob()
-  downloadBlob(blob, `rapport-${rapportId}.pdf`)
+export type RapportExportOpts = {
+  locale?: string
+  wali?: boolean
+  showHidden?: boolean
 }
 
-export async function downloadRapportDocx(
+function filenameFromDisposition(header: string | null, fallback: string) {
+  if (!header) return fallback
+  const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8) {
+    try {
+      return decodeURIComponent(utf8[1])
+    } catch {
+      return fallback
+    }
+  }
+  const quoted = header.match(/filename="([^"]+)"/i)
+  if (quoted) return quoted[1]
+  const plain = header.match(/filename=([^;]+)/i)
+  if (plain) return plain[1].trim()
+  return fallback
+}
+
+async function fetchRapportExport(
   token: string,
   rapportId: number,
-  opts: { locale?: string; wali?: boolean; showHidden?: boolean } = {},
+  kind: 'pdf' | 'docx',
+  opts: RapportExportOpts = {},
 ) {
   const q = new URLSearchParams()
   if (opts.locale === 'fr') q.set('locale', 'fr')
   if (opts.showHidden) q.set('showHidden', '1')
-  const base = opts.wali ? `/wali/rapports/${rapportId}/export.docx` : `/office/rapports/${rapportId}/export.docx`
+  const base = opts.wali
+    ? `/wali/rapports/${rapportId}/export.${kind}`
+    : `/office/rapports/${rapportId}/export.${kind}`
   const res = await fetch(`${API_BASE}${base}?${q}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -553,8 +753,31 @@ export async function downloadRapportDocx(
     const data = await res.json().catch(() => ({}))
     throw new ApiError(res.status, data.error || 'errorGeneric', data.fieldErrors)
   }
-  const blob = await res.blob()
-  downloadBlob(blob, `rapport-${rapportId}.docx`)
+  const filename = filenameFromDisposition(
+    res.headers.get('Content-Disposition'),
+    `rapport-${rapportId}.${kind}`,
+  )
+  return { blob: await res.blob(), filename }
+}
+
+export async function fetchRapportPdfBlob(token: string, rapportId: number, opts: RapportExportOpts = {}) {
+  const { blob } = await fetchRapportExport(token, rapportId, 'pdf', opts)
+  return blob
+}
+
+export async function fetchRapportDocxBlob(token: string, rapportId: number, opts: RapportExportOpts = {}) {
+  const { blob } = await fetchRapportExport(token, rapportId, 'docx', opts)
+  return blob
+}
+
+export async function downloadRapportPdf(token: string, rapportId: number, opts: RapportExportOpts = {}) {
+  const { blob, filename } = await fetchRapportExport(token, rapportId, 'pdf', opts)
+  downloadBlob(blob, filename)
+}
+
+export async function downloadRapportDocx(token: string, rapportId: number, opts: RapportExportOpts = {}) {
+  const { blob, filename } = await fetchRapportExport(token, rapportId, 'docx', opts)
+  downloadBlob(blob, filename)
 }
 
 function downloadBlob(blob: Blob, filename: string) {

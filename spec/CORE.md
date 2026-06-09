@@ -57,6 +57,65 @@ Minimum shape: `actor_id`, `action_type`, `details` (JSON), `timestamp`.
 - Generated exports (Excel, Word, PDF): prefer API blob download with Bearer; audit where applicable.
 - **Excel export buttons**: shared green `btnExcel` class.
 
+### Rich text editor (documents & fiches)
+
+Used for `document_compose` and `fiche_lecture` (`RichDocumentEditor`, TipTap).
+
+- **Storage:** `data_json.rich_html_ar`, `rich_html_fr`, optional `embedded_tables[]` (legacy `blocks[]` still supported for old data).
+- **Toolbar:** sticky at top of editor scroll area (`position: sticky` on `.richTextToolbar`).
+- **RTL alignment:** toolbar container uses `direction: ltr` so **left / center / right** buttons map to **physical** page sides in Arabic UI (not reversed by RTL flex).
+- **Editor font:** Tahoma for RTL content in the editor surface.
+- **Images:** uploaded via rapport uploads; embedded in HTML as `/files/uploads/...` URLs.
+
+### Rapport export (PDF & Word)
+
+Shared backend: `rapportExportData.js`, `rapportPdfService.js`, `rapportDocxService.js`, `richHtmlExport.js`.
+
+#### Supported content kinds
+
+| Kind | Export includes |
+| ---- | ---------------- |
+| `table_grid` | Table title/subtitle (from table meta), bordered grid, row media attachments |
+| `document_compose`, `fiche_lecture` | Rich HTML body + embedded tables/images only |
+
+**Not included in document/fiche exports:** rapport record title, service name, calendar events block (calendar remains Wali hub + in-app editor only).
+
+#### API
+
+| Method | Path | Notes |
+| ------ | ---- | ----- |
+| `GET` | `/office/rapports/:id/export.pdf` | `?locale=ar\|fr` |
+| `GET` | `/office/rapports/:id/export.docx` | same |
+| `GET` | `/wali/rapports/:id/export.pdf` | `?locale=…&showHidden=0\|1` (hidden table rows) |
+| `GET` | `/wali/rapports/:id/export.docx` | same |
+
+#### Filenames
+
+- Pattern: `{sanitized title} - {YYYY-MM-DD}.pdf` or `.docx` (`reference_date`, else last update date).
+- Response header: UTF-8 `Content-Disposition` (`filename*` for Arabic titles).
+
+#### Preview (office / wali editors)
+
+- **Exporter** dropdown: preview PDF (iframe) or preview Word (`docx-preview`), then download.
+- Office editable pages: **save draft before preview** so export matches the editor (`onPreparePreview`).
+- UI note: Word preview page count may differ from Microsoft Word — use PDF preview to verify pagination.
+
+#### Typography & Arabic
+
+- PDF Arabic: register **Tahoma** (fallback Arial/Trad Arabic); PDFKit `features: ['rtla']` per text call.
+- Word Arabic: **Tahoma** font family; merge adjacent runs where possible for spacing.
+- French: Calibri.
+
+#### Layout rules
+
+- Vertical margin ~14pt around exported tables and bordered HTML blocks (`exportLayout.js`).
+- Embedded/export tables with **more than 3 data rows** start on a **portrait A4** page break.
+- Images: embedded when file resolves; **videos**: placeholder line only (not embedded in PDF/Word).
+
+#### Audit
+
+- `RAPPORT_PDF_EXPORT`, `RAPPORT_DOCX_EXPORT` (also listed as `RAPPORT_EXPORT` in module docs where generic).
+
 ### Form Validation (Mandatory)
 
 #### Client (React)

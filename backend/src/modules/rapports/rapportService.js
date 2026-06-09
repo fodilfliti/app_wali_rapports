@@ -11,6 +11,7 @@ const {
   WaliBroadcast
 } = require("../../db");
 const { audit } = require("../../services/audit");
+const { loadSchemaBySlug } = require("./tableGridService");
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -34,21 +35,168 @@ async function listRapports(query, opts = {}) {
   const where = {};
   if (query.status) where.status = query.status;
   if (query.service_id) where.service_id = query.service_id;
+  if (query.rapport_type_id) where.rapport_type_id = query.rapport_type_id;
+  if (query.search) {
+    where.title = { [Op.iLike]: `%${String(query.search).trim()}%` };
+  }
+  if (query.has_version === "1" || query.has_version === "true") {
+    where.current_version_id = { [Op.ne]: null };
+  }
   if (opts.inboxOnly) {
     where.status = { [Op.in]: ["submitted", "under_review", "changes_requested", "acknowledged"] };
   }
+
+  const rapportTypeInclude = {
+    model: RapportType,
+    as: "rapportType",
+    attributes: ["id", "slug", "name_ar", "name_fr", "layout_kind", "versioning_mode", "content_kind"]
+  };
+  const importable = query.importable === "1" || query.importable === "true";
+  if (importable && !query.content_kind) {
+    query.content_kind = "table_grid";
+  }
+  if (importable) {
+    rapportTypeInclude.attributes = [
+      "id",
+      "slug",
+      "name_ar",
+      "name_fr",
+      "layout_kind",
+      "versioning_mode",
+      "content_kind",
+      "schema_json"
+    ];
+  }
+  if (query.content_kind) {
+    rapportTypeInclude.where = { content_kind: query.content_kind };
+    rapportTypeInclude.required = true;
+  }
+
+  const includes = [
+    { model: Service, as: "service", attributes: ["id", "slug", "name_ar", "name_fr"] },
+    rapportTypeInclude,
+    { model: User, as: "createdByUser", attributes: ["id", "name", "username"] }
+  ];
+  if (importable) {
+    includes.push({
+      model: RapportVersion,
+      as: "currentVersion",
+      attributes: ["id", "data_json"],
+      required: false
+    });
+  }
+
   const { rows, count } = await Rapport.findAndCountAll({
     where,
     order: [["updated_at", "DESC"]],
     offset,
     limit,
-    include: [
-      { model: Service, as: "service", attributes: ["id", "slug", "name_ar", "name_fr"] },
-      { model: RapportType, as: "rapportType", attributes: ["id", "slug", "layout_kind", "versioning_mode"] },
-      { model: User, as: "createdByUser", attributes: ["id", "name", "username"] }
-    ]
+    include: includes
   });
-  return { rapports: rows, total: count, page, pageSize };
+
+  let rapports = rows;
+  if (importable) {
+    const schemaCache = new Map();
+    const enriched = [];
+    for (const r of rows) {
+      const plain = r.toJSON ? r.toJSON() : r;
+      if (plain.rapportType?.content_kind !== "table_grid") continue;
+      const table = plain.currentVersion?.data_json?.tables?.[0];
+      if (!table?.rows?.length) continue;
+
+      const slug = plain.rapportType?.schema_json?.table_schema_slug;
+      let schema_name_ar = null;
+      let schema_name_fr = null;
+      let column_count = 0;
+      const column_labels_ar = [];
+      const column_labels_fr = [];
+      if (slug) {
+        if (!schemaCache.has(slug)) {
+          try {
+            schemaCache.set(slug, await loadSchemaBySlug(slug));
+          } catch {
+            schemaCache.set(slug, null);
+          }
+        }
+        const sch = schemaCache.get(slug);
+        if (sch) {
+          schema_name_ar = sch.name_ar;
+          schema_name_fr = sch.name_fr;
+          const cols = sch.columns_json || [];
+          column_count = cols.length;
+          for (const col of cols.slice(0, 10)) {
+            column_labels_ar.push(col.label_ar);
+            column_labels_fr.push(col.label_fr);
+          }
+        }
+      }
+
+      const { currentVersion, ...rest } = plain;
+      enriched.push({
+        ...rest,
+        import_summary: {
+          schema_name_ar,
+          schema_name_fr,
+          rapport_type_name_ar: plain.rapportType?.name_ar,
+          rapport_type_name_fr: plain.rapportType?.name_fr,
+          table_title_ar: table.title_ar,
+          table_title_fr: table.title_fr,
+          row_count: table.rows.length,
+          column_count,
+          column_labels_ar,
+          column_labels_fr
+        }
+      });
+    }
+    rapports = enriched;
+  } else {
+    rapports = rows.map((r) => (r.toJSON ? r.toJSON() : r));
+  }
+
+  if (opts.enrichForOfficeUserId) {
+    rapports = await enrichOfficeRapportList(rapports, opts.enrichForOfficeUserId);
+  }
+
+  return { rapports, total: importable ? rapports.length : count, page, pageSize };
+}
+
+async function enrichOfficeRapportList(rapports, userId) {
+  if (!rapports?.length || !userId) return rapports;
+  const ids = rapports.map((r) => Number(r.id)).filter(Boolean);
+  if (!ids.length) return rapports;
+
+  const [responses, unreadNotes] = await Promise.all([
+    WaliResponse.findAll({
+      where: { rapport_id: ids },
+      order: [["created_at", "DESC"]],
+      attributes: ["rapport_id", "decision", "follow_up_status", "body_text", "created_at"]
+    }),
+    Notification.findAll({
+      where: { user_id: userId, rapport_id: ids, read_at: null },
+      attributes: ["rapport_id"]
+    })
+  ]);
+
+  const latestByRapport = new Map();
+  for (const wr of responses) {
+    const rid = Number(wr.rapport_id);
+    if (!latestByRapport.has(rid)) {
+      latestByRapport.set(rid, {
+        decision: wr.decision,
+        follow_up_status: wr.follow_up_status,
+        body_text: wr.body_text,
+        created_at: wr.created_at
+      });
+    }
+  }
+
+  const unreadSet = new Set(unreadNotes.map((n) => Number(n.rapport_id)));
+
+  return rapports.map((r) => ({
+    ...r,
+    latest_wali_response: latestByRapport.get(Number(r.id)) || null,
+    has_unread_notification: unreadSet.has(Number(r.id))
+  }));
 }
 
 async function getRapportDetail(id) {
@@ -213,18 +361,29 @@ async function waliRespond(id, data, actor, req) {
     err.status = 409;
     throw err;
   }
-  const bodyText = data.body_text?.trim() || (data.decision === "viewed" ? "" : "");
+  const bodyText = data.decision === "viewed" ? "" : data.body_text?.trim() || "";
   if (data.decision === "changes_requested" && !bodyText) {
     const err = new Error("waliResponseRequired");
     err.status = 400;
     throw err;
   }
 
+  let followUpStatus = "none";
+  if (data.decision === "accepted") {
+    followUpStatus = data.follow_up_status || "none";
+    if (!["none", "pending", "completed"].includes(followUpStatus)) {
+      const err = new Error("waliFollowUpInvalid");
+      err.status = 400;
+      throw err;
+    }
+  }
+
   const response = await WaliResponse.create({
     rapport_id: rapport.id,
     rapport_version_id: rapport.current_version_id,
     decision: data.decision,
-    body_text: bodyText || "—",
+    follow_up_status: followUpStatus,
+    body_text: bodyText,
     scope: data.scope || "whole_rapport",
     scope_id: data.scope_id || null,
     created_by_user_id: actor.id
@@ -237,12 +396,22 @@ async function waliRespond(id, data, actor, req) {
   await rapport.update({ status: nextStatus, updated_at: new Date() });
 
   const notifyUserId = rapport.owner_office_user_id || rapport.created_by_user_id;
-  if (notifyUserId && data.decision !== "viewed") {
+  if (notifyUserId && data.decision === "accepted") {
+    let messageKey = "waliAccepted";
+    if (followUpStatus === "pending") messageKey = "waliAcceptedPending";
+    if (followUpStatus === "completed") messageKey = "waliAcceptedCompleted";
     await Notification.create({
       user_id: notifyUserId,
       rapport_id: rapport.id,
       wali_response_id: response.id,
-      message_key: data.decision === "accepted" ? "waliAccepted" : "waliChangesRequested"
+      message_key: messageKey
+    });
+  } else if (notifyUserId && data.decision === "changes_requested") {
+    await Notification.create({
+      user_id: notifyUserId,
+      rapport_id: rapport.id,
+      wali_response_id: response.id,
+      message_key: "waliChangesRequested"
     });
   } else if (notifyUserId && data.decision === "viewed" && bodyText) {
     await Notification.create({
@@ -298,7 +467,7 @@ async function listNotifications(userId, unreadOnly = false) {
           { model: Service, as: "service", attributes: ["id", "slug", "name_ar", "name_fr"] }
         ]
       },
-      { model: WaliResponse, as: "waliResponse", attributes: ["decision", "body_text"], required: false },
+      { model: WaliResponse, as: "waliResponse", attributes: ["decision", "follow_up_status", "body_text"], required: false },
       {
         model: WaliBroadcast,
         as: "broadcast",
@@ -320,6 +489,13 @@ async function markNotificationRead(id, userId) {
   return n;
 }
 
+async function markRapportNotificationsRead(rapportId, userId) {
+  await Notification.update(
+    { read_at: new Date() },
+    { where: { user_id: userId, rapport_id: rapportId, read_at: null } }
+  );
+}
+
 module.exports = {
   listServices,
   listRapports,
@@ -332,5 +508,6 @@ module.exports = {
   listRapportVersions,
   getRapportVersion,
   listNotifications,
-  markNotificationRead
+  markNotificationRead,
+  markRapportNotificationsRead
 };

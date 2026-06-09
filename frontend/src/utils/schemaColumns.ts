@@ -1,4 +1,5 @@
 import { excelColumnLetter, remapFormulaToExcelLetters } from './formulaEngine'
+import { hasBilingualText, pickBilingualText } from './bilingual'
 
 export type SchemaColumnType = 'text' | 'number' | 'date' | 'choice' | 'commune_ref' | 'formula'
 
@@ -185,7 +186,7 @@ export function buildColumnsPayload(cols: DraftSchemaColumn[]): SchemaColumnPayl
     const payload: SchemaColumnPayload = {
       key,
       type: c.type,
-      label_ar: c.label_ar.trim(),
+      label_ar: c.label_ar.trim() || c.label_fr.trim(),
       label_fr: c.label_fr.trim() || c.label_ar.trim(),
     }
     if ((c.type === 'number' || c.type === 'formula') && c.format) payload.format = c.format
@@ -196,10 +197,10 @@ export function buildColumnsPayload(cols: DraftSchemaColumn[]): SchemaColumnPayl
     if (c.type === 'choice') {
       const used = new Set<string>()
       const choices = (c.choices || [])
-        .filter((ch) => ch.label_ar.trim())
+        .filter((ch) => hasBilingualText(ch.label_ar, ch.label_fr))
         .map((ch, ci) => ({
           value: choiceValueFromLabels(ch.label_fr, ch.label_ar, ci, used),
-          label_ar: ch.label_ar.trim(),
+          label_ar: ch.label_ar.trim() || ch.label_fr.trim(),
           label_fr: ch.label_fr.trim() || ch.label_ar.trim(),
         }))
       if (choices.length) payload.choices = choices
@@ -215,10 +216,10 @@ export function buildColumnsPayload(cols: DraftSchemaColumn[]): SchemaColumnPayl
 export function validateDraftColumns(cols: DraftSchemaColumn[]): string | null {
   if (!cols.length) return 'schemaColumnsRequired'
   for (const c of cols) {
-    if (!c.label_ar.trim()) return 'schemaColumnLabelRequired'
+    if (!hasBilingualText(c.label_ar, c.label_fr)) return 'bilingualLabelRequired'
     if (c.type === 'formula' && !c.formula.trim()) return 'schemaFormulaRequired'
     if (c.type === 'choice') {
-      const opts = (c.choices || []).filter((ch) => ch.label_ar.trim())
+      const opts = (c.choices || []).filter((ch) => hasBilingualText(ch.label_ar, ch.label_fr))
       if (!opts.length) return 'schemaChoiceOptionsRequired'
     }
   }
@@ -226,5 +227,5 @@ export function validateDraftColumns(cols: DraftSchemaColumn[]): string | null {
 }
 
 export function localizedName(row: { name_ar?: string; name_fr?: string }, lang: string) {
-  return lang === 'fr' ? row.name_fr || row.name_ar : row.name_ar || row.name_fr
+  return pickBilingualText(row.name_ar, row.name_fr, lang)
 }

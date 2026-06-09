@@ -3,6 +3,7 @@ const { Service, RapportType, RapportTableSchema } = require("../../db");
 const { audit } = require("../../services/audit");
 const { baseSlugFromNames, ensureUniqueSlug, rapportTypeSlugFromNames } = require("../../utils/slugUtils");
 const { remapDraftRapportsForSchemaChange } = require("./schemaRowRemapService");
+const { hasBilingualText } = require("../../validation/bilingual");
 
 const COLUMN_TYPES = new Set(["text", "number", "date", "choice", "commune_ref", "formula"]);
 
@@ -25,8 +26,8 @@ function validateColumns(columns) {
       throw err;
     }
     keys.add(col.key);
-    if (!col.label_ar || !col.label_fr) {
-      const err = new Error("columnLabelsRequired");
+    if (!hasBilingualText(col.label_ar, col.label_fr)) {
+      const err = new Error("bilingualLabelRequired");
       err.status = 400;
       throw err;
     }
@@ -36,20 +37,28 @@ function validateColumns(columns) {
         err.status = 400;
         throw err;
       }
+      for (const ch of col.choices) {
+        if (!hasBilingualText(ch.label_ar, ch.label_fr)) {
+          const err = new Error("bilingualLabelRequired");
+          err.status = 400;
+          throw err;
+        }
+      }
     }
   }
 }
 
 function buildSchemaJsonForType(contentKind, body) {
-  if (contentKind === "table_grid") {
-    if (!body.table_schema_slug) {
+  if (contentKind === "table_grid" || contentKind === "commune_list") {
+    const slug = body.table_schema_slug || body.schema_json?.table_schema_slug;
+    if (!slug) {
       const err = new Error("tableSchemaSlugRequired");
       err.status = 400;
       throw err;
     }
     return {
-      table_schema_slug: body.table_schema_slug,
-      table_key: body.table_key || "main"
+      table_schema_slug: slug,
+      table_key: body.table_key || body.schema_json?.table_key || "main"
     };
   }
   if (contentKind === "document_compose" || contentKind === "fiche_lecture") {

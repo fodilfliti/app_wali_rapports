@@ -7,7 +7,9 @@ const ROW_META_KEYS = new Set([
   "_municipality_name_ar",
   "_municipality_name_fr",
   "_highlight",
-  "_wali_visible"
+  "_row_finished",
+  "_wali_visible",
+  "_cell_colors"
 ]);
 
 function isRowMetaKey(key) {

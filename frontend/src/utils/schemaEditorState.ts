@@ -54,8 +54,8 @@ export function buildSchemaSaveBody(
   draftHeaderGroups: DraftHeaderGroup[],
 ) {
   return {
-    name_ar: schemaForm.name_ar.trim(),
-    name_fr: schemaForm.name_fr.trim(),
+    name_ar: schemaForm.name_ar.trim() || schemaForm.name_fr.trim(),
+    name_fr: schemaForm.name_fr.trim() || schemaForm.name_ar.trim(),
     columns: buildColumnsPayload(draftColumns),
     layout_json: buildLayoutJsonFromDraft(draftColumns, draftHeaderGroups),
   }

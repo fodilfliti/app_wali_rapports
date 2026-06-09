@@ -1,4 +1,5 @@
 import { buildColumnsPayload, type DraftSchemaColumn } from './schemaColumns'
+import { hasBilingualText } from './bilingual'
 import type { LayoutJson } from './tableLayout'
 
 export type DraftHeaderGroup = {
@@ -33,9 +34,9 @@ export function buildLayoutJsonFromDraft(
   })
 
   const header_groups = (groups || [])
-    .filter((g) => g.label_ar.trim() && g.column_uids.length >= 1)
+    .filter((g) => hasBilingualText(g.label_ar, g.label_fr) && g.column_uids.length >= 1)
     .map((g) => ({
-      label_ar: g.label_ar.trim(),
+      label_ar: g.label_ar.trim() || g.label_fr.trim(),
       label_fr: g.label_fr.trim() || g.label_ar.trim(),
       column_keys: g.column_uids.map((uid) => uidToKey.get(uid)).filter((k): k is string => Boolean(k)),
     }))
@@ -53,8 +54,8 @@ export function validateDraftHeaderGroups(
 
   for (const g of groups || []) {
     const activeUids = g.column_uids.filter((uid) => columnUids.has(uid))
-    if (!activeUids.length && !g.label_ar.trim() && !g.label_fr.trim()) continue
-    if (!g.label_ar.trim()) return 'schemaHeaderGroupLabelRequired'
+    if (!activeUids.length && !hasBilingualText(g.label_ar, g.label_fr)) continue
+    if (!hasBilingualText(g.label_ar, g.label_fr)) return 'bilingualLabelRequired'
     if (activeUids.length < 1) return 'schemaHeaderGroupMinColumns'
     for (const uid of activeUids) {
       if (assigned.has(uid)) return 'schemaHeaderGroupDuplicateColumn'

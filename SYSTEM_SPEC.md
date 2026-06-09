@@ -26,6 +26,13 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Rapport architecture (4 content kinds):** Wali navigates office user → service/sub-service tree; types table grid, document compose, fiche lecture, commune list — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
 - **Version archive + Wali notifications:** old versions for graphs/history; office notified on Wali note — `RAPPORT_SERVICE_TYPES.md`, `RAPPORTS.md`.
 
+### Cross-cutting updates (2026-06)
+
+- **Rich document editor:** TipTap HTML (`rich_html_ar` / `rich_html_fr`), sticky toolbar, physical LTR align buttons in RTL UI — `spec/CORE.md`.
+- **Document templates:** per-service reusable starters for `document_compose` / `fiche_lecture` — `spec/modules/SCHEMA_CONFIGURATION.md`.
+- **Export PDF/Word:** preview before download, title+date filenames, Arabic Tahoma + PDF RTL shaping, editor-only body for documents (no rapport title / service / calendar in file) — `spec/CORE.md`, `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`.
+- **Office rapports list:** `/office/rapports` is a cross-service inbox only — **new documents are created from the service content hub**, not from this page.
+
 ### What to do when adding a new feature
 
 - Create `spec/modules/<NAME>.md` from `spec/modules/_TEMPLATE.md`.

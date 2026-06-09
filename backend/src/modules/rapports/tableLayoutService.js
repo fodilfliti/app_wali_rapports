@@ -1,3 +1,5 @@
+const { pickBilingualText } = require("../../validation/bilingual");
+
 function buildDefaultTableMeta(layoutJson = {}, columns = []) {
   const layout = layoutJson || {};
   const suggested = (columns || [])
@@ -40,7 +42,7 @@ function buildHeaderModel(columns, layoutJson, locale = "ar") {
     const keys = (g.column_keys || []).filter((k) => cols.some((c) => c.key === k));
     if (!keys.length) continue;
     groupRow.push({
-      label: locale === "fr" ? g.label_fr : g.label_ar,
+      label: pickBilingualText(g.label_ar, g.label_fr, locale),
       colSpan: keys.length
     });
     for (const key of keys) {
@@ -48,7 +50,7 @@ function buildHeaderModel(columns, layoutJson, locale = "ar") {
       if (col) {
         columnRow.push({
           key: col.key,
-          label: locale === "fr" ? col.label_fr : col.label_ar
+          label: pickBilingualText(col.label_ar, col.label_fr, locale)
         });
       }
     }
@@ -59,7 +61,7 @@ function buildHeaderModel(columns, layoutJson, locale = "ar") {
     groupRow.push({ label: "", colSpan: 1, placeholder: true });
     columnRow.push({
       key: col.key,
-      label: locale === "fr" ? col.label_fr : col.label_ar
+      label: pickBilingualText(col.label_ar, col.label_fr, locale)
     });
   }
 

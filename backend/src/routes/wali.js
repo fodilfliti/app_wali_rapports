@@ -9,8 +9,10 @@ const navigationService = require("../modules/rapports/navigationService");
 const calendarEventService = require("../modules/rapports/calendarEventService");
 const rapportViewService = require("../modules/rapports/rapportViewService");
 const broadcastService = require("../modules/rapports/broadcastService");
+const hubCountsService = require("../modules/rapports/hubCountsService");
 const { generateRapportPdf } = require("../services/rapportPdfService");
 const { generateRapportDocx } = require("../services/rapportDocxService");
+const { contentDispositionAttachment } = require("../services/rapportExportFilename");
 
 const waliRouter = express.Router();
 waliRouter.use(requireAuth, attachUser, checkBlocked, requireRole(["WALI", "ADMIN"]));
@@ -23,6 +25,14 @@ waliRouter.get("/office-users", requirePermission("rapports.inbox.view", "view")
   }
 });
 
+waliRouter.get("/hub-counts", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
+  try {
+    res.json(await hubCountsService.getWaliHubCounts());
+  } catch (e) {
+    next(e);
+  }
+});
+
 waliRouter.get("/office-users/:userId/services", requirePermission("rapports.inbox.view", "view"), async (req, res, next) => {
   try {
     res.json(await navigationService.getServiceTreeForUser(req.params.userId, "OFFICE_USER"));
@@ -30,6 +40,25 @@ waliRouter.get("/office-users/:userId/services", requirePermission("rapports.inb
     next(e);
   }
 });
+
+waliRouter.get(
+  "/office-users/:userId/services/:serviceId/content",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      res.json(
+        await workspaceService.getServiceContentHub(req.params.serviceId, req.user, {
+          waliForOfficeUserId: Number(req.params.userId)
+        })
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  }
+);
 
 const workspaceService = require("../modules/rapports/workspaceService");
 
@@ -103,7 +132,7 @@ waliRouter.get("/rapports/:id/export.pdf", requirePermission("rapports.inbox.vie
       req
     });
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Disposition", contentDispositionAttachment(filename));
     res.send(buffer);
   } catch (e) {
     if (e.status === 400) return res.status(400).json({ error: e.message });
@@ -125,7 +154,7 @@ waliRouter.get("/rapports/:id/export.docx", requirePermission("rapports.inbox.vi
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Disposition", contentDispositionAttachment(filename));
     res.send(buffer);
   } catch (e) {
     if (e.status === 400) return res.status(400).json({ error: e.message });

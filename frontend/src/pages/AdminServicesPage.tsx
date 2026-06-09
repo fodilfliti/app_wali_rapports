@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
+import { hasBilingualText } from '../utils/bilingual'
 import { AdminOrgTabs } from '../components/AdminOrgTabs'
 import { BackButton } from '../components/BackButton'
 import { ExpandableHelp } from '../components/ExpandableHelp'
+import { TablePagination } from '../components/TablePagination'
 import { localizedName } from '../utils/schemaColumns'
 import { useSnackbar } from '../snackbar/SnackbarContext'
+import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 
 type Props = { token: string }
 
@@ -29,6 +32,8 @@ export function AdminServicesPage({ token }: Props) {
   const [officeUsers, setOfficeUsers] = useState<any[]>([])
   const [createOpen, setCreateOpen] = useState(false)
   const [grantsOpen, setGrantsOpen] = useState(false)
+  const [page, setPage] = useState(1)
+  const [grantPage, setGrantPage] = useState(1)
   const [selectedService, setSelectedService] = useState<any>(null)
   const [grantRows, setGrantRows] = useState<GrantRow[]>([])
   const [form, setForm] = useState(emptyForm())
@@ -62,15 +67,15 @@ export function AdminServicesPage({ token }: Props) {
       snack.show(t('servicesDepartmentRequired'), 'error')
       return
     }
-    if (!form.name_ar.trim() || !form.name_fr.trim()) {
-      snack.show(t('schemaMetaRequired'), 'error')
+    if (!hasBilingualText(form.name_ar, form.name_fr)) {
+      snack.show(t('bilingualLabelRequired'), 'error')
       return
     }
     try {
       await api.createAdminService(token, {
         department_id: Number(form.department_id),
-        name_ar: form.name_ar.trim(),
-        name_fr: form.name_fr.trim(),
+        name_ar: form.name_ar.trim() || form.name_fr.trim(),
+        name_fr: form.name_fr.trim() || form.name_ar.trim(),
         is_folder: form.is_folder,
         parent_service_id: form.is_folder || !form.parent_service_id ? null : Number(form.parent_service_id),
         sort_order: Number(form.sort_order) || 0,
@@ -95,6 +100,7 @@ export function AdminServicesPage({ token }: Props) {
           enabled: existing.has(Number(u.id)),
         })),
       )
+      setGrantPage(1)
       setGrantsOpen(true)
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -120,6 +126,8 @@ export function AdminServicesPage({ token }: Props) {
   }
 
   const folders = services.filter((s) => s.is_folder && !s.parent_service_id)
+  const pagedServices = paginateSlice(services, page, DEFAULT_PAGE_SIZE)
+  const pagedGrantRows = paginateSlice(grantRows, grantPage, DEFAULT_PAGE_SIZE)
 
   return (
     <div className="page">
@@ -155,8 +163,8 @@ export function AdminServicesPage({ token }: Props) {
             </tr>
           </thead>
           <tbody>
-            {services.length ? (
-              services.map((s) => (
+            {pagedServices.length ? (
+              pagedServices.map((s) => (
                 <tr key={s.id}>
                   <td>{localizedName(s, i18n.language)}</td>
                   <td>{s.is_folder ? t('serviceFolder') : t('serviceLeaf')}</td>
@@ -189,6 +197,7 @@ export function AdminServicesPage({ token }: Props) {
           </tbody>
         </table>
       </div>
+      <TablePagination page={page} total={services.length} onPageChange={setPage} />
 
       {createOpen ? (
         <div className="modalOverlay">
@@ -300,7 +309,8 @@ export function AdminServicesPage({ token }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {grantRows.map((row, idx) => {
+                  {pagedGrantRows.map((row) => {
+                    const idx = grantRows.findIndex((r) => r.user_id === row.user_id)
                     const user = officeUsers.find((u) => Number(u.id) === row.user_id)
                     return (
                       <tr key={row.user_id}>
@@ -338,6 +348,7 @@ export function AdminServicesPage({ token }: Props) {
                 </tbody>
               </table>
             </div>
+            <TablePagination page={grantPage} total={grantRows.length} onPageChange={setGrantPage} compact />
             <div className="modalActions">
               <button type="button" className="btn btn-primary" onClick={saveGrants}>
                 {t('save')}

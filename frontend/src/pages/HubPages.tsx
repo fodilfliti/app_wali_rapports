@@ -1,121 +1,307 @@
 import { useEffect, useState } from 'react'
+
+import { useParams, useLocation } from 'react-router-dom'
+
 import { useTranslation } from 'react-i18next'
+
 import { BackButton } from '../components/BackButton'
+
 import { HubTile } from '../components/HubTile'
+
+import { HubCountBadge } from '../components/HubCountBadge'
+
 import { serviceHubIcon } from '../components/HubIcons'
+
+import { useOfficeHubCounts, useWaliHubCounts } from '../hooks/useHubCounts'
+
+import { findServiceNode, folderBackPath, serviceLabel } from '../utils/serviceTree'
+
+import { TablePagination } from '../components/TablePagination'
+
+import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
+
+import { HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
+
 import * as api from '../api'
+
+
+
 export function AdminHubPage() {
+
   const { t } = useTranslation()
+
   return (
+
     <div className="page">
+
       <div className="pageHeader">
+
         <h1>{t('hubAdmin')}</h1>
+
       </div>
+
       <div className="hubGrid">
+
         <HubTile to="/municipalities" icon="municipalities" title={t('navMunicipalities')} />
+
         <HubTile to="/users" icon="users" title={t('navUsers')} />
+
         <HubTile to="/admin/rapports" icon="rapports" title={t('navRapports')} />
+
         <HubTile to="/admin/departments" icon="folder" title={t('departmentsSection')} />
+
         <HubTile to="/admin/services" icon="services" title={t('navServices')} />
+
         <HubTile to="/admin/schemas" icon="schemas" title={t('navSchemas')} />
+
         <HubTile to="/access" icon="access" title={t('navAccess')} />
+
       </div>
+
     </div>
+
   )
+
 }
 
-export function OfficeHubPage() {
+
+
+export function OfficeHubPage({ token }: { token: string }) {
+
   const { t } = useTranslation()
+
+  const { counts } = useOfficeHubCounts(token)
+
   return (
+
     <div className="page">
+
       <div className="pageHeader">
+
         <h1>{t('hubOffice')}</h1>
+
       </div>
+
       <div className="hubGrid">
-        <HubTile to="/office/rapports" icon="rapports" title={t('navRapports')} />
-        <HubTile to="/office/services" icon="services" title={t('navServices')} />
-        <HubTile to="/office/notifications" icon="notifications" title={t('navNotifications')} />
-        <HubTile to="/office/shared" icon="shared" title={t('navSharedFiles')} />
+
+        <HubTile
+          to="/office/rapports"
+          icon="rapports"
+          title={t('navRapports')}
+          badge={<HubCountBadge count={counts.changes_requested_rapports} />}
+        />
+
+        <HubTile
+          to="/office/services"
+          icon="services"
+          title={t('navServices')}
+          badge={<HubCountBadge count={counts.services_action_count} />}
+        />
+
+        <HubTile
+          to="/office/notifications"
+          icon="notifications"
+          title={t('navNotifications')}
+          badge={<HubCountBadge count={counts.unread_notifications} />}
+        />
+
+        <HubTile
+          to="/office/shared"
+          icon="shared"
+          title={t('navSharedFiles')}
+          badge={<HubCountBadge count={counts.unread_shared_files} />}
+        />
+
       </div>
+
     </div>
+
   )
+
 }
 
-export function WaliHubPage() {
+
+
+export function WaliHubPage({ token }: { token: string }) {
+
   const { t } = useTranslation()
+
+  const { counts } = useWaliHubCounts(token)
+
   return (
+
     <div className="page">
+
       <div className="pageHeader">
+
         <h1>{t('hubWali')}</h1>
+
       </div>
+
       <div className="hubGrid">
-        <HubTile to="/wali/office-users" icon="officeUsers" title={t('navOfficeUsers')} />
-        <HubTile to="/wali/rapports" icon="inbox" title={t('navInbox')} />
+
+        <HubTile
+          to="/wali/office-users"
+          icon="officeUsers"
+          title={t('navOfficeUsers')}
+          badge={<HubCountBadge count={counts.office_users_pending} />}
+        />
+
+        <HubTile
+          to="/wali/rapports"
+          icon="inbox"
+          title={t('navInbox')}
+          badge={<HubCountBadge count={counts.inbox_pending} />}
+        />
+
         <HubTile to="/wali/calendar" icon="calendar" title={t('navCalendar')} />
+
         <HubTile to="/wali/shared" icon="shared" title={t('navSharedFiles')} />
+
       </div>
+
     </div>
+
   )
+
 }
+
+
 
 export function AdminAccessPage() {
+
   const { t } = useTranslation()
+
   return (
+
     <div className="page">
+
       <div className="pageHeader row">
+
         <h1>{t('navAccess')}</h1>
+
         <BackButton fallbackTo="/" />
+
       </div>
+
       <p className="muted">{t('navAccess')}</p>
+
     </div>
+
   )
+
 }
 
-function serviceLink(s: any) {
-  if (s.is_folder) return `/office/services`
-  return `/office/services/${s.id}`
-}
+
 
 export function OfficeServicesPage({ token }: { token: string }) {
+
+  const { folderId } = useParams()
+
+  const location = useLocation()
+
+  const fid = folderId ? Number(folderId) : undefined
+
   const { t, i18n } = useTranslation()
+
   const [services, setServices] = useState<any[]>([])
 
+  const [page, setPage] = useState(1)
+
+
+
   useEffect(() => {
+
     api.listOfficeServiceTree(token).then((r) => setServices(r.services)).catch(() => {})
+
+  }, [token, location.pathname])
+
+  useEffect(() => {
+
+    const refresh = () => {
+
+      api.listOfficeServiceTree(token).then((r) => setServices(r.services)).catch(() => {})
+
+    }
+
+    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
+
+    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
+
   }, [token])
 
-  function renderService(s: any) {
-    const label = i18n.language === 'fr' ? s.name_fr : s.name_ar
-    if (s.is_folder && s.children?.length) {
-      return (
-        <div key={s.id} className="serviceFolder">
-          <h3>{label}</h3>
-          <div className="hubGrid nested">{s.children.map((c: any) => renderService(c))}</div>
-        </div>
-      )
-    }
-    const kinds = (s.rapportTypes || []).map((t: any) => t.content_kind)
-    const kindLabel = kinds.length
-      ? kinds.map((k: string) => t(`contentKind_${k}`)).join(' · ')
-      : t('noResults')
-    return (
-      <HubTile
-        key={s.id}
-        to={serviceLink(s)}
-        icon={serviceHubIcon(s)}
-        title={label}
-        subtitle={kindLabel}
-      />
-    )  }
+  useEffect(() => {
+    setPage(1)
+  }, [fid])
+
+
+
+  const folder = fid ? findServiceNode(services, fid) : null
+
+  const items = folder ? folder.children || [] : services
+
+  const pagedItems = paginateSlice(items, page, DEFAULT_PAGE_SIZE)
+
+  const pageTitle = folder ? serviceLabel(folder, i18n.language) : t('navServices')
+
+  const backTo = fid ? folderBackPath(services, fid, '/office/services') : '/office'
+
+
 
   return (
+
     <div className="page">
+
       <div className="pageHeader row">
-        <h1>{t('navServices')}</h1>
-        <BackButton fallbackTo="/office" />
+
+        <h1>{pageTitle}</h1>
+
+        <BackButton fallbackTo={backTo} />
+
       </div>
-      {services.map((s) => renderService(s))}
-      {!services.length ? <p className="muted">{t('noResults')}</p> : null}
+
+      <div className="hubGrid hubGridServices">
+
+        {pagedItems.map((s: any) => {
+
+          const label = serviceLabel(s, i18n.language)
+
+          const to = s.is_folder
+
+            ? `/office/services/folder/${s.id}`
+
+            : `/office/services/${s.id}`
+
+          return (
+
+            <HubTile
+
+              key={s.id}
+
+              to={to}
+
+              icon={s.is_folder ? 'folder' : serviceHubIcon(s)}
+
+              title={label}
+
+              badge={Number(s.action_count) > 0 ? <HubCountBadge count={Number(s.action_count)} /> : undefined}
+
+            />
+
+          )
+
+        })}
+
+      </div>
+
+      {!items.length ? <p className="muted">{t('noResults')}</p> : null}
+
+      <TablePagination page={page} total={items.length} onPageChange={setPage} />
+
     </div>
+
   )
+
 }
+
+

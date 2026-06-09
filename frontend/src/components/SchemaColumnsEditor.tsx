@@ -1,4 +1,4 @@
-import { useState, Fragment, useRef } from 'react'
+import { useState, Fragment, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   buildColumnsPayload,
@@ -135,19 +135,14 @@ export function SchemaColumnsEditor({
   const [dropInsertIndex, setDropInsertIndex] = useState<number | null>(null)
   const dragFromRef = useRef<number | null>(null)
   const dropInsertRef = useRef<number | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const columnsRef = useRef(columns)
+  const pointerDragRef = useRef<{ pointerId: number } | null>(null)
+  columnsRef.current = columns
 
   function setDropIndex(insertIndex: number | null) {
     dropInsertRef.current = insertIndex
     setDropInsertIndex(insertIndex)
-  }
-
-  function dragFromIndex(e?: React.DragEvent): number | null {
-    if (dragFromRef.current != null) return dragFromRef.current
-    if (dragColIndex != null) return dragColIndex
-    if (!e) return null
-    const raw = e.dataTransfer.getData('text/plain')
-    const n = Number(raw)
-    return Number.isFinite(n) ? n : null
   }
 
   function previewDropPosition(fromIndex: number, insertIndex: number): number {
@@ -156,17 +151,23 @@ export function SchemaColumnsEditor({
     return target + 1
   }
 
-  function resolveInsertIndex(e: React.DragEvent, cardIndex: number): number {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const mid = rect.top + rect.height / 2
-    return e.clientY < mid ? cardIndex : cardIndex + 1
+  function resolveListInsertIndexFromY(clientY: number, listEl: HTMLElement): number {
+    const cards = [...listEl.querySelectorAll('.schemaColumnCard')] as HTMLElement[]
+    if (!cards.length) return 0
+    for (let i = 0; i < cards.length; i++) {
+      const rect = cards[i].getBoundingClientRect()
+      const mid = rect.top + rect.height / 2
+      if (clientY < mid) return i
+    }
+    return cards.length
   }
 
   function moveColumnToInsert(fromIndex: number, insertIndex: number) {
+    const cols = columnsRef.current
     if (fromIndex < 0 || insertIndex < 0) return
     if (fromIndex === insertIndex || fromIndex + 1 === insertIndex) return
-    if (fromIndex >= columns.length || insertIndex > columns.length) return
-    const next = [...columns]
+    if (fromIndex >= cols.length || insertIndex > cols.length) return
+    const next = [...cols]
     const [item] = next.splice(fromIndex, 1)
     let target = insertIndex
     if (fromIndex < insertIndex) target -= 1
@@ -176,51 +177,56 @@ export function SchemaColumnsEditor({
 
   function finishDrag() {
     dragFromRef.current = null
+    pointerDragRef.current = null
     setDropIndex(null)
     setDragColIndex(null)
   }
 
-  function handleDrop(insertIndex: number, e?: React.DragEvent) {
-    e?.preventDefault()
-    e?.stopPropagation()
-    const from = dragFromIndex(e)
-    if (from == null) {
+  function startPointerDrag(e: React.PointerEvent, index: number) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    pointerDragRef.current = { pointerId: e.pointerId }
+    dragFromRef.current = index
+    setDragColIndex(index)
+    setDropIndex(index)
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  useEffect(() => {
+    if (dragColIndex == null) return
+
+    function updateDropFromPointer(e: PointerEvent) {
+      if (!pointerDragRef.current || e.pointerId !== pointerDragRef.current.pointerId) return
+      const listEl = listRef.current
+      if (!listEl) return
+      setDropIndex(resolveListInsertIndexFromY(e.clientY, listEl))
+    }
+
+    function endPointerDrag(e: PointerEvent) {
+      if (!pointerDragRef.current || e.pointerId !== pointerDragRef.current.pointerId) return
+      const from = dragFromRef.current
+      if (from == null) {
+        finishDrag()
+        return
+      }
+      const listEl = listRef.current
+      const insert = listEl
+        ? resolveListInsertIndexFromY(e.clientY, listEl)
+        : dropInsertRef.current ?? from
+      moveColumnToInsert(from, insert)
       finishDrag()
-      return
     }
-    moveColumnToInsert(from, insertIndex)
-    finishDrag()
-  }
 
-  function handleDropSlotDragOver(e: React.DragEvent, insertIndex: number) {
-    e.preventDefault()
-    e.stopPropagation()
-    if (dragFromRef.current == null && dragColIndex == null) return
-    setDropIndex(insertIndex)
-  }
-
-  function handleColumnDragOver(e: React.DragEvent, cardIndex: number) {
-    e.preventDefault()
-    e.stopPropagation()
-    if (dragFromRef.current == null && dragColIndex == null) return
-    setDropIndex(resolveInsertIndex(e, cardIndex))
-  }
-
-  function handleListDragOver(e: React.DragEvent) {
-    e.preventDefault()
-    if (dragFromRef.current == null && dragColIndex == null) return
-    const list = e.currentTarget as HTMLElement
-    const cards = list.querySelectorAll('.schemaColumnCard')
-    if (!cards.length) {
-      setDropIndex(0)
-      return
+    document.addEventListener('pointermove', updateDropFromPointer)
+    document.addEventListener('pointerup', endPointerDrag)
+    document.addEventListener('pointercancel', endPointerDrag)
+    return () => {
+      document.removeEventListener('pointermove', updateDropFromPointer)
+      document.removeEventListener('pointerup', endPointerDrag)
+      document.removeEventListener('pointercancel', endPointerDrag)
     }
-    const last = cards[cards.length - 1] as HTMLElement
-    const lastRect = last.getBoundingClientRect()
-    if (e.clientY >= lastRect.bottom - 8) {
-      setDropIndex(columns.length)
-    }
-  }
+  }, [dragColIndex])
 
   function removeColumn(uid: string) {
     if (columns.length <= 1) return
@@ -289,13 +295,8 @@ export function SchemaColumnsEditor({
       </div>
 
       <div
-        className="schemaColumnsList"
-        onDragOver={handleListDragOver}
-        onDrop={(e) => {
-          const insert = dropInsertRef.current
-          if (insert != null) handleDrop(insert, e)
-          else finishDrag()
-        }}
+        ref={listRef}
+        className={`schemaColumnsList${dragColIndex != null ? ' schemaColumnsList-dragging' : ''}`}
       >
         {columns.map((col, index) => {
           const letter = columnKeyPreview[index]?.letter || ''
@@ -308,12 +309,7 @@ export function SchemaColumnsEditor({
           return (
           <Fragment key={col.uid}>
             {dragColIndex != null && dropInsertIndex === index ? (
-              <div
-                className="schemaColumnDropSlot"
-                aria-live="polite"
-                onDragOver={(e) => handleDropSlotDragOver(e, index)}
-                onDrop={(e) => handleDrop(index, e)}
-              >
+              <div className="schemaColumnDropSlot" aria-live="polite">
                 <span className="schemaColumnDropSlotLine" />
                 <span className="schemaColumnDropSlotLabel">
                   {t('schemaColumnDropAt', { position: index + 1 })}
@@ -322,30 +318,15 @@ export function SchemaColumnsEditor({
             ) : null}
           <div
             className={`schemaColumnCard card${isDragging ? ' schemaColumnCardDragging' : ''}${dragColIndex != null && dropInsertIndex === index + 1 && dragColIndex !== index ? ' schemaColumnCardDropTarget' : ''}`}
-            onDragOver={(e) => handleColumnDragOver(e, index)}
-            onDrop={(e) => handleDrop(dropInsertRef.current ?? resolveInsertIndex(e, index), e)}
           >
             <div className="schemaColumnCardHeader">
               <span
                 role="button"
                 tabIndex={0}
                 className="schemaColumnDragHandle"
-                draggable
                 title={t('schemaColumnDrag')}
                 aria-label={t('schemaColumnDrag')}
-                onMouseDown={(e) => e.preventDefault()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') e.preventDefault()
-                }}
-                onDragStart={(e) => {
-                  dragFromRef.current = index
-                  setDragColIndex(index)
-                  setDropIndex(index)
-                  e.dataTransfer.effectAllowed = 'move'
-                  e.dataTransfer.setData('text/plain', String(index))
-                  e.dataTransfer.setData('application/x-schema-col-index', String(index))
-                }}
-                onDragEnd={finishDrag}
+                onPointerDown={(e) => startPointerDrag(e, index)}
               >
                 ⠿
               </span>
@@ -637,12 +618,7 @@ export function SchemaColumnsEditor({
           )
         })}
         {dragColIndex != null && dropInsertIndex === columns.length ? (
-          <div
-            className="schemaColumnDropSlot"
-            aria-live="polite"
-            onDragOver={(e) => handleDropSlotDragOver(e, columns.length)}
-            onDrop={(e) => handleDrop(columns.length, e)}
-          >
+          <div className="schemaColumnDropSlot" aria-live="polite">
             <span className="schemaColumnDropSlotLine" />
             <span className="schemaColumnDropSlotLabel">
               {t('schemaColumnDropAt', { position: columns.length + 1 })}

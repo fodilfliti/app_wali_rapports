@@ -9,6 +9,7 @@ const {
 } = require("../../db");
 const { saveUploadedBuffer, serializeFile } = require("../../services/uploadService");
 const { audit } = require("../../services/audit");
+const { hasBilingualText } = require("../../validation/bilingual");
 
 function serializeBroadcast(row, extras = {}) {
   const b = row.toJSON ? row.toJSON() : row;
@@ -59,6 +60,11 @@ async function createBroadcast({ fileBuffer, originalName, mimeType, body }, act
     err.status = 400;
     throw err;
   }
+  if (!hasBilingualText(body.title_ar, body.title_fr)) {
+    const err = new Error("bilingualLabelRequired");
+    err.status = 400;
+    throw err;
+  }
 
   const broadcast = await WaliBroadcast.create({
     uploaded_file_id: fileRow.id,
@@ -77,7 +83,6 @@ async function createBroadcast({ fileBuffer, originalName, mimeType, body }, act
   for (const userId of recipientIds) {
     await Notification.create({
       user_id: userId,
-      rapport_id: null,
       broadcast_id: broadcast.id,
       message_key: "waliBroadcast"
     });
@@ -253,7 +258,6 @@ async function notifyUnreadRecipients(broadcastId, actor) {
     if (!existing) {
       await Notification.create({
         user_id: r.user_id,
-        rapport_id: null,
         broadcast_id: broadcastId,
         message_key: "waliBroadcastReminder"
       });

@@ -20,19 +20,28 @@ import {
   OfficeServicesPage,
   WaliHubPage,
 } from './pages/HubPages'
-import { AdminRapportsListPage, OfficeRapportsListPage, WaliRapportsInboxPage } from './pages/RapportPages'
+import { AdminRapportsListPage, OfficeRapportsListPage, OfficeServiceRapportListPage, WaliRapportsInboxPage } from './pages/RapportPages'
 import {
   OfficeDocumentEditorPage,
   OfficeDocumentsPage,
   OfficeFichesPage,
   OfficeServiceContentHubPage,
+  OfficeServiceKindRapportTypesPage,
   OfficeTableGridPage,
   WaliRapportViewPage,
 } from './pages/DomainEditorPages'
+import { OfficeCommuneEditorPage } from './pages/OfficeCommuneEditorPage'
 import { OfficeCommuneListPage } from './pages/OfficeCommuneListPage'
 import { OfficeServiceConfigPage } from './pages/OfficeServiceConfigPage'
 import { OfficeNotificationsBell, OfficeNotificationsPage } from './pages/OfficeNotificationsPage'
-import { WaliOfficeUsersPage, WaliUserServicesPage } from './pages/WaliNavigationPages'
+import { WaliInboxBell } from './components/WaliInboxBell'
+import {
+  WaliOfficeUsersPage,
+  WaliServiceKindRapportTypesPage,
+  WaliServiceRapportListPage,
+  WaliServiceRapportTypesPage,
+  WaliUserServicesPage,
+} from './pages/WaliNavigationPages'
 import { WaliCalendarPage } from './pages/WaliCalendarPage'
 import {
   OfficeSharedFileDetailPage,
@@ -54,6 +63,27 @@ function WaliUserServicesRoute({ token }: { token: string }) {
   const id = Number(userId)
   if (!id) return <Navigate to="/wali/office-users" replace />
   return <WaliUserServicesPage token={token} userId={id} />
+}
+
+function WaliServiceRapportTypesRoute({ token }: { token: string }) {
+  const { userId } = useParams()
+  const id = Number(userId)
+  if (!id) return <Navigate to="/wali/office-users" replace />
+  return <WaliServiceRapportTypesPage token={token} userId={id} />
+}
+
+function WaliServiceKindRapportTypesRoute({ token }: { token: string }) {
+  const { userId } = useParams()
+  const id = Number(userId)
+  if (!id) return <Navigate to="/wali/office-users" replace />
+  return <WaliServiceKindRapportTypesPage token={token} userId={id} />
+}
+
+function WaliServiceRapportListRoute({ token }: { token: string }) {
+  const { userId } = useParams()
+  const id = Number(userId)
+  if (!id) return <Navigate to="/wali/office-users" replace />
+  return <WaliServiceRapportListPage token={token} userId={id} />
 }
 
 function AppShell() {
@@ -127,6 +157,7 @@ function AppShell() {
         </div>
         <div className="topbarActions">
           {me.role === 'OFFICE_USER' ? <OfficeNotificationsBell token={token} /> : null}
+          {me.role === 'WALI' ? <WaliInboxBell token={token} /> : null}
           <TopbarProfileMenu
             user={me}
             lang={lang}
@@ -153,14 +184,27 @@ function AppShell() {
           ) : null}
           {me.role === 'OFFICE_USER' || me.role === 'ADMIN' ? (
             <>
-              <Route path="/office" element={<OfficeHubPage />} />
+              <Route path="/office" element={<OfficeHubPage token={token} />} />
               <Route path="/office/rapports" element={<OfficeRapportsListPage token={token} />} />
+              <Route path="/office/services/folder/:folderId" element={<OfficeServicesPage token={token} />} />
               <Route path="/office/services" element={<OfficeServicesPage token={token} />} />
               <Route path="/office/services/:serviceId" element={<OfficeServiceContentHubPage token={token} />} />
+              <Route
+                path="/office/services/:serviceId/kinds/:contentKind"
+                element={<OfficeServiceKindRapportTypesPage token={token} />}
+              />
+              <Route
+                path="/office/services/:serviceId/rapports/:rapportTypeId"
+                element={<OfficeServiceRapportListPage token={token} />}
+              />
               <Route path="/office/services/:serviceId/table" element={<OfficeTableGridPage token={token} />} />
               <Route path="/office/services/:serviceId/documents" element={<OfficeDocumentsPage token={token} />} />
               <Route path="/office/services/:serviceId/fiches" element={<OfficeFichesPage token={token} />} />
               <Route path="/office/services/:serviceId/communes" element={<OfficeCommuneListPage token={token} />} />
+              <Route
+                path="/office/services/:serviceId/communes/:municipalityCode"
+                element={<OfficeCommuneEditorPage token={token} />}
+              />
               <Route path="/office/services/:serviceId/config" element={<OfficeServiceConfigPage token={token} />} />
               <Route path="/office/notifications" element={<OfficeNotificationsPage token={token} />} />
               <Route path="/office/shared" element={<OfficeSharedFilesPage token={token} />} />
@@ -170,13 +214,23 @@ function AppShell() {
           ) : null}
           {me.role === 'WALI' || me.role === 'ADMIN' ? (
             <>
-              <Route path="/wali" element={<WaliHubPage />} />
+              <Route path="/wali" element={<WaliHubPage token={token} />} />
               <Route path="/wali/calendar" element={<WaliCalendarPage token={token} />} />
               <Route path="/wali/shared" element={<WaliBroadcastsPage token={token} />} />
               <Route path="/wali/shared/new" element={<WaliBroadcastCreatePage token={token} />} />
               <Route path="/wali/shared/:id" element={<WaliBroadcastDetailPage token={token} />} />
               <Route path="/wali/office-users" element={<WaliOfficeUsersPage token={token} />} />
+              <Route path="/wali/office-users/:userId/services/folder/:folderId" element={<WaliUserServicesRoute token={token} />} />
               <Route path="/wali/office-users/:userId/services" element={<WaliUserServicesRoute token={token} />} />
+              <Route path="/wali/office-users/:userId/services/:serviceId" element={<WaliServiceRapportTypesRoute token={token} />} />
+              <Route
+                path="/wali/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                element={<WaliServiceKindRapportTypesRoute token={token} />}
+              />
+              <Route
+                path="/wali/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                element={<WaliServiceRapportListRoute token={token} />}
+              />
               <Route path="/wali/rapports" element={<WaliRapportsInboxPage token={token} />} />
               <Route path="/wali/rapports/:rapportId/view" element={<WaliRapportViewPage token={token} />} />
             </>

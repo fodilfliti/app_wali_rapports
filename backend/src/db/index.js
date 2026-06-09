@@ -21,6 +21,7 @@ const Rapport = require("./models/Rapport")(sequelize);
 const RapportVersion = require("./models/RapportVersion")(sequelize);
 const WaliResponse = require("./models/WaliResponse")(sequelize);
 const RapportTableSchema = require("./models/RapportTableSchema")(sequelize);
+const RapportDocumentTemplate = require("./models/RapportDocumentTemplate")(sequelize);
 const Notification = require("./models/Notification")(sequelize);
 const UserServiceGrant = require("./models/UserServiceGrant")(sequelize);
 const UploadedFile = require("./models/UploadedFile")(sequelize);
@@ -53,6 +54,11 @@ Service.belongsTo(Service, { foreignKey: "parent_service_id", as: "parent" });
 
 Service.hasMany(RapportTableSchema, { foreignKey: "service_id", as: "tableSchemas" });
 RapportTableSchema.belongsTo(Service, { foreignKey: "service_id", as: "service" });
+
+Service.hasMany(RapportDocumentTemplate, { foreignKey: "service_id", as: "documentTemplates" });
+RapportDocumentTemplate.belongsTo(Service, { foreignKey: "service_id", as: "service" });
+RapportType.hasMany(RapportDocumentTemplate, { foreignKey: "rapport_type_id", as: "documentTemplates" });
+RapportDocumentTemplate.belongsTo(RapportType, { foreignKey: "rapport_type_id", as: "rapportType" });
 
 Service.hasMany(RapportType, { foreignKey: "service_id", as: "rapportTypes" });
 RapportType.belongsTo(Service, { foreignKey: "service_id", as: "service" });
@@ -146,6 +152,7 @@ module.exports = {
   RapportVersion,
   WaliResponse,
   RapportTableSchema,
+  RapportDocumentTemplate,
   Notification,
   UserServiceGrant,
   UploadedFile,

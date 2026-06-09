@@ -55,6 +55,24 @@ Admin defines **reusable table column schemas** and **rapport types** per servic
 
 **Fiche lecture rule:** every **leaf service** has exactly one rapport type with `content_kind = fiche_lecture`, slug `fiche_lecture`.
 
+#### `rapport_document_templates` (office-managed)
+
+Reusable **rich HTML starters** for `document_compose` and `fiche_lecture` on a service.
+
+| Field | Notes |
+| ----- | ----- |
+| `service_id` | Owner service (required) |
+| `rapport_type_id` | Optional — limit template to one rapport type |
+| `content_kind` | Optional — `document_compose` \| `fiche_lecture` when no type id |
+| `slug` | Unique key |
+| `name_ar`, `name_fr` | List label |
+| `is_default` | At most one default per scope (type → kind → service-wide) |
+| `content_json` | `{ rich_html_ar, rich_html_fr, embedded_tables[] }` |
+
+**Create rapport:** `POST …/documents` body may include `template_id` or `skip_default: true` (blank document).
+
+**Editor import:** `POST /office/rapports/:id/document/apply-template` with `{ template_id, mode: "replace" \| "append" }`.
+
 ### Admin API
 
 | Method | Path | Description |
@@ -78,18 +96,32 @@ Admin defines **reusable table column schemas** and **rapport types** per servic
 | `GET` | `/office/services/:id/rapport-types` | List types |
 | `POST` | `/office/services/:id/rapport-types` | Add type |
 
+### Office document-template API (`manage` on service)
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/office/services/:serviceId/document-templates` | List templates (`?rapport_type_id`, `?content_kind`) |
+| `GET` | `/office/services/:serviceId/document-templates/for-create` | Templates valid for new rapport (`?rapport_type_id` required) |
+| `POST` | `/office/services/:serviceId/document-templates` | Create template |
+| `PATCH` | `/office/document-templates/:id` | Update template |
+| `DELETE` | `/office/document-templates/:id` | Delete template |
+| `POST` | `/office/rapports/:id/document/apply-template` | Import into draft (`replace` \| `append`) |
+
+Validation: `documentTemplateCreateSchema`, `documentTemplatePatchSchema`, `applyDocumentTemplateSchema` in `schemaConfig.js`.
+
 ### Office data flow
 
 1. Admin creates schema → creates `rapport_type` on service with `table_schema_slug`.
 2. Office opens service hub → **Tableaux** → grid loads schema columns; rows saved in `rapport_versions.data_json`.
 3. Formulas recalculated on save server-side.
-4. **Documents** / **Fiches lecture** use block JSON (same storage, different `content_kind` filter).
+4. **Documents** / **Fiches lecture** use rich HTML JSON (`rich_html_*`, `embedded_tables`) with optional document templates on create/import.
 
 ### UI
 
 - Admin hub → **Schémas & types** → `/admin/schemas`
-- Office editor → service hub → **Configuration** → `/office/services/:id/config`
-- Office → service → hub tiles per content kind
+- Office editor → service hub → **Configuration** → `/office/services/:id/config` — includes **Modèles de document** section (list, edit modal with bilingual editor, default flag, scope by type/kind)
+- Office → service → hub tiles per content kind — **new document/fiche** opens template picker (default pre-selected, or blank)
+- Document editor → **Importer un modèle** (replace or append)
 
 ### Audit
 
@@ -100,9 +132,13 @@ Admin defines **reusable table column schemas** and **rapport types** per servic
 | `TABLE_SCHEMA_DELETE` | DELETE schema |
 | `RAPPORT_TYPE_CREATE` | POST rapport type |
 | `RAPPORT_TYPE_UPDATE` | PATCH rapport type |
+| `DOCUMENT_TEMPLATE_CREATE` | POST document template |
+| `DOCUMENT_TEMPLATE_UPDATE` | PATCH document template |
+| `DOCUMENT_TEMPLATE_DELETE` | DELETE document template |
 
 ### Migrations
 
 - `20260609_000005_*` — demo example seeds only
 - `20260610_000006_fiche_lecture_all_services.js` — attach fiche to all leaf services
 - `20260613_000009_table_layout_json.js` — `layout_json` column + demo header groups
+- `20260617_000014_document_templates.js` — `rapport_document_templates`

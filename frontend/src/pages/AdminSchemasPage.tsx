@@ -10,6 +10,8 @@ import { TableSchemaEditorModal } from '../components/TableSchemaEditorModal'
 
 import { ExpandableHelp } from '../components/ExpandableHelp'
 
+import { TablePagination } from '../components/TablePagination'
+
 import { validateDraftColumns, type DraftSchemaColumn } from '../components/SchemaColumnsEditor'
 
 import { localizedName } from '../utils/schemaColumns'
@@ -38,6 +40,9 @@ import {
 
 import { useSnackbar } from '../snackbar/SnackbarContext'
 
+import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
+import { hasBilingualText } from '../utils/bilingual'
+
 
 
 type Props = { token: string }
@@ -60,7 +65,7 @@ export function AdminSchemasPage({ token }: Props) {
   const [schemas, setSchemas] = useState<any[]>([])
   const [schemasTotal, setSchemasTotal] = useState(0)
   const [schemaPage, setSchemaPage] = useState(1)
-  const [schemaTotalPages, setSchemaTotalPages] = useState(1)
+  const [typePage, setTypePage] = useState(1)
   const [schemaSearch, setSchemaSearch] = useState('')
   const [includeSharedTemplates, setIncludeSharedTemplates] = useState(false)
   const [activePanel, setActivePanel] = useState<SchemasPanel>('schemas')
@@ -105,7 +110,6 @@ export function AdminSchemasPage({ token }: Props) {
     if (!selectedServiceId) {
       setSchemas([])
       setSchemasTotal(0)
-      setSchemaTotalPages(1)
       return
     }
     try {
@@ -118,7 +122,6 @@ export function AdminSchemasPage({ token }: Props) {
       })
       setSchemas(res.schemas)
       setSchemasTotal(res.total)
-      setSchemaTotalPages(res.totalPages)
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -287,8 +290,8 @@ export function AdminSchemasPage({ token }: Props) {
 
     }
 
-    if (!schemaForm.name_ar.trim() || !schemaForm.name_fr.trim()) {
-      snack.show(t('schemaMetaRequired'), 'error')
+    if (!hasBilingualText(schemaForm.name_ar, schemaForm.name_fr)) {
+      snack.show(t('bilingualLabelRequired'), 'error')
       return
     }
     if (!editingSchemaId && !selectedServiceId) {
@@ -359,9 +362,9 @@ export function AdminSchemasPage({ token }: Props) {
 
     if (!selectedServiceId) return
 
-    if (!typeForm.name_ar.trim() || !typeForm.name_fr.trim()) {
+    if (!hasBilingualText(typeForm.name_ar, typeForm.name_fr)) {
 
-      snack.show(t('schemaMetaRequired'), 'error')
+      snack.show(t('bilingualLabelRequired'), 'error')
 
       return
 
@@ -371,15 +374,18 @@ export function AdminSchemasPage({ token }: Props) {
 
       await api.createRapportType(token, Number(selectedServiceId), {
 
-        name_ar: typeForm.name_ar.trim(),
+        name_ar: typeForm.name_ar.trim() || typeForm.name_fr.trim(),
 
-        name_fr: typeForm.name_fr.trim(),
+        name_fr: typeForm.name_fr.trim() || typeForm.name_ar.trim(),
 
         content_kind: typeForm.content_kind,
 
         versioning_mode: typeForm.versioning_mode,
 
-        table_schema_slug: typeForm.content_kind === 'table_grid' ? typeForm.table_schema_slug : undefined,
+        table_schema_slug:
+          typeForm.content_kind === 'table_grid' || typeForm.content_kind === 'commune_list'
+            ? typeForm.table_schema_slug
+            : undefined,
 
       })
 
@@ -397,7 +403,7 @@ export function AdminSchemasPage({ token }: Props) {
 
   }
 
-
+  const pagedRapportTypes = paginateSlice(rapportTypes, typePage, DEFAULT_PAGE_SIZE)
 
   return (
 
@@ -429,6 +435,7 @@ export function AdminSchemasPage({ token }: Props) {
             onChange={(e) => {
               setSelectedServiceId(e.target.value ? Number(e.target.value) : '')
               setSchemaPage(1)
+              setTypePage(1)
             }}
           >
             <option value="">{t('selectService')}</option>
@@ -544,27 +551,12 @@ export function AdminSchemasPage({ token }: Props) {
                 </table>
               </div>
 
-              {schemaTotalPages > 1 ? (
-                <div className="pagination">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={schemaPage <= 1}
-                    onClick={() => setSchemaPage((p) => p - 1)}
-                  >
-                    {'<'}
-                  </button>
-                  <span>{t('paginationSummary', { page: schemaPage, totalPages: schemaTotalPages, total: schemasTotal })}</span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={schemaPage >= schemaTotalPages}
-                    onClick={() => setSchemaPage((p) => p + 1)}
-                  >
-                    {'>'}
-                  </button>
-                </div>
-              ) : null}
+              <TablePagination
+                page={schemaPage}
+                total={schemasTotal}
+                pageSize={SCHEMA_PAGE_SIZE}
+                onPageChange={setSchemaPage}
+              />
             </div>
           ) : (
             <div className="section schemasPanelSection">
@@ -585,8 +577,8 @@ export function AdminSchemasPage({ token }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {rapportTypes.length ? (
-                      rapportTypes.map((rt) => (
+                    {pagedRapportTypes.length ? (
+                      pagedRapportTypes.map((rt) => (
                         <tr key={rt.id}>
                           <td>{localizedName(rt, i18n.language)}</td>
                           <td>{t(`contentKind_${rt.content_kind}`)}</td>
@@ -602,6 +594,7 @@ export function AdminSchemasPage({ token }: Props) {
                   </tbody>
                 </table>
               </div>
+              <TablePagination page={typePage} total={rapportTypes.length} onPageChange={setTypePage} />
             </div>
           )}
         </>
@@ -699,7 +692,7 @@ export function AdminSchemasPage({ token }: Props) {
 
             </ExpandableHelp>
 
-            {typeForm.content_kind === 'table_grid' ? (
+            {typeForm.content_kind === 'table_grid' || typeForm.content_kind === 'commune_list' ? (
               <label>
                 {t('linkedSchema')}
                 <select

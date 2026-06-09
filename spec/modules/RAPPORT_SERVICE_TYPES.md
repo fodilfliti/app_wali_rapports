@@ -100,26 +100,30 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ### Structure
 
 - Service opens **list of documents** (rapports with `content_kind = document_compose`).
-- **New document** → composer with **blocks**:
-  - **Text block**: markdown-ish (bold, center, headings) — sanitized HTML on save.
-  - **Table block**: office defines schema inline or **imports schema** from type-1 template library (`rapport_table_schemas`).
-  - **Image block**: upload image; embedded in PDF/Word.
+- **New document** → optional **template picker** (service templates or blank) → **rich HTML editor** (TipTap):
+  - Bilingual `rich_html_ar` / `rich_html_fr` (headings, bold, colors, alignment, lists, tables in HTML).
+  - **Embedded tables** (`embedded_tables[]`) with schema from table library or inline columns.
+  - **Images** inline in HTML; legacy **blocks** (`heading`, `paragraph`, `media_row`) still rendered for old data.
+- **Templates:** office defines reusable starters per service — see **`SCHEMA_CONFIGURATION.md`** (`rapport_document_templates`). Import in editor: **replace** or **append**.
 
 ### Output
 
-- Preview in app (Word-like).
-- Export **PDF** and/or **DOCX** for Wali (familiar layout).
+- In-app editor with sticky formatting toolbar (physical left/center/right in RTL UI).
+- Export **PDF** and **DOCX** — body matches editor (colors, alignment, tables, images); **no** rapport title, service header, or calendar section in the file.
+- **Preview** before download; filename `{title} - {date}.pdf|.docx`.
+- Tables with **>3 rows** in export use a portrait page break.
 
 ### Wali flow
 
 - Opens document in reader view → optional **note** (confirm / demander modification).
 - Note visible to authoring office user + **notification**.
+- Wali export supports `showHidden` on table-grid rapports only; documents export editor content as-is.
 
 ---
 
 ## Type 3 — Fiche lecture
 
-- Same composer as type 2 (blocks: heading, paragraph, table, image).
+- Same **rich editor + templates + export** as type 2 (blocks legacy path still supported).
 - **One `fiche_lecture` rapport type on every leaf service** (slug `fiche_lecture`).
 - **Shared** = all office users with access to that service see the **same chronological list**; each new fiche is a **new dated file** (not owned by one user — `owner_office_user_id` is null).
 - Wali: list grouped by date per service; read; optional feedback.
@@ -177,7 +181,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 - **`rapport_table_schemas`**: reusable column definitions — **admin creates/edits via `/admin/schemas`** (not hardcoded per domain).
 - Each **`rapport_type`** with `content_kind = table_grid` links to a schema via `schema_json.table_schema_slug`.
-- Type-2 document composer: **Import schema** from library (future).
+- Type-2 document composer: **Import schema** into embedded tables; **document templates** for full HTML starters — `SCHEMA_CONFIGURATION.md`.
 - **Demo seeds** (Finance consommation crédits, Hydraulique barrages) are **sample data only** — add real services/schemas through admin UI.
 
 See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
@@ -212,13 +216,34 @@ See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
 | `PATCH` | `/office/rapports/:id/tables/:tableKey` | Save draft rows + formulas |
 | `POST` | `/office/rapports/:id/tables/:tableKey/submit` | Submit single table to wali (optional partial submit) |
 
+### Document templates & create (office)
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/office/services/:serviceId/document-templates/for-create` | Templates for new document/fiche |
+| `POST` | `/office/services/:serviceId/documents` | Create document; body `template_id`, `skip_default` |
+| `POST` | `/office/rapports/:id/document/apply-template` | Import template (`replace` \| `append`) |
+
+See full CRUD in **`SCHEMA_CONFIGURATION.md`**.
+
+### Export (office & wali)
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/office/rapports/:id/export.pdf` | PDF (`?locale=ar\|fr`) |
+| `GET` | `/office/rapports/:id/export.docx` | Word |
+| `GET` | `/wali/rapports/:id/export.pdf` | PDF + `?showHidden=0\|1` for table grids |
+| `GET` | `/wali/rapports/:id/export.docx` | Word |
+
+Details: **`spec/CORE.md`** § Rapport export.
+
 ---
 
 ## UI/UX — Wali presentation rules
 
 - **Tables:** bordered grid, sticky header, RTL numbers aligned; hidden rows collapsed with expand control.
 - **Highlights:** warm/yellow/red badges on rows/cells — legend at top.
-- **Documents:** A4-width preview, centered titles, bold section headings.
+- **Documents:** A4-width editor; export preview modal; centered titles inside content; bold section headings; sticky toolbar.
 - **Version button:** prominent **Versions archivées** on versioned types.
 - **Feedback panel:** fixed side or bottom — Wali types note; buttons **Confirmer** / **Demander modification** / **Lu sans commentaire**.
 - **Office:** notification bell; opening rapport shows Wali note thread per version.
@@ -241,10 +266,10 @@ See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
 
 | Phase | Scope |
 | ----- | ----- |
-| **2a** (next) | DB: sub_services, content_kind, schemas, notifications; Wali office-user → service tree API |
+| **2a** | DB: sub_services, content_kind, schemas, notifications; Wali office-user → service tree API |
 | **2b** | Type 1 table UI + column types + row visibility + highlights |
 | **2c** | Formula engine + formats |
-| **2d** | Type 2/3 document composer + PDF/DOCX export |
+| **2d** | Type 2/3 rich editor + document templates + PDF/DOCX export + preview **(implemented)** |
 | **2e** | Type 4 commune list + graphs from version archive |
 
 ---
@@ -252,4 +277,4 @@ See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
 ## Migration notes
 
 - Migration `20260608_000004_service_types_navigation.js` adds: `sub_services`, extends `rapport_types.content_kind`, `rapport_table_schemas`, `notifications`.
-- Existing seed `investissement_grid` → `content_kind = table_grid`; `investissement_memo` → `document_compose`; add `fiche_lecture` example in seed (future).
+- Migration `20260617_000014_document_templates.js` adds: `rapport_document_templates`.

@@ -8,7 +8,7 @@ const FICHE_BLOCKS = [
     type: "heading",
     align: "center",
     bold: true,
-    text_ar: "بطاقة مطالعة",
+    text_ar: "مذكرة استخلاصية",
     text_fr: "Fiche lecture"
   },
   { type: "paragraph", text_ar: "", text_fr: "" }
@@ -178,7 +178,7 @@ async function createService(data, actor, req) {
     await RapportType.create({
       service_id: service.id,
       slug: "fiche_lecture",
-      name_ar: "بطاقة مطالعة",
+      name_ar: "مذكرة استخلاصية",
       name_fr: "Fiche lecture",
       layout_kind: "memo",
       content_kind: "fiche_lecture",

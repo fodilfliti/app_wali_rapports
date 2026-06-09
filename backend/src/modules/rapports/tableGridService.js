@@ -34,15 +34,32 @@ async function loadSchemaBySlug(slug) {
   return schema;
 }
 
+function buildSingleEmptyRow(columns) {
+  const row = { _row_finished: false, _wali_visible: true, _cell_colors: {} };
+  for (const col of columns || []) {
+    if (col.type === "commune_ref") row[col.key] = "";
+    else if (col.type === "number" || col.type === "formula") row[col.key] = null;
+    else if (col.type === "choice") row[col.key] = col.choices?.[0]?.value || "";
+    else row[col.key] = "";
+  }
+  return row;
+}
+
 async function buildDefaultTableRows(columns) {
+  const hasCommuneRef = (columns || []).some((col) => col.type === "commune_ref");
+  if (!hasCommuneRef) {
+    return [buildSingleEmptyRow(columns)];
+  }
+
   const munis = await Municipality.findAll({ order: [["code", "ASC"]] });
   return munis.map((m) => {
     const row = {
       municipality_code: m.code,
       _municipality_name_ar: m.name_ar,
       _municipality_name_fr: m.name_fr,
-      _highlight: "none",
-      _wali_visible: true
+      _row_finished: false,
+      _wali_visible: true,
+      _cell_colors: {}
     };
     for (const col of columns) {
       if (col.type === "commune_ref") row[col.key] = m.code;
@@ -52,6 +69,22 @@ async function buildDefaultTableRows(columns) {
     }
     return row;
   });
+}
+
+/** Legacy: simple schemas were seeded with one row per commune (53). Collapse to one row when no commune column. */
+function trimSpuriousMunicipalityRows(rows, columns) {
+  if (!rows?.length || rows.length <= 1) return rows;
+  const hasCommuneRef = (columns || []).some((col) => col.type === "commune_ref");
+  if (hasCommuneRef) return rows;
+  const seeded = rows.every(
+    (r) => r.municipality_code != null && (r._municipality_name_ar != null || r._municipality_name_fr != null)
+  );
+  if (!seeded) return rows;
+  const kept = { ...rows[0] };
+  delete kept.municipality_code;
+  delete kept._municipality_name_ar;
+  delete kept._municipality_name_fr;
+  return [kept];
 }
 
 function defaultCellForColumn(col, row = {}) {
@@ -78,6 +111,7 @@ function normalizeTablePayload(dataJson, columns, layoutJson) {
   const main = tables[0] || { key: "main", rows: [] };
   let rows = main.rows || [];
   if (!rows.length) rows = [];
+  rows = trimSpuriousMunicipalityRows(rows, columns);
   rows = mergeRowsWithSchema(rows, columns);
   const mergeKeys = main.merge_column_keys || [];
   rows = normalizeMergedRows(recalcTableRows(rows, columns), mergeKeys);
@@ -102,6 +136,8 @@ module.exports = {
   formatCellDisplay,
   loadSchemaBySlug,
   buildDefaultTableRows,
+  buildSingleEmptyRow,
   mergeRowsWithSchema,
-  normalizeTablePayload
+  normalizeTablePayload,
+  trimSpuriousMunicipalityRows
 };

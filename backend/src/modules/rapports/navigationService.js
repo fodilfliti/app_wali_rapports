@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const { User, Service, Department, Rapport, RapportType } = require("../../db");
 const { getAccessMapForUser, filterServiceTree } = require("./serviceAccessService");
+const hubCountsService = require("./hubCountsService");
 
 function serializeServiceNode(s, includeChildren = true) {
   const node = {
@@ -40,7 +41,7 @@ async function listOfficeUsersForWali() {
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"]
     ],
     where: {
-      status: { [Op.in]: ["submitted", "under_review", "changes_requested"] },
+      status: { [Op.in]: ["submitted", "under_review"] },
       owner_office_user_id: { [Op.ne]: null }
     },
     group: ["owner_office_user_id"],
@@ -94,22 +95,26 @@ async function getServiceTreeForUser(userId, actorRole = "OFFICE_USER") {
 
   const accessMap = await getAccessMapForUser(targetUserId);
   const filtered = filterServiceTree(services, accessMap);
+  const serialized = filtered.map((s) => serializeServiceNode(s));
+  const counts = await hubCountsService.getWaliServicePendingCounts(targetUserId);
   return {
     office_user_id: targetUserId,
-    services: filtered.map((s) => serializeServiceNode(s))
+    services: hubCountsService.applyServiceActionCounts(serialized, counts.byService, counts.byType)
   };
 }
 
 async function getOfficeServiceTree(user) {
+  let services;
   if (user.role === "ADMIN") {
-    const services = await loadFullServiceTree();
-    return {
-      services: services.map((s) => serializeServiceNode({ ...s.toJSON(), access_level: "manage" }))
-    };
+    const rows = await loadFullServiceTree();
+    services = rows.map((s) => serializeServiceNode({ ...s.toJSON(), access_level: "manage" }));
+  } else {
+    const accessMap = await getAccessMapForUser(user.id);
+    const filtered = filterServiceTree(await loadFullServiceTree(), accessMap);
+    services = filtered.map((s) => serializeServiceNode(s));
   }
-  const accessMap = await getAccessMapForUser(user.id);
-  const filtered = filterServiceTree(await loadFullServiceTree(), accessMap);
-  return { services: filtered.map((s) => serializeServiceNode(s)) };
+  const counts = await hubCountsService.getOfficeServiceActionCounts(user.id);
+  return { services: hubCountsService.applyServiceActionCounts(services, counts.byService, counts.byType) };
 }
 
 module.exports = { listOfficeUsersForWali, getServiceTreeForUser, getOfficeServiceTree };

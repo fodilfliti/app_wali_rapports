@@ -1,3 +1,5 @@
+import { pickBilingualText } from './bilingual'
+
 export type Column = {
   key: string
   type: string
@@ -53,7 +55,7 @@ export function buildHeaderModel(columns: Column[], layoutJson: LayoutJson | nul
     const keys = (g.column_keys || []).filter((k) => cols.some((c) => c.key === k))
     if (!keys.length) continue
     groupRow.push({
-      label: locale === 'fr' ? g.label_fr : g.label_ar,
+      label: pickBilingualText(g.label_ar, g.label_fr, locale),
       colSpan: keys.length,
     })
     for (const key of keys) {
@@ -61,7 +63,7 @@ export function buildHeaderModel(columns: Column[], layoutJson: LayoutJson | nul
       if (col) {
         columnRow.push({
           key: col.key,
-          label: locale === 'fr' ? col.label_fr : col.label_ar,
+          label: pickBilingualText(col.label_ar, col.label_fr, locale),
         })
       }
     }
@@ -72,7 +74,7 @@ export function buildHeaderModel(columns: Column[], layoutJson: LayoutJson | nul
     groupRow.push({ label: '', colSpan: 1, placeholder: true })
     columnRow.push({
       key: col.key,
-      label: locale === 'fr' ? col.label_fr : col.label_ar,
+      label: pickBilingualText(col.label_ar, col.label_fr, locale),
     })
   }
 
@@ -107,14 +109,14 @@ export function computeRowSpanMap(rows: Record<string, unknown>[], mergeColumnKe
 }
 
 export function colLabel(col: Column, locale: string) {
-  return locale === 'fr' ? col.label_fr : col.label_ar
+  return pickBilingualText(col.label_ar, col.label_fr, locale)
 }
 
 export function choiceLabel(col: Column, value: unknown, locale: string) {
   if (value == null || value === '') return '—'
   const hit = (col.choices || []).find((ch) => ch.value === value)
   if (!hit) return String(value)
-  return locale === 'fr' ? hit.label_fr : hit.label_ar
+  return pickBilingualText(hit.label_ar, hit.label_fr, locale)
 }
 
 export function formatCell(value: unknown, col: Column, locale = 'ar') {

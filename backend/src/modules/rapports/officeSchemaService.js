@@ -96,11 +96,24 @@ async function createRapportTypeForOffice(serviceId, data, user, req) {
   return schemaConfig.createRapportType(serviceId, data, user, req);
 }
 
+async function updateRapportTypeForOffice(rapportTypeId, data, user, req) {
+  const { RapportType } = require("../../db");
+  const row = await RapportType.findByPk(rapportTypeId);
+  if (!row) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  await assertServiceAccess(user, row.service_id, "manage");
+  return schemaConfig.updateRapportType(rapportTypeId, data, user, req);
+}
+
 module.exports = {
   listSchemasForOfficeService,
   createSchemaForOfficeService,
   updateSchemaForOffice,
   duplicateSchemaToService,
   listRapportTypesForOffice,
-  createRapportTypeForOffice
+  createRapportTypeForOffice,
+  updateRapportTypeForOffice
 };

@@ -4,6 +4,7 @@ const V = {
   maxLength: "validationMaxLength",
   municipalityNameArRequired: "municipalityNameArRequired",
   municipalityNameFrRequired: "municipalityNameFrRequired",
+  bilingualLabelRequired: "bilingualLabelRequired",
   municipalityCodeRequired: "municipalityCodeRequired",
   municipalityCodeDigitsOnly: "municipalityCodeDigitsOnly",
   usernameRequired: "usernameRequired",
@@ -14,6 +15,7 @@ const V = {
   userRoleInvalid: "userRoleInvalid",
   rapportTitleRequired: "rapportTitleRequired",
   waliResponseRequired: "waliResponseRequired",
+  waliFollowUpInvalid: "waliFollowUpInvalid",
   waliDecisionInvalid: "waliDecisionInvalid",
   passwordMinLength: "passwordMinLength",
   errorCurrentCodeIncorrect: "errorCurrentCodeIncorrect"

@@ -39,6 +39,7 @@ export function CalendarEventsEditor({ events, editable, onChange }: Props) {
   return (
     <div className="section calendarEventsSection">
       <h2>{t('calendarEvents')}</h2>
+      {editable ? <p className="muted small calendarEventsHelp">{t('calendarEventsHelp')}</p> : null}
       {events.map((e, i) => (
         <div key={i} className="calendarEventRow card">
           <label>

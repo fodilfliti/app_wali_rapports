@@ -1,18 +1,26 @@
 import { z } from 'zod'
 import { V } from '../messages'
+import { hasBilingualText } from '../../utils/bilingual'
 
 const USERNAME_RE = /^[A-Za-z0-9_]+$/
 
-export const municipalityFormSchema = z.object({
-  name_ar: z.string().trim().min(1, V.municipalityNameArRequired).max(255, V.maxLength),
-  name_fr: z.string().trim().min(1, V.municipalityNameFrRequired).max(255, V.maxLength),
-  code: z
-    .string()
-    .trim()
-    .min(1, V.municipalityCodeRequired)
-    .max(32, V.maxLength)
-    .regex(/^\d+$/, V.municipalityCodeDigitsOnly),
-})
+export const municipalityFormSchema = z
+  .object({
+    name_ar: z.string().trim().max(255, V.maxLength),
+    name_fr: z.string().trim().max(255, V.maxLength),
+    code: z
+      .string()
+      .trim()
+      .min(1, V.municipalityCodeRequired)
+      .max(32, V.maxLength)
+      .regex(/^\d+$/, V.municipalityCodeDigitsOnly),
+  })
+  .superRefine((data, ctx) => {
+    if (!hasBilingualText(data.name_ar, data.name_fr)) {
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['name_ar'] })
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['name_fr'] })
+    }
+  })
 
 export const userFormSchema = z.object({
   username: z
@@ -39,9 +47,13 @@ export const rapportCreateSchema = z.object({
 
 export const waliRespondSchema = z.object({
   decision: z.enum(['accepted', 'changes_requested', 'viewed'], { message: V.waliDecisionInvalid }),
+  follow_up_status: z.enum(['none', 'pending', 'completed']).optional(),
   body_text: z.string().trim().max(10000, V.maxLength).optional(),
 }).superRefine((data, ctx) => {
   if (data.decision === 'changes_requested' && !data.body_text?.trim()) {
     ctx.addIssue({ code: 'custom', message: V.waliResponseRequired, path: ['body_text'] })
+  }
+  if (data.decision !== 'accepted' && data.follow_up_status && data.follow_up_status !== 'none') {
+    ctx.addIssue({ code: 'custom', message: V.waliFollowUpInvalid, path: ['follow_up_status'] })
   }
 })

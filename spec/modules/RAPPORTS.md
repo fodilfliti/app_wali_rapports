@@ -118,6 +118,20 @@ Wilaya departments (Investissement, Finance, Hydraulique).
 
 
 
+#### `rapport_document_templates` (document starters)
+
+
+
+- Per-**service** reusable content for `document_compose` and `fiche_lecture`.
+
+- `id`, `service_id`, optional `rapport_type_id`, optional `content_kind`, `slug`, `name_ar`, `name_fr`, `is_default`, `content_json` (`rich_html_ar`, `rich_html_fr`, `embedded_tables`).
+
+- **Default resolution on create:** type-specific default → content-kind default → service-wide default → `rapport_type.schema_json.default_blocks`.
+
+- Managed in office **Configuration** (`/office/services/:id/config`); see **`SCHEMA_CONFIGURATION.md`**.
+
+
+
 #### `rapports`
 
 
@@ -206,6 +220,10 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 - Office: service tree, draft/save, version archive button, notification bell.
 
+- **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**.
+
+- **Document/fiche editors:** export menu (preview + download), optional **import template** (replace or append); compact page header.
+
 - See **`RAPPORT_SERVICE_TYPES.md`** § UI/UX — Wali presentation rules.
 
 
@@ -226,7 +244,17 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 | `RAPPORT_WALI_RESPONSE` | Wali respond |
 
-| `RAPPORT_EXPORT` | Export |
+| `RAPPORT_EXPORT` | Export (generic) |
+
+| `RAPPORT_PDF_EXPORT` | PDF download / preview blob |
+
+| `RAPPORT_DOCX_EXPORT` | Word download / preview blob |
+
+| `DOCUMENT_TEMPLATE_CREATE` | Document template created |
+
+| `DOCUMENT_TEMPLATE_UPDATE` | Document template updated |
+
+| `DOCUMENT_TEMPLATE_DELETE` | Document template deleted |
 
 | `NOTIFICATION_READ` | Office reads Wali note |
 
@@ -239,6 +267,8 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 - `20260607_*` — foundation.
 
 - `20260608_000004_service_types_navigation.js` — content_kind, schemas, notifications, service tree fields.
+
+- `20260617_000014_document_templates.js` — `rapport_document_templates`.
 
 
 

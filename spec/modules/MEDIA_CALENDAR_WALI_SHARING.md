@@ -24,13 +24,22 @@ Same shape as document `media_row`, appended after the table grid in preview and
 
 #### Export (PDF & Word)
 
-- `GET /office/rapports/:id/export.pdf?locale=ar|fr` — office PDF download
-- `GET /office/rapports/:id/export.docx?locale=ar|fr` — office Word download
-- `GET /wali/rapports/:id/export.pdf?locale=ar|fr&showHidden=1` — Wali PDF download
-- `GET /wali/rapports/:id/export.docx?locale=ar|fr&showHidden=1` — Wali Word download
-- PDF and DOCX include **images only**; videos show a placeholder note (not embedded)
-- Document blocks, table grid, table media attachments, and calendar dates are included
-- Audit actions: `RAPPORT_PDF_EXPORT`, `RAPPORT_DOCX_EXPORT`
+Canonical rules: **`spec/CORE.md`** § Rapport export.
+
+| Endpoint | Role |
+| -------- | ---- |
+| `GET /office/rapports/:id/export.pdf?locale=ar\|fr` | Office PDF |
+| `GET /office/rapports/:id/export.docx?locale=ar\|fr` | Office Word |
+| `GET /wali/rapports/:id/export.pdf?locale=…&showHidden=0\|1` | Wali PDF |
+| `GET /wali/rapports/:id/export.docx?locale=…&showHidden=0\|1` | Wali Word |
+
+- **Filename:** `{rapport title} - {date}.pdf` / `.docx` (UTF-8 Content-Disposition).
+- **Preview:** export menu opens full-size modal — PDF iframe or Word HTML preview (`docx-preview`); office saves draft first when editing.
+- **Document/fiche body:** rich HTML + embedded tables/images only — **excludes** rapport title, service name, and **calendar events** (calendar stays in Wali hub + editor UI).
+- **Table grid:** table title/subtitle, grid, table media attachments.
+- PDF and DOCX include **images**; videos show a placeholder note (not embedded).
+- Arabic: Tahoma + PDF RTL shaping; tables/bordered blocks have export margins; tables **>3 rows** → portrait page break.
+- Audit: `RAPPORT_PDF_EXPORT`, `RAPPORT_DOCX_EXPORT`
 
 ### Calendar events
 
@@ -42,7 +51,7 @@ Table `rapport_calendar_events` — multiple events per rapport.
 | `title_ar`, `title_fr` | Short label |
 | `note_ar`, `note_fr` | Optional detail |
 
-Office users manage events on draft/editable rapports. Wali hub calendar lists events by week; click opens `/wali/rapports/:id/view`.
+Office users manage events on draft/editable rapports. Events appear on the **Wali hub calendar** (`GET /wali/calendar`); they are **not** appended to PDF/Word export files. Help text in the calendar editor should reflect Wali calendar visibility only.
 
 ### Rapport views
 
