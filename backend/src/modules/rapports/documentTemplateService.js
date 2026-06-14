@@ -4,6 +4,7 @@ const { assertServiceAccess, assertRapportAccess } = require("./serviceAccessSer
 const rapportService = require("./rapportService");
 const { audit } = require("../../services/audit");
 const { baseSlugFromNames, ensureUniqueSlug } = require("../../utils/slugUtils");
+const { buildDocumentDefaultBlocks } = require("./documentDefaults");
 
 const DOCUMENT_KINDS = new Set(["document_compose", "fiche_lecture"]);
 
@@ -267,10 +268,12 @@ async function resolveInitialDataJson(serviceId, rapportType, templateId) {
   }
   const defaultTpl = await findDefaultTemplate(serviceId, rapportType);
   if (defaultTpl) return templateContentToDataJson(defaultTpl.content_json);
-  const defaultBlocks = rapportType.schema_json?.default_blocks || [
-    { type: "heading", align: "center", bold: true, text_ar: rapportType.name_ar, text_fr: rapportType.name_fr },
-    { type: "paragraph", text_ar: "", text_fr: "" }
-  ];
+  const defaultBlocks =
+    rapportType.schema_json?.default_blocks ||
+    buildDocumentDefaultBlocks({
+      titleAr: rapportType.name_ar,
+      titleFr: rapportType.name_fr,
+    });
   return { blocks: defaultBlocks };
 }
 

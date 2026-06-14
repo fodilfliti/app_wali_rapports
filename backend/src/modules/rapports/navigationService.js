@@ -41,8 +41,9 @@ async function listOfficeUsersForWali() {
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"]
     ],
     where: {
-      status: { [Op.in]: ["submitted", "under_review"] },
-      owner_office_user_id: { [Op.ne]: null }
+      status: "submitted",
+      owner_office_user_id: { [Op.ne]: null },
+      hidden_at: null,
     },
     group: ["owner_office_user_id"],
     raw: true

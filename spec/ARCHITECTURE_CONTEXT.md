@@ -22,6 +22,13 @@ app_wali_rapports/
 │   │   ├── middleware/      # JWT, roles, permissions, and request validation middlewares
 │   │   ├── modules/         # Domain-focused services (organization, access, rapports)
 │   │   ├── routes/          # Express routing (admin.js, office.js, wali.js, auth.js)
+│   │   ├── services/        # Export engines, storage, table layout policy, rich HTML export
+│   │   │   ├── tableLayoutPolicy.js   # Shared view/PDF/Word table rules
+│   │   │   ├── rapportPdfService.js   # PDFKit PDF export
+│   │   │   ├── rapportDocxService.js  # Word export
+│   │   │   ├── richHtmlExport.js      # TipTap HTML → PDF/Word blocks
+│   │   │   ├── waliResponseExport.js  # Fiche Wali response box (PDF/Word)
+│   │   │   └── exportFonts.js         # Tahoma registration + pdfTextOpts
 │   │   ├── utils/           # Shared helper functions (logger, file helpers)
 │   │   └── validation/      # Server-side validation logic (Zod error mappings)
 │   └── storage/             # Locally stored media uploads & exports (ignored by git)
@@ -123,7 +130,8 @@ The UI is built with React, compiled via Vite, and styled with HSL tokens.
 All forms are validated using Zod models located in [forms.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/validation/schemas/forms.ts). The [useZodForm.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/validation/useZodForm.ts) hook is used in components to handle validation states, displaying validation errors through `FieldErrorText` and global messages via `FormErrorBlock`.
 
 #### Key Modules & Interactive Views
-- **Table Grid View (`table_grid`)**: Rendered by [TableGridView.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/TableGridView.tsx). Standardizes inputs, formats (percentages, currencies), cell highlights, and formulas computed using the custom engine [formulaEngine.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/utils/formulaEngine.ts).
+- **Table Grid View (`table_grid`)**: Rendered by [TableGridView.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/TableGridView.tsx). Wrapped in [TableScrollShell.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/TableScrollShell.tsx) for RTL + horizontal scroll on wide tables. Layout policy mirrored in [tableLayoutPolicy.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/utils/tableLayoutPolicy.ts). Standardizes inputs, formats (percentages, currencies), cell highlights, and formulas computed using the custom engine [formulaEngine.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/utils/formulaEngine.ts).
+- **Wali inbox bell**: [WaliInboxBell.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/WaliInboxBell.tsx) shows a single `inbox_pending` counter in the app header; inbox rows styled via [waliInboxList.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/utils/waliInboxList.ts).
 - **Rich Document Editor (`document_compose` / `fiche_lecture`)**: Powered by [RichDocumentEditor.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/RichDocumentEditor.tsx) using TipTap. Allows template imports (replace or append) and media embeddings.
 - **Wali Response Dialog**: Triggered by [WaliRespondModal.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/WaliRespondModal.tsx). Wali users type comments, set decisions, and toggle follow-up statuses (`pending`, `completed`).
 
@@ -143,3 +151,22 @@ When creating a new report within a service content hub:
 2. Office clicks "Submit" -> calls `/office/rapports/:id/submit`.
 3. Backend freezes current data, increments version count, creates a snapshot row in `rapport_versions`, sets status to `submitted`, and triggers a Wali notification.
 4. If Wali replies with `changes_requested`, status updates to `changes_requested`, notifying the author. The draft becomes editable again, repeating the cycle.
+
+---
+
+### 6. Demo & development data
+
+| Command | Script | Purpose |
+| ------- | ------ | ------- |
+| `npm run db:seed-demo` | `backend/scripts/seed-demo-presentation.js` | Full presentation reset + seed (Hydraulique + Investissement) |
+| `npm run db:seed-test` | `backend/scripts/seed-test-fixtures.js` | Minimal automated-test fixtures |
+
+**Demo seed (`db:seed-demo`)** clears domain rapports/services (not admin users/communes) and creates:
+
+- Two departments/services: **Hydraulique**, **Investissement**
+- All four `content_kind` examples: table grid, document compose, fiche lecture, commune list (table + complex)
+- Rich fiches with `rich_html`, embedded tables, images from `backend/storage/uploads/`
+- Sample Wali responses, notifications, calendar events, version history
+- Test logins: **`office1`**, **`wali1`** — password `TEST_USER_PASSWORD` or default **`Test1234!`**
+
+Re-run anytime during demos: `cd backend && npm run db:seed-demo`.

@@ -14,10 +14,15 @@ function findFontFile(names) {
   return null;
 }
 
-/** PDFKit shaping for Arabic (spaces + RTL order). */
+/** PDFKit text options. Arabic uses logical-order text + right align + ligatures (not rtla). */
 function pdfTextOpts(locale, opts = {}) {
-  if (locale === "ar") return { ...opts, features: ["rtla"] };
-  return opts;
+  if (locale !== "ar") return opts;
+  const align = opts.align || "right";
+  return {
+    ...opts,
+    align,
+    features: ["liga", "calt"],
+  };
 }
 
 /** Register Arabic/French body fonts for PDFKit (Tahoma preferred for Arabic shaping). */

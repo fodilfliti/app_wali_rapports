@@ -11,6 +11,15 @@
 - **Four content kinds** and Wali navigation (office user → services → sub-services): see **`spec/modules/RAPPORT_SERVICE_TYPES.md`** (canonical detail).
 
 - In-app editing and export to **Excel**, **Word**, **PDF** with **Excel/Word-familiar presentation** for the Wali.
+- **Excel (.xlsx)**: Exported via `exceljs` on the backend. Preserves merged column headers, cell colors (where applicable), and row-level vertical merges. RTL support for Arabic locale. Available for `table_grid` and `commune_list` (in table mode).
+- **Word (.docx)**: Exported via `docx` library; Arabic tables use `visuallyRightToLeft` + fixed weighted column widths — `spec/CORE.md`.
+- **PDF (.pdf)**: Exported via **PDFKit** (`rapportPdfService.js`, `richHtmlExport.js`); Arabic tables use RTL column slots + Tahoma with `liga`/`calt` — `spec/CORE.md` § Table layout policy.
+
+### Data Model Extension (2026-06-09)
+
+#### `RapportVersion`
+- `changed_commune_codes`: JSON array of municipality codes updated in this version.
+- `commune_versions`: JSON object mapping municipality codes to their specific version IDs for incremental tracking.
 
 
 
@@ -203,6 +212,8 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 - **Document/fiche editors:** export menu (preview + download), optional **import template** (replace or append); compact page header.
 
+- **Table editors:** drag row reorder, sequential `#` column, total line count hint, hide/finish rapport with confirm.
+
 - See **`RAPPORT_SERVICE_TYPES.md`** § UI/UX — Wali presentation rules.
 
 
@@ -228,6 +239,10 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 | `RAPPORT_PDF_EXPORT` | PDF download / preview blob |
 
 | `RAPPORT_DOCX_EXPORT` | Word download / preview blob |
+| `RAPPORT_TYPE_HIDE` | Office hides rapport type from service hub |
+| `RAPPORT_TYPE_RESTORE` | Office restores hidden rapport type |
+| `RAPPORT_FINISH` | Office soft-hides individual rapport |
+| `RAPPORT_RESTORE` | Office restores hidden rapport |
 
 | `DOCUMENT_TEMPLATE_CREATE` | Document template created |
 

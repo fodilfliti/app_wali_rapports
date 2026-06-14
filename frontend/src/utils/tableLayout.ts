@@ -122,6 +122,7 @@ export function choiceLabel(col: Column, value: unknown, locale: string) {
 export function formatCell(value: unknown, col: Column, locale = 'ar') {
   if (value == null || value === '') return '—'
   if (col.type === 'choice') return choiceLabel(col, value, locale)
+  if (col.type === 'text' || col.type === 'date') return String(value)
   const n = Number(value)
   if (!Number.isFinite(n)) return String(value)
   if (col.format === 'percent') return `${n.toFixed(1)} %`

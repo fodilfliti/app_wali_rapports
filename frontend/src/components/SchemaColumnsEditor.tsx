@@ -9,7 +9,7 @@ import {
   nextAvailableColumnKey,
   NUMBER_FORMATS,
   previewColumnKeys,
-  SCHEMA_COLUMN_TYPE_GROUPS,
+  schemaColumnTypeGroupsForPicker,
   validateDraftColumns,
 } from '../utils/schemaColumns'
 import type { DraftChoiceOption, DraftSchemaColumn, SchemaColumnType } from '../utils/schemaColumns'
@@ -378,7 +378,7 @@ export function SchemaColumnsEditor({
                     updateCol(col.uid, patchColumnType(col, type))
                   }}
                 >
-                  {SCHEMA_COLUMN_TYPE_GROUPS.map((group) => (
+                  {schemaColumnTypeGroupsForPicker(col.type).map((group) => (
                     <optgroup key={group.labelKey} label={t(group.labelKey)}>
                       {group.types.map((type) => (
                         <option key={type} value={type}>
@@ -591,12 +591,6 @@ export function SchemaColumnsEditor({
                     + {t('schemaAddChoice')}
                   </button>
                 </div>
-              ) : null}
-
-              {col.type === 'commune_ref' ? (
-                <ExpandableHelp title={t('schemaHelpColumnType')} className="schemaColumnWide">
-                  <p className="muted small">{t('schemaColType_commune_ref_hint')}</p>
-                </ExpandableHelp>
               ) : null}
 
               {col.type !== 'formula' ? (

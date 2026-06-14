@@ -6,6 +6,7 @@ import { AdminOrgTabs } from '../components/AdminOrgTabs'
 import { BackButton } from '../components/BackButton'
 import { TablePagination } from '../components/TablePagination'
 import { useSnackbar } from '../snackbar/SnackbarContext'
+import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { hasBilingualText } from '../utils/bilingual'
 
@@ -14,13 +15,15 @@ type Props = { token: string }
 const emptyDeptForm = () => ({ name_ar: '', name_fr: '' })
 
 export function AdminDepartmentsPage({ token }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const snack = useSnackbar()
   const [departments, setDepartments] = useState<any[]>([])
   const [deptModalOpen, setDeptModalOpen] = useState(false)
   const [editingDepartmentId, setEditingDepartmentId] = useState<number | null>(null)
   const [deptForm, setDeptForm] = useState(emptyDeptForm())
   const [page, setPage] = useState(1)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +79,21 @@ export function AdminDepartmentsPage({ token }: Props) {
     }
   }
 
+  async function confirmDeleteDepartment() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.deleteAdminDepartment(token, deleteTarget.id)
+      snack.show(t('deleteDepartmentDone'), 'success')
+      setDeleteTarget(null)
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const pagedDepartments = paginateSlice(departments, page, DEFAULT_PAGE_SIZE)
 
   return (
@@ -110,6 +128,13 @@ export function AdminDepartmentsPage({ token }: Props) {
                   <td>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditDepartment(d)}>
                       {t('edit')}
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm btn-danger-text"
+                      onClick={() => setDeleteTarget(d)}
+                    >
+                      {t('deleteDepartment')}
                     </button>
                   </td>
                 </tr>
@@ -155,6 +180,23 @@ export function AdminDepartmentsPage({ token }: Props) {
           </div>
         </div>
       ) : null}
+
+      <ConfirmActionModal
+        open={!!deleteTarget}
+        title={t('deleteDepartmentConfirmTitle')}
+        message={t('deleteDepartmentConfirmMessage', {
+          name: deleteTarget
+            ? i18n.language === 'fr'
+              ? deleteTarget.name_fr
+              : deleteTarget.name_ar
+            : '',
+        })}
+        confirmLabel={t('deleteDepartment')}
+        variant="danger"
+        loading={deleting}
+        onConfirm={confirmDeleteDepartment}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

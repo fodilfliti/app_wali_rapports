@@ -9,6 +9,7 @@ import { ExpandableHelp } from '../components/ExpandableHelp'
 import { TablePagination } from '../components/TablePagination'
 import { localizedName } from '../utils/schemaColumns'
 import { useSnackbar } from '../snackbar/SnackbarContext'
+import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 
 type Props = { token: string }
@@ -37,6 +38,11 @@ export function AdminServicesPage({ token }: Props) {
   const [selectedService, setSelectedService] = useState<any>(null)
   const [grantRows, setGrantRows] = useState<GrantRow[]>([])
   const [form, setForm] = useState(emptyForm())
+  const [editOpen, setEditOpen] = useState(false)
+  const [editingService, setEditingService] = useState<any>(null)
+  const [editForm, setEditForm] = useState({ name_ar: '', name_fr: '', department_id: '' })
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -63,17 +69,13 @@ export function AdminServicesPage({ token }: Props) {
   }
 
   async function createService() {
-    if (!form.department_id) {
-      snack.show(t('servicesDepartmentRequired'), 'error')
-      return
-    }
     if (!hasBilingualText(form.name_ar, form.name_fr)) {
       snack.show(t('bilingualLabelRequired'), 'error')
       return
     }
     try {
       await api.createAdminService(token, {
-        department_id: Number(form.department_id),
+        department_id: form.department_id ? Number(form.department_id) : null,
         name_ar: form.name_ar.trim() || form.name_fr.trim(),
         name_fr: form.name_fr.trim() || form.name_ar.trim(),
         is_folder: form.is_folder,
@@ -85,6 +87,51 @@ export function AdminServicesPage({ token }: Props) {
       snack.show(t('save'), 'success')
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    }
+  }
+
+  function openEditService(service: any) {
+    setEditingService(service)
+    setEditForm({
+      name_ar: service.name_ar || '',
+      name_fr: service.name_fr || '',
+      department_id: service.department_id ? String(service.department_id) : '',
+    })
+    setEditOpen(true)
+  }
+
+  async function saveEditService() {
+    if (!editingService) return
+    if (!hasBilingualText(editForm.name_ar, editForm.name_fr)) {
+      snack.show(t('bilingualLabelRequired'), 'error')
+      return
+    }
+    try {
+      await api.patchAdminService(token, editingService.id, {
+        name_ar: editForm.name_ar.trim() || editForm.name_fr.trim(),
+        name_fr: editForm.name_fr.trim() || editForm.name_ar.trim(),
+        department_id: editForm.department_id ? Number(editForm.department_id) : null,
+      })
+      setEditOpen(false)
+      load()
+      snack.show(t('save'), 'success')
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }
+
+  async function confirmDeleteService() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.deleteAdminService(token, deleteTarget.id)
+      snack.show(t('deleteServiceDone'), 'success')
+      setDeleteTarget(null)
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -157,6 +204,7 @@ export function AdminServicesPage({ token }: Props) {
           <thead>
             <tr>
               <th>{t('rapportTitle')}</th>
+              <th>{t('department')}</th>
               <th>{t('serviceTypeLabel')}</th>
               <th>{t('serviceGrants')}</th>
               <th>{t('actions')}</th>
@@ -167,6 +215,11 @@ export function AdminServicesPage({ token }: Props) {
               pagedServices.map((s) => (
                 <tr key={s.id}>
                   <td>{localizedName(s, i18n.language)}</td>
+                  <td>
+                    {s.department
+                      ? localizedName(s.department, i18n.language)
+                      : <span className="muted">{t('serviceNoDepartment')}</span>}
+                  </td>
                   <td>{s.is_folder ? t('serviceFolder') : t('serviceLeaf')}</td>
                   <td>
                     {s.grant_count ?? 0}
@@ -174,22 +227,32 @@ export function AdminServicesPage({ token }: Props) {
                       <span className="muted small serviceFolderGrantHint"> ({t('serviceFolderGrantsRollup')})</span>
                     ) : null}
                   </td>
-                  <td>
-                    {!s.is_folder ? (
-                      <button type="button" className="btn btn-ghost" onClick={() => openGrants(s)}>
-                        {t('shareService')}
+                  <td className="actionsCell">
+                    <div className="actionsCellInner">
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditService(s)}>
+                        {t('editService')}
                       </button>
-                    ) : (s.grant_count ?? 0) > 0 ? (
-                      <span className="muted small">{t('serviceFolderShareViaChildren')}</span>
-                    ) : (
-                      '—'
-                    )}
+                      {!s.is_folder ? (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openGrants(s)}>
+                          {t('shareService')}
+                        </button>
+                      ) : (s.grant_count ?? 0) > 0 ? (
+                        <span className="muted small">{t('serviceFolderShareViaChildren')}</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm btn-danger-text"
+                        onClick={() => setDeleteTarget(s)}
+                      >
+                        {t('deleteService')}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={4} className="schemasEmptyRow muted">
+                <td colSpan={5} className="schemasEmptyRow muted">
                   {t('servicesEmpty')}
                 </td>
               </tr>
@@ -208,7 +271,7 @@ export function AdminServicesPage({ token }: Props) {
             <label>
               <span className="fieldLabel">{t('department')}</span>
               <select value={form.department_id} onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
-                <option value="">{t('selectDepartment')}</option>
+                <option value="">{t('noDepartment')}</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {i18n.language === 'fr' ? d.name_fr : d.name_ar}
@@ -292,6 +355,52 @@ export function AdminServicesPage({ token }: Props) {
         </div>
       ) : null}
 
+      {editOpen && editingService ? (
+        <div className="modalOverlay">
+          <div className="modalCard">
+            <h2>
+              {t('editService')} — {localizedName(editingService, i18n.language)}
+            </h2>
+            <label>
+              <span className="fieldLabel">{t('department')}</span>
+              <select
+                value={editForm.department_id}
+                onChange={(e) => setEditForm({ ...editForm, department_id: e.target.value })}
+              >
+                <option value="">{t('noDepartment')}</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {i18n.language === 'fr' ? d.name_fr : d.name_ar}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="fieldLabel">{t('municipalityNameAr')}</span>
+              <input
+                value={editForm.name_ar}
+                onChange={(e) => setEditForm({ ...editForm, name_ar: e.target.value })}
+              />
+            </label>
+            <label>
+              <span className="fieldLabel">{t('municipalityNameFr')}</span>
+              <input
+                value={editForm.name_fr}
+                onChange={(e) => setEditForm({ ...editForm, name_fr: e.target.value })}
+              />
+            </label>
+            <div className="modalActions">
+              <button type="button" className="btn btn-primary" onClick={saveEditService}>
+                {t('save')}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditOpen(false)}>
+                {t('cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {grantsOpen && selectedService ? (
         <div className="modalOverlay">
           <div className="modalCard wide">
@@ -360,6 +469,19 @@ export function AdminServicesPage({ token }: Props) {
           </div>
         </div>
       ) : null}
+
+      <ConfirmActionModal
+        open={!!deleteTarget}
+        title={t('deleteServiceConfirmTitle')}
+        message={t('deleteServiceConfirmMessage', {
+          name: deleteTarget ? localizedName(deleteTarget, i18n.language) : '',
+        })}
+        confirmLabel={t('deleteService')}
+        variant="danger"
+        loading={deleting}
+        onConfirm={confirmDeleteService}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

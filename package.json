@@ -12,6 +12,7 @@
     "migrate:undo": "cd backend && npm run db:migrate:undo",
     "migrate:undo:all": "cd backend && npm run db:migrate:undo:all",
     "seed": "cd backend && npm run db:seed-dev",
+    "seed:test": "cd backend && npm run db:seed-test",
     "install:all": "cd backend && npm install && cd ../frontend && npm install"
   }
 }

@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { HubIcon } from './HubIcons'
-import { HubCountBadge } from './HubCountBadge'
 import { useWaliHubCounts } from '../hooks/useHubCounts'
 
 type Props = { token: string }
@@ -10,7 +9,9 @@ export function WaliInboxBell({ token }: Props) {
   const { t } = useTranslation()
   const { counts } = useWaliHubCounts(token)
   const pending = counts.inbox_pending
-  const label = pending > 0 ? `${t('navInbox')} (${pending > 99 ? '99+' : pending})` : t('navInbox')
+  const countLabel = pending > 99 ? '99+' : String(pending)
+  const label =
+    pending > 0 ? `${t('navInbox')} (${countLabel})` : t('navInbox')
 
   return (
     <Link
@@ -21,7 +22,11 @@ export function WaliInboxBell({ token }: Props) {
     >
       <span className="notifBellIconWrap">
         <HubIcon name="inbox" className="notifBellIcon" />
-        <HubCountBadge count={pending} className="notifCount" />
+        {pending > 0 ? (
+          <span className="notifBellCount" aria-hidden="true">
+            {countLabel}
+          </span>
+        ) : null}
       </span>
       <span className="notifBellLabel">{t('navInbox')}</span>
     </Link>

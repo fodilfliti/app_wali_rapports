@@ -54,8 +54,6 @@ export function AdminHubPage() {
 
         <HubTile to="/admin/schemas" icon="schemas" title={t('navSchemas')} />
 
-        <HubTile to="/access" icon="access" title={t('navAccess')} />
-
       </div>
 
     </div>
@@ -151,7 +149,6 @@ export function WaliHubPage({ token }: { token: string }) {
           to="/wali/rapports"
           icon="inbox"
           title={t('navInbox')}
-          badge={<HubCountBadge count={counts.inbox_pending} />}
         />
 
         <HubTile to="/wali/calendar" icon="calendar" title={t('navCalendar')} />

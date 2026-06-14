@@ -47,25 +47,33 @@ function imageTypeFromFile(file, absPath) {
   return "jpg";
 }
 
-async function loadExportData(rapportId, showHidden) {
-  const rapport = await rapportService.getRapportDetail(rapportId);
+async function loadExportData(rapportId, showHidden, versionId = null) {
+  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
   const kind = rapport.rapportType?.content_kind;
   let viewPart = {};
   let dataJson = {};
 
   if (kind === "table_grid") {
-    viewPart = await workspaceService.getWaliTableView(rapportId, showHidden, false);
+    viewPart = await workspaceService.getWaliTableView(
+      rapportId,
+      showHidden,
+      false,
+      versionId,
+    );
+    viewPart.columns = viewPart.schema?.columns || [];
+    viewPart.layoutJson = viewPart.schema?.layout_json || {};
     const table = {
       rows: viewPart.rows,
       media_rows: viewPart.media_rows,
       title_ar: viewPart.tableMeta?.title_ar,
       title_fr: viewPart.tableMeta?.title_fr,
       subtitle_ar: viewPart.tableMeta?.subtitle_ar,
-      subtitle_fr: viewPart.tableMeta?.subtitle_fr
+      subtitle_fr: viewPart.tableMeta?.subtitle_fr,
+      merge_column_keys: viewPart.tableMeta?.merge_column_keys || [],
     };
     dataJson = { tables: [table] };
   } else if (DOCUMENT_KINDS.has(kind)) {
-    viewPart = await workspaceService.getWaliDocumentView(rapportId, false);
+    viewPart = await workspaceService.getWaliDocumentView(rapportId, false, versionId);
     const dj = rapport.currentVersion?.data_json || {};
     dataJson = {
       blocks: viewPart.blocks,
@@ -73,6 +81,47 @@ async function loadExportData(rapportId, showHidden) {
       rich_html_fr: dj.rich_html_fr,
       embedded_tables: dj.embedded_tables || []
     };
+  } else if (kind === "commune_list") {
+    viewPart = await workspaceService.getWaliCommuneView(rapportId, versionId, false);
+    if (!viewPart.schema) {
+      const err = new Error("tableSchemaNotConfigured");
+      err.status = 400;
+      throw err;
+    }
+    const columns = viewPart.schema.columns || [];
+    const layoutJson = viewPart.schema.layout_json || {};
+
+    // Group rows from all communes into a single table
+    const allRows = [];
+    const municipalities = viewPart.municipalities || [];
+    const communesData = viewPart.communes || {};
+
+    for (const m of municipalities) {
+      const entry = communesData[m.code] || {};
+      const rows = entry.rows || [];
+      for (const r of rows) {
+        allRows.push({
+          ...r,
+          _municipality_name_ar: m.name_ar,
+          _municipality_name_fr: m.name_fr,
+          _municipality_code: m.code
+        });
+      }
+    }
+
+    dataJson = {
+      tables: [{
+        key: "communes",
+        rows: allRows,
+        title_ar: rapport.title_ar,
+        title_fr: rapport.title_fr
+      }]
+    };
+
+    // Synthesize viewPart structure needed for Excel
+    viewPart.columns = columns;
+    viewPart.layoutJson = layoutJson;
+
   } else {
     const err = new Error("Export not supported for this rapport type");
     err.status = 400;

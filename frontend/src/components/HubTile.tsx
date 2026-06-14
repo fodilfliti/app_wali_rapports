@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { HubIcon, type HubIconName } from './HubIcons'
 
-type Props = {
+export type HubTileProps = {
   to?: string
   onClick?: () => void
   icon: HubIconName
@@ -12,7 +12,7 @@ type Props = {
   className?: string
 }
 
-export function HubTile({ to, onClick, icon, title, subtitle, badge, className = '' }: Props) {
+export function HubTile({ to, onClick, icon, title, subtitle, badge, className = '' }: HubTileProps) {
   const body = (
     <>
       <HubIcon name={icon} className="hubTileIcon" />

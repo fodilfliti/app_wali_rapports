@@ -1,4 +1,4 @@
-@import './theme/tokens.css';
+@import "./theme/tokens.css";
 
 * {
   box-sizing: border-box;
@@ -196,7 +196,11 @@ body {
   justify-content: center;
   padding: 2.5rem 2rem;
   background:
-    radial-gradient(circle at 20% 20%, rgba(201, 162, 39, 0.18), transparent 45%),
+    radial-gradient(
+      circle at 20% 20%,
+      rgba(201, 162, 39, 0.18),
+      transparent 45%
+    ),
     linear-gradient(155deg, var(--color-primary) 0%, #0a3d3d 52%, #062828 100%);
   color: #fff;
 }
@@ -363,7 +367,9 @@ body {
   border-radius: 10px;
   font: inherit;
   background: #fff;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .guestField input::placeholder {
@@ -538,7 +544,9 @@ body {
   border: 2px solid transparent;
   text-decoration: none;
   color: var(--color-text);
-  transition: border-color 0.15s, transform 0.15s;
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
 }
 
 .hubTileIcon {
@@ -609,6 +617,42 @@ body {
 .tableWrap {
   overflow-x: auto;
   max-width: 100%;
+}
+
+.tableScrollShell {
+  max-width: 100%;
+}
+
+.tableScrollShell--wide {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tableScrollShell--wide table {
+  width: max(var(--table-min-width, 42rem), 100%);
+  min-width: var(--table-min-width, 42rem);
+  table-layout: auto;
+}
+
+.tableScrollShell--wide th,
+.tableScrollShell--wide td {
+  white-space: nowrap;
+}
+
+.tableScrollShell--wide td.tableTextCol,
+.tableScrollShell--wide td:has(.tableCellTextarea) {
+  white-space: normal;
+  min-width: 8rem;
+}
+
+.tableScrollShell[dir='rtl'].tableScrollShell--wide {
+  direction: rtl;
+}
+
+.tableScrollShell[dir='ltr'].tableScrollShell--wide {
+  direction: ltr;
 }
 
 table {
@@ -824,7 +868,9 @@ th {
   min-height: 2.75rem;
 }
 
-.documentTemplateModalCard label.documentTemplateDefaultCheck input[type='checkbox'] {
+.documentTemplateModalCard
+  label.documentTemplateDefaultCheck
+  input[type="checkbox"] {
   display: inline-block;
   width: auto;
   margin: 0;
@@ -986,8 +1032,8 @@ th {
   margin-bottom: 0.75rem;
 }
 
-.toolbar input,
-label input,
+.toolbar input:not([type="radio"]):not([type="checkbox"]),
+label input:not([type="radio"]):not([type="checkbox"]),
 label select,
 label textarea {
   display: block;
@@ -1028,7 +1074,7 @@ label {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1300;
   padding: 1rem;
 }
 
@@ -1066,10 +1112,14 @@ label {
   background: #e8eeee;
 }
 
-.badge-submitted,
-.badge-under_review {
+.badge-submitted {
   background: #fef3c7;
-  color: #1e293b;
+  color: #92400e;
+}
+
+.badge-under_review {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
 .hubCountBadge.badge-submitted {
@@ -1131,6 +1181,13 @@ label {
   gap: 0.35rem;
 }
 
+.versionSelector {
+  min-width: 120px;
+  padding: 0.35rem 0.5rem !important;
+  font-size: 0.85rem !important;
+  margin-top: 0 !important;
+}
+
 .rapportWaliStatusNote {
   margin: 0;
   line-height: 1.4;
@@ -1163,9 +1220,714 @@ label {
   color: var(--color-text);
 }
 
-.rapportWaliCommentLabel {
+.communeBulkAddRowBar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 1rem;
+}
+
+.communeBulkAddRowHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.communeBulkAddRowTitle {
+  font-size: 0.95rem;
+}
+
+.communeBulkAddRowSelected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.communeBulkAddRowCount {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.communeBulkAddRowControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.communeBulkAddRowSearch {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.communeBulkAddRowBtn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.communeBulkAddRowListWrap {
+  max-height: min(42vh, 220px);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+}
+
+.communeBulkAddRowList {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+}
+
+.communeBulkAddRowItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  color: inherit;
+}
+
+.communeBulkAddRowItem:hover {
+  background: var(--color-accent-soft);
+}
+
+.communeBulkAddRowItem.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.communeBulkAddRowItem.active .communeBulkAddRowItemCode,
+.communeBulkAddRowItem.active .communeBulkAddRowItemCount {
+  opacity: 0.92;
+}
+
+.communeBulkAddRowItemName {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.communeBulkAddRowItemMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+}
+
+.communeBulkAddRowItemCode {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.communeBulkAddRowItemCount {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.communeBulkAddRowItem.active .communeBulkAddRowItemCount {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.communeBulkAddRowEmpty {
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+}
+
+.communeBulkAddRowLabel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.excelExportModal {
+  max-width: min(96vw, 480px);
+}
+
+.excelExportIntro {
+  margin: 0 0 0.25rem;
+}
+
+.excelExportFieldset {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem 0.85rem;
+  margin: 1rem 0 0.75rem;
+}
+
+.excelExportFieldset legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.excelExportOptionList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.excelExportCheckboxBlock {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.65rem 1rem;
+  margin-bottom: 0.25rem;
+  background: #f8fafc;
+}
+
+.excelExportOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0;
+  cursor: pointer;
+  line-height: 1.45;
+}
+
+.excelExportOption span {
+  flex: 1;
+  min-width: 0;
+}
+
+.excelExportOption input[type="radio"],
+.excelExportOption input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+}
+
+.rapportVersionsPage {
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+.rapportVersionsPageCard {
+  padding: 1.25rem 1.5rem;
+}
+
+.rapportVersionsPageSubtitle {
+  margin: 0 0 1rem;
+}
+
+.rapportReadOnlyBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+}
+
+.rapportOfficeStatusBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+
+.rapportOfficeStatusBannerTitle {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.rapportOfficeStatusBannerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.hubTileWrap {
+  position: relative;
+}
+
+.hubTileCard {
+  position: relative;
+  display: block;
+  min-height: 110px;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+  overflow: visible;
+}
+
+.hubTileCard:hover {
+  border-color: var(--color-primary);
+}
+
+.hubTileCard:has([data-menu-open="true"]) {
+  z-index: 40;
+  border-color: var(--color-primary);
+}
+
+.hubTileCard:has([data-menu-open="true"]) .hubTileCardLink {
+  pointer-events: none;
+}
+
+.hubTileCard:has([data-menu-open="true"]) .hubTileCardMenu {
+  pointer-events: auto;
+}
+
+.hubTileCard--dimmed {
+  opacity: 0.78;
+  border-style: dashed;
+}
+
+.hubTileCard--hasMenu .hubTileCardLink {
+  padding-top: 0.85rem;
+  padding-inline-end: 2.75rem;
+}
+
+.hubTileCardLink.hubTile {
+  min-height: 110px;
+  box-shadow: none;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: transparent;
+  position: relative;
+  z-index: 1;
+}
+
+.hubTileCardLink.hubTile:hover {
+  border: 0;
+  transform: none;
+}
+
+.hubTileCardMenu {
+  position: absolute;
+  top: 0.45rem;
+  inset-inline-end: 0.45rem;
+  z-index: 10;
+}
+
+.hubTileActionsMenu {
+  position: relative;
+}
+
+.hubTileMenuBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--color-muted);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.hubTileMenuBtn:hover,
+.hubTileMenuBtn[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  background: #fff;
+  color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+
+.hubTileCard:hover .hubTileMenuBtn {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary) 35%,
+    var(--color-border)
+  );
+}
+
+.actionsMenuDropdown {
+  min-width: 11rem;
+  padding: 0.35rem 0;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.pageActionsMenu .actionsMenuDropdown {
+  min-width: 12rem;
+}
+
+.actionsMenuWrap:not(.hubTileActionsMenu) .actionsMenuDropdown {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  inset-inline-end: 0;
+  z-index: 30;
+}
+
+.actionsMenuWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.actionsMenuWrap--end {
+  justify-content: flex-end;
+}
+
+.pageActionsMenuBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.pageActionsMenuBtn:hover,
+.pageActionsMenuBtn[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.actionsMenuItem {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.85rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  text-align: start;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.actionsMenuItem:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.actionsMenuItem--danger {
+  color: var(--color-danger);
+}
+
+.actionsMenuItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.confirmActionModalTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.confirmActionModalMessage {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.confirmActionModalActions {
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.pageHeaderActionsMenu {
+  margin-inline-start: auto;
+}
+
+.rapportListToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.9rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.rapportListSearchForm {
+  align-items: flex-end;
+}
+
+.rapportListSearch {
+  flex: 1 1 18rem;
+  min-width: min(100%, 18rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.rapportListSearch input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.rapportListSearchBtn {
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.rapportListSearchForm .rapportListScopeFilter {
+  margin-inline-start: auto;
+  align-self: flex-end;
+}
+
+@media (max-width: 640px) {
+  .rapportListSearchForm .rapportListScopeFilter {
+    margin-inline-start: 0;
+    width: 100%;
+  }
+}
+
+.rapportListScopeFilter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.rapportListScopeFilterLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.rapportListScopeFilterButtons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.2rem;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+.rapportListScopeFilterButtons .btn {
+  border-radius: 999px;
+  border-color: transparent;
+}
+
+.rapportListScopeFilterButtons .btn.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.rapportVersionsArchiveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rapportVersionCard {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card, 12px);
+  text-decoration: none;
+  color: inherit;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(15, 23, 42, 0.06));
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.12s;
+}
+
+.rapportVersionCard:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 14px rgba(13, 79, 79, 0.12);
+  transform: translateY(-1px);
+}
+
+.rapportVersionCard--current {
+  border-color: var(--color-primary);
+  background: linear-gradient(
+    135deg,
+    rgba(13, 79, 79, 0.04) 0%,
+    var(--color-surface, #fff) 55%
+  );
+}
+
+.rapportVersionCard--draft {
+  border-style: dashed;
+}
+
+.rapportVersionCardBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
   font-weight: 700;
-  color: #b45309;
+  font-size: 0.95rem;
+  color: var(--color-primary);
+  background: rgba(13, 79, 79, 0.1);
+  border: 1px solid rgba(13, 79, 79, 0.18);
+}
+
+.rapportVersionCard--current .rapportVersionCardBadge {
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.rapportVersionCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.rapportVersionCardDate {
+  font-weight: 600;
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+
+.rapportVersionCardTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.rapportVersionTag {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.rapportVersionTag--draft {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.rapportVersionTag--current {
+  color: var(--color-primary);
+  background: rgba(13, 79, 79, 0.12);
+}
+
+.rapportVersionCardAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.rapportVersionCardChevron {
+  font-size: 1.1rem;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.rapportVersionCardMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.rapportVersionNumber {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.rapportVersionMeta {
+  font-size: 0.9rem;
+  color: var(--color-text-muted, #64748b);
+}
+
+.rapportVersionOpen {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  color: var(--color-primary);
+}
+
+.rapportVersionViewPage {
+  max-width: min(100%, 1200px);
+  margin-inline: auto;
+}
+
+.rapportVersionViewMeta {
+  margin: 0.25rem 0 0;
+}
+
+.rapportVersionViewCard {
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.rapportVersionsPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.rapportVersionsPanelTitle {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.versionListBtn {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: start;
+}
+
+.versionListBtn.active {
+  background: var(--color-accent-soft);
+  font-weight: 600;
 }
 
 .actionsCellInner {
@@ -1248,7 +2010,8 @@ label {
 }
 
 .excelTable input,
-.excelTable select {
+.excelTable select,
+.excelTable textarea.tableCellTextarea {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -1256,11 +2019,30 @@ label {
   border: 1px solid transparent;
   background: transparent;
   padding: 0.25rem;
+  font: inherit;
 }
 
-.excelTable input:focus {
+.excelTable textarea.tableCellTextarea {
+  resize: vertical;
+  min-height: 2rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.excelTable td.tableTextCol {
+  vertical-align: top;
+}
+
+.excelTable input:focus,
+.excelTable textarea.tableCellTextarea:focus {
   border-color: var(--color-primary);
   background: #fff;
+}
+
+.tableCellTextDisplay {
+  display: block;
+  white-space: pre-wrap;
+  line-height: 1.35;
 }
 
 .row-important {
@@ -1398,7 +2180,9 @@ label {
   z-index: 45;
   background: var(--color-surface);
   border-radius: var(--radius-card) var(--radius-card) 0 0;
-  box-shadow: 0 1px 0 var(--color-border), 0 4px 12px color-mix(in srgb, var(--color-text) 8%, transparent);
+  box-shadow:
+    0 1px 0 var(--color-border),
+    0 4px 12px color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
 .tableWorkspaceCardCompact {
@@ -1447,6 +2231,10 @@ label {
 
 .tableWorkspaceBody.excelTable {
   padding: 0.75rem 1rem 0.5rem;
+}
+
+.card.communeWaliPanel .tableWrap.excelTable {
+  padding: 1rem;
 }
 
 .tableWorkspaceHeader {
@@ -1514,7 +2302,7 @@ label {
   box-shadow: 0 0 0 2px var(--color-primary);
 }
 
-.tableColorSwatchCustom input[type='color'] {
+.tableColorSwatchCustom input[type="color"] {
   width: 1.8rem;
   height: 1.35rem;
   padding: 0;
@@ -1548,6 +2336,49 @@ label {
   white-space: nowrap;
   text-align: center;
   vertical-align: middle;
+}
+
+.tableRowDragCol {
+  width: 1.75rem;
+  min-width: 1.75rem;
+  max-width: 2rem;
+  padding: 0.25rem;
+  text-align: center;
+  vertical-align: middle;
+  color: var(--color-muted, #64748b);
+  user-select: none;
+}
+
+.tableRowDragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  cursor: grab;
+  touch-action: none;
+}
+
+.tableRowDragHandle:active,
+.tableRowDragHandle.tableRowDragHandle--active {
+  cursor: grabbing;
+  background: rgba(13, 79, 79, 0.08);
+}
+
+.tableRowDragging {
+  opacity: 0.55;
+}
+
+.tableRowDropTarget td {
+  box-shadow: inset 0 2px 0 0 var(--color-primary, #0d4f4f);
+}
+
+.tableRowTotalHint {
+  margin: 0.35rem 0 0;
 }
 
 .tableFinishedCol {
@@ -1720,7 +2551,7 @@ label {
   max-width: 100%;
 }
 
-.schemaMergeOptionCheck input[type='checkbox'] {
+.schemaMergeOptionCheck input[type="checkbox"] {
   flex: 0 0 auto;
   width: 1rem;
   height: 1rem;
@@ -2004,37 +2835,100 @@ label {
   max-width: 34rem;
 }
 
+.waliRespondModal label select,
+.waliRespondModal label textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .waliDecisionHelp {
   margin: 0.35rem 0 0.85rem;
 }
 
 .waliFollowUpFieldset {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  padding: 0.75rem 1rem;
+  border: none;
+  padding: 0;
   margin: 0 0 1rem;
+  min-inline-size: 0;
 }
 
 .waliFollowUpFieldset legend {
-  padding: 0 0.35rem;
+  padding: 0;
+  margin-bottom: 0.55rem;
   font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.waliFollowUpOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .waliFollowUpOption {
   display: flex;
   align-items: flex-start;
-  gap: 0.55rem;
-  margin-top: 0.55rem;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: #fff;
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.waliFollowUpOption input {
-  margin-top: 0.2rem;
+.waliFollowUpOption:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary) 35%,
+    var(--color-border)
+  );
 }
 
-.waliFollowUpOption .block {
+.waliFollowUpOption--selected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, #fff);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+
+.waliFollowUpOptionRadio {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 0.1rem;
+}
+
+.waliFollowUpOption input[type="radio"],
+.waliFollowUpOptionRadio input[type="radio"] {
+  display: inline-block;
+  margin: 0.15rem 0 0;
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  min-width: 1rem;
+  max-width: 1rem;
+  padding: 0;
+  border: none;
+  box-sizing: border-box;
+  accent-color: var(--color-primary);
+}
+
+.waliFollowUpOptionText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.waliFollowUpOptionHint {
   display: block;
-  margin-top: 0.15rem;
+  line-height: 1.4;
 }
 
 .badge-wali-accepted {
@@ -2062,10 +2956,17 @@ label {
 }
 
 .modalCard select,
-.modalCard input,
+.modalCard input:not([type="radio"]):not([type="checkbox"]),
 .modalCard textarea {
   width: 100%;
   margin-top: 0.25rem;
+}
+
+.modalCard .waliFollowUpOption input[type="radio"] {
+  width: 1rem;
+  min-width: 1rem;
+  max-width: 1rem;
+  margin-top: 0.15rem;
 }
 
 .notifBell {
@@ -2088,11 +2989,10 @@ label {
   flex-shrink: 0;
 }
 
-.notifBell .hubCountBadge.notifCount {
+.notifBellCount {
   position: absolute;
   top: -0.4rem;
   inset-inline-end: -0.45rem;
-  margin: 0;
   min-width: 1.1rem;
   height: 1.1rem;
   padding: 0 0.2rem;
@@ -2102,8 +3002,58 @@ label {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
+  background: #fef3c7;
   color: #0f172a;
   font-weight: 700;
+  box-shadow: 0 0 0 2px var(--color-primary);
+  pointer-events: none;
+}
+
+.waliInboxLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+}
+
+.waliInboxLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.waliInboxLegendSwatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.waliInboxLegendSwatchNew {
+  background: #fef3c7;
+  box-shadow: inset 0 0 0 1px #f59e0b;
+}
+
+.waliInboxRowNew td:first-child {
+  border-inline-start: 4px solid #f59e0b;
+}
+
+.waliInboxRowPending {
+  background: #fffbeb;
+}
+
+.waliInboxRowStatus-under_review {
+  background: #f8fafc;
+}
+
+.waliInboxRowStatus-acknowledged {
+  background: #f0fdf4;
+}
+
+.waliInboxRowStatus-changes_requested {
+  background: #fef2f2;
 }
 
 @media (max-width: 768px) {
@@ -2369,6 +3319,49 @@ label {
   max-width: 52rem;
 }
 
+.communeBulkEntryCard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 1.25rem;
+  margin-bottom: 0.85rem;
+  padding: 1rem 1.15rem;
+  border: 2px solid
+    color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.communeBulkEntryTitle {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 1.05rem;
+  color: var(--color-primary);
+}
+
+.communeBulkEntryDesc {
+  margin: 0;
+  max-width: 42rem;
+  line-height: 1.45;
+}
+
+.communeBulkEntryActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.communeBulkEntryBtn {
+  min-width: 11rem;
+  font-weight: 700;
+}
+
+.communeBulkEntryHint {
+  margin: 0;
+}
+
 .communeHubToolbar {
   padding: 1rem 1.25rem;
   margin-bottom: 1.25rem;
@@ -2388,6 +3381,19 @@ label {
 }
 
 .communeFilterRow .btn.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.communeViewModeBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.communeViewModeBar .btn.active {
   background: var(--color-primary);
   color: #fff;
   border-color: var(--color-primary);
@@ -2548,30 +3554,134 @@ label {
   display: none;
 }
 
-.waliCalendarGrid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
+.waliCalendarList {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  margin-top: 1.25rem;
+  padding-bottom: 0.5rem;
 }
 
 .waliCalendarDay.card {
-  padding: 0.85rem 1rem;
+  padding: 0;
+  overflow: hidden;
+  margin: 0;
+}
+
+.waliCalendarDayHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 1rem 1.35rem;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-primary) 4%, #fff);
+}
+
+.waliCalendarDayDate {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.waliCalendarDayIso {
+  margin-inline-start: auto;
+}
+
+.waliCalendarDayCount {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.45rem;
+}
+
+.waliCalendarEvents {
+  list-style: none;
+  padding: 1.25rem 1.5rem 1.75rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-sizing: border-box;
+}
+
+.waliCalendarEvent {
+  margin: 0;
+  padding: 1.15rem 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: #fff;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.waliCalendarEvent:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary) 35%,
+    var(--color-border)
+  );
+  box-shadow: 0 1px 4px rgb(15 23 42 / 6%);
+}
+
+.waliCalendarEventTitle {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  text-decoration: none;
+  color: var(--color-primary);
+  margin: 0 0 0.55rem;
+}
+
+.waliCalendarEventTitle:hover {
+  text-decoration: underline;
+}
+
+.waliCalendarEventMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.waliCalendarEventKind {
+  font-size: 0.72rem;
+  margin: 0;
+  background: color-mix(in srgb, var(--color-primary) 12%, #fff);
+  color: var(--color-primary);
+}
+
+.waliCalendarEventService,
+.waliCalendarEventRapport {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.waliCalendarEventNote {
+  margin: 0.75rem 0 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+  line-height: 1.5;
+}
+
+.waliCalendarEmpty {
+  margin: 0;
+  padding: 1.25rem 1.5rem 1.75rem;
+}
+
+/* legacy aliases — keep if referenced elsewhere */
+.waliCalendarGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1rem;
 }
 
 .waliCalendarDay h3 {
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
-}
-
-.waliCalendarDay ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.waliCalendarDay ul li + li {
-  margin-top: 0.5rem;
 }
 
 .waliCalendarDay > .muted {
@@ -2618,8 +3728,8 @@ label {
   cursor: pointer;
 }
 
-.formStack .formCheck input[type='checkbox'],
-.formStack .formCheck input[type='radio'] {
+.formStack .formCheck input[type="checkbox"],
+.formStack .formCheck input[type="radio"] {
   width: 1.05rem;
   height: 1.05rem;
   margin: 0.12rem 0 0;
@@ -2668,7 +3778,7 @@ label {
   align-items: center;
 }
 
-.recipientToolbar input[type='search'] {
+.recipientToolbar input[type="search"] {
   flex: 1 1 180px;
   min-width: 0;
   padding: 0.55rem 0.75rem;
@@ -2697,12 +3807,18 @@ label {
   border-radius: 8px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .recipientRow.selected {
   border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-accent-soft) 45%, var(--color-surface));
+  background: color-mix(
+    in srgb,
+    var(--color-accent-soft) 45%,
+    var(--color-surface)
+  );
 }
 
 .recipientRowMain {
@@ -2809,7 +3925,7 @@ label {
   margin-bottom: 0.25rem;
 }
 
-.modalCard fieldset label.schemaColumnCheck input[type='radio'] {
+.modalCard fieldset label.schemaColumnCheck input[type="radio"] {
   width: auto;
   margin: 0;
 }
@@ -2822,7 +3938,8 @@ label {
   margin-top: 0.75rem;
   padding: 0.85rem 1rem;
   background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg));
-  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+  border: 1px solid
+    color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
 }
 
 .schemasPageIntroLead {
@@ -2996,7 +4113,9 @@ label {
 .schemaColumnsList-dragging .schemaColumnCard input,
 .schemaColumnsList-dragging .schemaColumnCard select,
 .schemaColumnsList-dragging .schemaColumnCard textarea,
-.schemaColumnsList-dragging .schemaColumnCard button:not(.schemaColumnDragHandle) {
+.schemaColumnsList-dragging
+  .schemaColumnCard
+  button:not(.schemaColumnDragHandle) {
   pointer-events: none;
 }
 
@@ -3024,7 +4143,7 @@ label {
   margin-bottom: 0;
 }
 
-.modalCard label.schemaMergeOptionCheck input[type='checkbox'] {
+.modalCard label.schemaMergeOptionCheck input[type="checkbox"] {
   width: auto;
   margin: 0;
 }
@@ -3059,7 +4178,8 @@ label {
 }
 
 .schemaColumnCardDropTarget {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-primary) 35%, transparent);
+  box-shadow: inset 0 0 0 2px
+    color-mix(in srgb, var(--color-primary) 35%, transparent);
 }
 
 .schemaColumnDragTargetBadge {
@@ -3088,7 +4208,8 @@ label {
   height: 3px;
   border-radius: 999px;
   background: var(--color-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
 .schemaColumnDropSlotLabel {
@@ -3121,6 +4242,14 @@ label {
   border: none;
 }
 
+.btn-danger-text {
+  color: var(--color-danger);
+}
+
+.btn-danger-text:hover {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
+
 .schemaDeleteBtn {
   margin-inline-end: auto;
 }
@@ -3129,7 +4258,8 @@ label {
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-accent) 18%, var(--color-bg));
-  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+  border: 1px solid
+    color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
 }
 
 .modalActions {
@@ -3259,7 +4389,8 @@ label {
 }
 
 .schemaHelpExpand {
-  border: 1px dashed color-mix(in srgb, var(--color-border) 85%, var(--color-primary));
+  border: 1px dashed
+    color-mix(in srgb, var(--color-border) 85%, var(--color-primary));
   border-radius: 8px;
   padding: 0.35rem 0.55rem;
   background: color-mix(in srgb, var(--color-bg) 96%, var(--color-primary) 4%);
@@ -3478,9 +4609,6 @@ label {
 }
 
 @media (max-width: 900px) {
-  .waliCalendarGrid {
-    grid-template-columns: 1fr;
-  }
   .mediaRow {
     grid-template-columns: 1fr;
   }
@@ -3496,7 +4624,8 @@ label {
   justify-content: stretch;
 }
 
-.modalOverlay.documentTemplateModalOverlay .modalCard.documentTemplateModalCard {
+.modalOverlay.documentTemplateModalOverlay
+  .modalCard.documentTemplateModalCard {
   max-width: none;
   width: 100%;
   height: 100%;
@@ -3538,8 +4667,12 @@ label {
   margin-bottom: 0;
 }
 
-.documentTemplateModalCard label.documentTemplateTypeCheck input[type='checkbox'],
-.documentTemplateModalCard label.documentTemplateDefaultCheck input[type='checkbox'] {
+.documentTemplateModalCard
+  label.documentTemplateTypeCheck
+  input[type="checkbox"],
+.documentTemplateModalCard
+  label.documentTemplateDefaultCheck
+  input[type="checkbox"] {
   display: inline-block;
   width: auto;
   margin: 0;

@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
+import { RapportListScopeFilter } from '../components/RapportListScopeFilter'
+import { RapportTypeHideActions } from '../components/RapportTypeHideActions'
+import { RapportRowHideActions } from '../components/RapportRowHideActions'
+import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { DocumentTemplatePickModal } from '../components/DocumentTemplatePickModal'
 import { TablePagination } from '../components/TablePagination'
-import { HubCountBadge } from '../components/HubCountBadge'
 import { WaliRespondModal } from '../components/WaliRespondModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
-import { useWaliHubCounts } from '../hooks/useHubCounts'
 import {
   canOfficeEditRapport,
   isDirectWorkspaceKind,
@@ -26,7 +28,10 @@ import {
   waliCommentPreview,
   waliResponseLabel,
 } from '../utils/officeRapportList'
+import { waliInboxRowClass } from '../utils/waliInboxList'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
+import { localizedName } from '../utils/schemaColumns'
+import { RapportExportButtons } from '../components/ExportPdfButton'
 import { DEFAULT_PAGE_SIZE } from '../utils/pagination'
 
 type Props = { token: string }
@@ -92,13 +97,14 @@ export function OfficeRapportsListPage({ token }: Props) {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [showHidden, setShowHidden] = useState(false)
   const [importFor, setImportFor] = useState<{ rapportId: number; serviceId: number; typeId: number } | null>(
     null,
   )
 
   useEffect(() => {
     setPage(1)
-  }, [serviceId])
+  }, [serviceId, showHidden])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -107,6 +113,7 @@ export function OfficeRapportsListPage({ token }: Props) {
         service_id: serviceId,
         page,
         pageSize: DEFAULT_PAGE_SIZE,
+        hidden_only: showHidden,
       })
       setRows(rapportsRes.rapports)
       setTotal(rapportsRes.total ?? rapportsRes.rapports.length)
@@ -115,11 +122,33 @@ export function OfficeRapportsListPage({ token }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [token, serviceId, page, snack, t])
+  }, [token, serviceId, page, showHidden, snack, t])
 
   useEffect(() => {
     load()
   }, [load])
+
+  async function finishRapport(id: number) {
+    try {
+      await api.finishRapport(token, id)
+      notifyHubCountsRefresh()
+      snack.show(t('finishRapportDone'), 'success')
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }
+
+  async function restoreRapport(id: number) {
+    try {
+      await api.restoreRapport(token, id)
+      notifyHubCountsRefresh()
+      snack.show(t('restoreRapportDone'), 'success')
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }
 
   async function submit(id: number) {
     try {
@@ -139,6 +168,10 @@ export function OfficeRapportsListPage({ token }: Props) {
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
+      </div>
+
+      <div className="rapportListToolbar">
+        <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
       </div>
 
       {importFor ? (
@@ -219,6 +252,13 @@ export function OfficeRapportsListPage({ token }: Props) {
                       {t('submitRapport')}
                     </button>
                   ) : null}
+                  <RapportRowHideActions
+                    rapport={r}
+                    canManage
+                    showHidden={showHidden}
+                    onHide={() => finishRapport(r.id)}
+                    onRestore={() => restoreRapport(r.id)}
+                  />
                   </div>
                 </td>
               </tr>
@@ -251,10 +291,11 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const [loading, setLoading] = useState(true)
   const [createPickOpen, setCreatePickOpen] = useState(false)
   const [importFor, setImportFor] = useState<{ rapportId: number; typeId: number } | null>(null)
+  const [showHidden, setShowHidden] = useState(false)
 
   useEffect(() => {
     setPage(1)
-  }, [sid, typeId])
+  }, [sid, typeId, showHidden])
 
   const load = useCallback(async () => {
     if (!sid || !typeId) return
@@ -267,6 +308,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
           rapport_type_id: typeId,
           page,
           pageSize: DEFAULT_PAGE_SIZE,
+          hidden_only: showHidden,
         }),
       ])
       setHub(hubRes)
@@ -280,11 +322,55 @@ export function OfficeServiceRapportListPage({ token }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [token, sid, typeId, page, snack, t])
+  }, [token, sid, typeId, page, showHidden, snack, t])
 
   useEffect(() => {
     load()
   }, [load])
+
+  async function finishRapportRow(id: number) {
+    try {
+      await api.finishRapport(token, id)
+      notifyHubCountsRefresh()
+      snack.show(t('finishRapportDone'), 'success')
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }
+
+  async function restoreRapportRow(id: number) {
+    try {
+      await api.restoreRapport(token, id)
+      notifyHubCountsRefresh()
+      snack.show(t('restoreRapportDone'), 'success')
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }
+
+  async function hideTypeFromPage(typeId: number) {
+    try {
+      await api.hideRapportType(token, typeId)
+      notifyHubCountsRefresh()
+      snack.show(t('hideRapportTypeDone'), 'success')
+      navigate(`/office/services/${sid}`)
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }
+
+  async function restoreTypeFromPage(typeId: number) {
+    try {
+      await api.restoreRapportType(token, typeId)
+      notifyHubCountsRefresh()
+      snack.show(t('restoreRapportTypeDone'), 'success')
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }
 
   async function submit(id: number) {
     try {
@@ -350,6 +436,17 @@ export function OfficeServiceRapportListPage({ token }: Props) {
             {t('createRapport')}
           </Link>
         ) : null}
+        {canEdit && rapportType ? (
+          <div className="pageHeaderActionsMenu">
+            <RapportTypeHideActions
+              rapportType={rapportType}
+              canManage={canEdit}
+              onHideType={hideTypeFromPage}
+              onRestoreType={restoreTypeFromPage}
+              variant="page"
+            />
+          </div>
+        ) : null}
         <BackButton
           fallbackTo={
             rapportType?.content_kind
@@ -357,6 +454,10 @@ export function OfficeServiceRapportListPage({ token }: Props) {
               : `/office/services/${sid}`
           }
         />
+      </div>
+
+      <div className="rapportListToolbar">
+        <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
       </div>
 
       {createPickOpen && rapportType ? (
@@ -448,6 +549,13 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                       {t('submitRapport')}
                     </button>
                   ) : null}
+                  <RapportRowHideActions
+                    rapport={r}
+                    canManage={canEdit}
+                    showHidden={showHidden}
+                    onHide={() => finishRapportRow(r.id)}
+                    onRestore={() => restoreRapportRow(r.id)}
+                  />
                   </div>
                 </td>
               </tr>
@@ -466,9 +574,8 @@ export function OfficeServiceRapportListPage({ token }: Props) {
 }
 
 export function WaliRapportsInboxPage({ token }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const snack = useSnackbar()
-  const { counts } = useWaliHubCounts(token)
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -505,15 +612,37 @@ export function WaliRapportsInboxPage({ token }: Props) {
     }
   }
 
+  function serviceLabel(r: any) {
+    const svc = r.service
+    if (!svc) return '—'
+    return i18n.language === 'fr' ? svc.name_fr || svc.name_ar : svc.name_ar || svc.name_fr
+  }
+
+  function typeLabel(r: any) {
+    const rt = r.rapportType
+    if (!rt) return '—'
+    return localizedRapportTypeName(rt, i18n.language)
+  }
+
   return (
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navInbox')}</h1>
-        {counts.inbox_pending > 0 ? <HubCountBadge count={counts.inbox_pending} /> : null}
         <button type="button" className="btn btn-secondary" onClick={load}>
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
+      </div>
+
+      <div className="waliInboxLegend" aria-hidden="true">
+        <span className="waliInboxLegendItem">
+          <span className="waliInboxLegendSwatch waliInboxLegendSwatchNew" />
+          {t('waliInboxNew')}
+        </span>
+        <span className="badge badge-submitted">{t('statusSubmitted')}</span>
+        <span className="badge badge-under_review">{t('statusUnderReview')}</span>
+        <span className="badge badge-acknowledged">{t('statusAcknowledged')}</span>
+        <span className="badge badge-changes_requested">{t('statusChangesRequested')}</span>
       </div>
 
       <div className="card tableWrap">
@@ -521,34 +650,63 @@ export function WaliRapportsInboxPage({ token }: Props) {
           <thead>
             <tr>
               <th>{t('rapportTitle')}</th>
+              <th>{t('service')}</th>
+              <th>{t('rapportTypes')}</th>
               <th>{t('rapportStatus')}</th>
               <th>{t('actions')}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td>{r.title}</td>
-                <td>{rapportStatusLabel(r.status, t)}</td>
-                <td className="actionsCell">
-                  <div className="actionsCellInner">
-                  <Link className="btn btn-ghost" to={`/wali/rapports/${r.id}/view`}>
-                    {t('details')}
-                  </Link>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => setRespondId(r.id)}
-                  >
-                    {t('respondRapport')}
-                  </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const waliLabel = waliResponseLabel(r, t)
+              const decision = r.latest_wali_response?.decision
+              return (
+                <tr key={r.id} className={waliInboxRowClass(r)}>
+                  <td className="rapportTitleCell">
+                    <div className="rapportRowTitleCell">
+                      <span className="rapportRowTitle">{r.title}</span>
+                      {r.is_inbox_new ? (
+                        <span className="badge badge-submitted rapportUnreadBadge">{t('waliInboxNew')}</span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td>{serviceLabel(r)}</td>
+                  <td>{typeLabel(r)}</td>
+                  <td className="rapportStatusCell">
+                    <div className="rapportStatusStack">
+                      <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+                      {waliLabel && decision ? (
+                        <p className="rapportWaliStatusNote muted small">
+                          {t('waliResponseShort')}:{' '}
+                          <span className={`badge badge-wali-${decision} rapportWaliDecisionBadge`}>
+                            {waliLabel}
+                          </span>
+                        </p>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="actionsCell">
+                    <div className="actionsCellInner">
+                      <Link className="btn btn-ghost" to={`/wali/rapports/${r.id}/view`}>
+                        {t('details')}
+                      </Link>
+                      {r.status === 'submitted' ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => setRespondId(r.id)}
+                        >
+                          {t('respondRapport')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
             {!rows.length ? (
               <tr>
-                <td colSpan={3}>{t('noResults')}</td>
+                <td colSpan={5}>{t('noResults')}</td>
               </tr>
             ) : null}
           </tbody>
@@ -562,50 +720,133 @@ export function WaliRapportsInboxPage({ token }: Props) {
 }
 
 export function AdminRapportsListPage({ token }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const snack = useSnackbar()
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [showHidden, setShowHidden] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, showHidden])
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
-      const res = await api.listAdminRapports(token, { page, pageSize: DEFAULT_PAGE_SIZE })
+      const res = await api.listAdminRapports(token, {
+        page,
+        pageSize: DEFAULT_PAGE_SIZE,
+        search: search || undefined,
+        hidden_only: showHidden,
+      })
       setRows(res.rapports)
       setTotal(res.total ?? res.rapports.length)
     } catch {
+      snack.show(t('errorGeneric'), 'error')
       setRows([])
       setTotal(0)
+    } finally {
+      setLoading(false)
     }
-  }, [token, page])
+  }, [token, page, search, showHidden, snack, t])
 
   useEffect(() => {
     load()
   }, [load])
 
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault()
+    setSearch(searchInput.trim())
+  }
+
+  async function confirmDeleteRapport() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.deleteAdminRapport(token, deleteTarget.id)
+      snack.show(t('deleteRapportAdminDone'), 'success')
+      setDeleteTarget(null)
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navRapports')}</h1>
+        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
+          {t('refresh')}
+        </button>
         <BackButton fallbackTo="/" />
       </div>
+
+      <form className="rapportListToolbar rapportListSearchForm card" onSubmit={submitSearch}>
+        <label className="rapportListSearch">
+          <span className="fieldLabel">{t('search')}</span>
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('rapportTitle')}
+          />
+        </label>
+        <button type="submit" className="btn btn-secondary rapportListSearchBtn">
+          {t('search')}
+        </button>
+        <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
+      </form>
+
       <div className="card tableWrap">
         <table>
           <thead>
             <tr>
               <th>{t('rapportTitle')}</th>
+              <th>{t('navServices')}</th>
+              <th>{t('rapportTypes')}</th>
               <th>{t('rapportStatus')}</th>
+              <th>{t('actions')}</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{r.title}</td>
+                <td>{r.service ? localizedName(r.service, i18n.language) : '—'}</td>
+                <td>
+                  {r.rapportType
+                    ? localizedRapportTypeName(r.rapportType, i18n.language)
+                    : '—'}
+                </td>
                 <td>{rapportStatusLabel(r.status, t)}</td>
+                <td className="actionsCell">
+                  <div className="actionsCellInner">
+                    <Link className="btn btn-ghost btn-sm" to={`/admin/rapports/${r.id}/view`}>
+                      {t('details')}
+                    </Link>
+                    <RapportExportButtons token={token} rapportId={r.id} />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm btn-danger-text"
+                      onClick={() => setDeleteTarget(r)}
+                    >
+                      {t('deleteRapportAdmin')}
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {!rows.length ? (
               <tr>
-                <td colSpan={2} className="muted">
+                <td colSpan={5} className="muted">
                   {t('noResults')}
                 </td>
               </tr>
@@ -614,6 +855,17 @@ export function AdminRapportsListPage({ token }: Props) {
         </table>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+
+      <ConfirmActionModal
+        open={!!deleteTarget}
+        title={t('deleteRapportAdminConfirmTitle')}
+        message={t('deleteRapportAdminConfirmMessage', { name: deleteTarget?.title || '' })}
+        confirmLabel={t('deleteRapportAdmin')}
+        variant="danger"
+        loading={deleting}
+        onConfirm={confirmDeleteRapport}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

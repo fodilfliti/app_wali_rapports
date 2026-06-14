@@ -61,6 +61,19 @@ export const SCHEMA_COLUMN_TYPE_GROUPS: { labelKey: string; types: SchemaColumnT
   { labelKey: 'schemaColTypeGroup_calculated', types: ['formula'] },
 ]
 
+/** Hidden from admin/office column type pickers until commune_ref UX is ready. */
+export const SCHEMA_COLUMN_TYPES_UI_HIDDEN: SchemaColumnType[] = ['commune_ref']
+
+/** Column types shown in schema editors; keeps legacy `commune_ref` when already set. */
+export function schemaColumnTypeGroupsForPicker(currentType?: SchemaColumnType) {
+  return SCHEMA_COLUMN_TYPE_GROUPS.map((group) => ({
+    labelKey: group.labelKey,
+    types: group.types.filter(
+      (type) => !SCHEMA_COLUMN_TYPES_UI_HIDDEN.includes(type) || type === currentType,
+    ),
+  })).filter((group) => group.types.length > 0)
+}
+
 export const NUMBER_FORMATS: SchemaColumnFormat[] = ['currency', 'percent', 'integer', 'decimal']
 
 export function newDraftChoice(labelAr?: string, labelFr?: string): DraftChoiceOption {

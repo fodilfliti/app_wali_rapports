@@ -4,25 +4,36 @@ const {
   RapportType,
   Rapport,
   RapportVersion,
-  Municipality
+  Municipality,
+  RapportTableSchema,
 } = require("../../db");
 const rapportService = require("./rapportService");
 const hubCountsService = require("./hubCountsService");
-const { assertServiceAccess, assertRapportAccess, resolveAccessLevel } = require("./serviceAccessService");
+const {
+  assertServiceAccess,
+  assertRapportAccess,
+  resolveAccessLevel,
+} = require("./serviceAccessService");
 const {
   loadSchemaBySlug,
   buildDefaultTableRows,
   normalizeTablePayload,
-  recalcTableRows
+  recalcTableRows,
 } = require("./tableGridService");
 const {
   buildDefaultTableMeta,
   extractTableMeta,
-  normalizeMergedRows
+  normalizeMergedRows,
 } = require("./tableLayoutService");
+const {
+  getBaselineCommunes,
+  summarizeMunicipality,
+} = require("./communeCompareService");
 const { enrichDataJsonWithFiles } = require("../../services/uploadService");
 const calendarEventService = require("./calendarEventService");
 const rapportViewService = require("./rapportViewService");
+
+const { buildCommuneDocumentDefaultBlocks } = require("./documentDefaults");
 
 const DOCUMENT_KINDS = new Set(["document_compose", "fiche_lecture"]);
 
@@ -42,23 +53,71 @@ async function attachMediaAndCalendar(view, rapportId, actor) {
   const { files } = await enrichDataJsonWithFiles(
     view.blocks != null
       ? { blocks: view.blocks }
-      : { tables: [{ media_rows: view.media_rows || [], rows: view.rows || [] }] }
+      : {
+          tables: [
+            { media_rows: view.media_rows || [], rows: view.rows || [] },
+          ],
+        },
   );
   let calendarEvents = [];
   if (actor) {
-    calendarEvents = await calendarEventService.listForRapport(rapportId, actor);
+    calendarEvents = await calendarEventService.listForRapport(
+      rapportId,
+      actor,
+    );
   }
   return { ...view, files, calendarEvents };
 }
 
-async function resolveTableSchema(rapportType) {
+async function findFallbackServiceSchema(serviceId) {
+  if (!serviceId) return null;
+  const local = await RapportTableSchema.findOne({
+    where: { service_id: serviceId },
+    order: [["id", "ASC"]],
+  });
+  if (local) return local;
+  return RapportTableSchema.findOne({
+    where: { service_id: null },
+    order: [["id", "ASC"]],
+  });
+}
+
+function typeNeedsTableSchema(rapportType) {
+  if (rapportType?.content_kind === "table_grid") return true;
+  return (
+    rapportType?.content_kind === "commune_list" &&
+    rapportType?.commune_content_kind === "table"
+  );
+}
+
+async function resolveTableSchemaOptional(rapportType, serviceId = null) {
+  if (
+    rapportType?.content_kind === "commune_list" &&
+    rapportType?.commune_content_kind !== "table"
+  ) {
+    return null;
+  }
+
   const slug = rapportType?.schema_json?.table_schema_slug;
-  if (!slug) {
+  if (slug) {
+    try {
+      return await loadSchemaBySlug(slug);
+    } catch (e) {
+      if (e.status !== 404) throw e;
+    }
+  }
+
+  return findFallbackServiceSchema(serviceId);
+}
+
+async function resolveTableSchema(rapportType, serviceId = null) {
+  const schema = await resolveTableSchemaOptional(rapportType, serviceId);
+  if (!schema && typeNeedsTableSchema(rapportType)) {
     const err = new Error("tableSchemaNotConfigured");
     err.status = 400;
     throw err;
   }
-  return loadSchemaBySlug(slug);
+  return schema;
 }
 
 function groupContentKinds(rapportTypes = []) {
@@ -66,7 +125,7 @@ function groupContentKinds(rapportTypes = []) {
     table_grid: [],
     document_compose: [],
     fiche_lecture: [],
-    commune_list: []
+    commune_list: [],
   };
   for (const t of rapportTypes) {
     if (groups[t.content_kind]) groups[t.content_kind].push(t);
@@ -74,13 +133,24 @@ function groupContentKinds(rapportTypes = []) {
   return groups;
 }
 
-const CONTENT_KIND_ORDER = ["fiche_lecture", "document_compose", "table_grid", "commune_list"];
+const CONTENT_KIND_ORDER = [
+  "fiche_lecture",
+  "document_compose",
+  "table_grid",
+  "commune_list",
+];
 
 function enrichContentKinds(groups, typeById) {
   const out = {};
   for (const [kind, types] of Object.entries(groups)) {
     const enriched = (types || [])
-      .map((t) => typeById[Number(t.id)] || { ...(t.toJSON ? t.toJSON() : t), action_count: 0 })
+      .map(
+        (t) =>
+          typeById[Number(t.id)] || {
+            ...(t.toJSON ? t.toJSON() : t),
+            action_count: 0,
+          },
+      )
       .filter((t) => t?.id);
     if (enriched.length) out[kind] = enriched;
   }
@@ -88,14 +158,19 @@ function enrichContentKinds(groups, typeById) {
 }
 
 function buildContentKindSummaries(contentKinds) {
-  return CONTENT_KIND_ORDER.filter((kind) => contentKinds[kind]?.length).map((kind) => {
-    const types = contentKinds[kind];
-    return {
-      content_kind: kind,
-      type_count: types.length,
-      action_count: types.reduce((sum, t) => sum + Number(t.action_count || 0), 0)
-    };
-  });
+  return CONTENT_KIND_ORDER.filter((kind) => contentKinds[kind]?.length).map(
+    (kind) => {
+      const types = contentKinds[kind];
+      return {
+        content_kind: kind,
+        type_count: types.length,
+        action_count: types.reduce(
+          (sum, t) => sum + Number(t.action_count || 0),
+          0,
+        ),
+      };
+    },
+  );
 }
 
 async function getServiceContentHub(serviceId, user, options = {}) {
@@ -108,7 +183,7 @@ async function getServiceContentHub(serviceId, user, options = {}) {
     }
     accessLevel = await resolveAccessLevel(
       { id: Number(options.waliForOfficeUserId), role: "OFFICE_USER" },
-      serviceId
+      serviceId,
     );
     if (accessLevel === "none") {
       const err = new Error("Forbidden");
@@ -119,7 +194,7 @@ async function getServiceContentHub(serviceId, user, options = {}) {
     accessLevel = await assertServiceAccess(user, serviceId, "view");
   }
   const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }]
+    include: [{ model: RapportType, as: "rapportTypes" }],
   });
   if (!service) {
     const err = new Error("Not found");
@@ -134,7 +209,9 @@ async function getServiceContentHub(serviceId, user, options = {}) {
 
   let byType = {};
   if (options.waliForOfficeUserId) {
-    const counts = await hubCountsService.getWaliServicePendingCounts(Number(options.waliForOfficeUserId));
+    const counts = await hubCountsService.getWaliServicePendingCounts(
+      Number(options.waliForOfficeUserId),
+    );
     byType = counts.byType;
   } else {
     const counts = await hubCountsService.getOfficeServiceActionCounts(user.id);
@@ -142,17 +219,33 @@ async function getServiceContentHub(serviceId, user, options = {}) {
   }
 
   const sid = Number(serviceId);
-  const rapportTypes = (service.rapportTypes || []).map((t) => ({
+  const isWaliView = Boolean(options.waliForOfficeUserId);
+  const includeHiddenTypes = Boolean(options.includeHiddenTypes);
+  const hiddenTypesOnly = Boolean(options.hiddenTypesOnly);
+
+  let visibleTypes = service.rapportTypes || [];
+  if (!isWaliView) {
+    if (hiddenTypesOnly) {
+      visibleTypes = visibleTypes.filter((t) => t.hidden_at);
+    } else if (!includeHiddenTypes) {
+      visibleTypes = visibleTypes.filter((t) => !t.hidden_at);
+    }
+  }
+
+  const rapportTypes = visibleTypes.map((t) => ({
     id: t.id,
     slug: t.slug,
     name_ar: t.name_ar,
     name_fr: t.name_fr,
     content_kind: t.content_kind,
     versioning_mode: t.versioning_mode,
-    action_count: Number(byType[`${sid}:${Number(t.id)}`]) || 0
+    hidden_at: t.hidden_at,
+    action_count: Number(byType[`${sid}:${Number(t.id)}`]) || 0,
   }));
-  const typeById = Object.fromEntries(rapportTypes.map((t) => [Number(t.id), t]));
-  const rawKinds = groupContentKinds(service.rapportTypes || []);
+  const typeById = Object.fromEntries(
+    rapportTypes.map((t) => [Number(t.id), t]),
+  );
+  const rawKinds = groupContentKinds(visibleTypes);
   const contentKinds = enrichContentKinds(rawKinds, typeById);
   const contentKindSummaries = buildContentKindSummaries(contentKinds);
 
@@ -161,19 +254,25 @@ async function getServiceContentHub(serviceId, user, options = {}) {
       id: service.id,
       slug: service.slug,
       name_ar: service.name_ar,
-      name_fr: service.name_fr
+      name_fr: service.name_fr,
     },
     rapportTypes,
     contentKinds,
     contentKindSummaries,
-    accessLevel
+    accessLevel,
   };
 }
 
-async function getServiceWorkspace(serviceId, actor, req, rapportTypeId = null, rapportId = null) {
+async function getServiceWorkspace(
+  serviceId,
+  actor,
+  req,
+  rapportTypeId = null,
+  rapportId = null,
+) {
   const accessLevel = await assertServiceAccess(actor, serviceId, "view");
   const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }]
+    include: [{ model: RapportType, as: "rapportTypes" }],
   });
   if (!service) {
     const err = new Error("Not found");
@@ -206,10 +305,14 @@ async function getServiceWorkspace(serviceId, actor, req, rapportTypeId = null, 
   } else {
     if (rapportTypeId) {
       rapportType = service.rapportTypes?.find(
-        (t) => Number(t.id) === Number(rapportTypeId) && t.content_kind === "table_grid"
+        (t) =>
+          Number(t.id) === Number(rapportTypeId) &&
+          t.content_kind === "table_grid",
       );
     } else {
-      rapportType = service.rapportTypes?.find((t) => t.content_kind === "table_grid");
+      rapportType = service.rapportTypes?.find(
+        (t) => t.content_kind === "table_grid",
+      );
     }
     if (!rapportType) {
       const err = new Error("Not a table service");
@@ -218,7 +321,7 @@ async function getServiceWorkspace(serviceId, actor, req, rapportTypeId = null, 
     }
 
     const meta = rapportType.schema_json || {};
-    const schema = await resolveTableSchema(rapportType);
+    const schema = await resolveTableSchema(rapportType, serviceId);
     const columns = schema.columns_json || [];
     const layoutJson = schema.layout_json || {};
     const tableMeta = buildDefaultTableMeta(layoutJson, columns);
@@ -227,19 +330,25 @@ async function getServiceWorkspace(serviceId, actor, req, rapportTypeId = null, 
       where: {
         service_id: service.id,
         rapport_type_id: rapportType.id,
-        status: { [Op.in]: ["draft", "changes_requested"] }
+        status: { [Op.in]: ["draft", "changes_requested"] },
+        hidden_at: null,
       },
-      order: [["updated_at", "DESC"]]
+      order: [["updated_at", "DESC"]],
     });
 
     if (!rapport) {
       rapport = await Rapport.findOne({
-        where: { service_id: service.id, rapport_type_id: rapportType.id },
-        order: [["updated_at", "DESC"]]
+        where: {
+          service_id: service.id,
+          rapport_type_id: rapportType.id,
+          hidden_at: null,
+        },
+        order: [["updated_at", "DESC"]],
       });
     }
 
-    const statusEditable = rapport && ["draft", "changes_requested"].includes(rapport.status);
+    const statusEditable =
+      rapport && ["draft", "changes_requested"].includes(rapport.status);
 
     if (!rapport) {
       if (accessLevel !== "manage") {
@@ -248,29 +357,29 @@ async function getServiceWorkspace(serviceId, actor, req, rapportTypeId = null, 
             id: service.id,
             slug: service.slug,
             name_ar: service.name_ar,
-            name_fr: service.name_fr
+            name_fr: service.name_fr,
           },
           rapportType: {
             id: rapportType.id,
             name_ar: rapportType.name_ar,
             name_fr: rapportType.name_fr,
             content_kind: rapportType.content_kind,
-            versioning_mode: rapportType.versioning_mode
+            versioning_mode: rapportType.versioning_mode,
           },
           schema: {
             slug: schema.slug,
             name_ar: schema.name_ar,
             name_fr: schema.name_fr,
             columns,
-            layout_json: layoutJson
+            layout_json: layoutJson,
           },
           rapport: null,
           tableData: {
-            tables: [{ key: meta.table_key || "main", ...tableMeta, rows: [] }]
+            tables: [{ key: meta.table_key || "main", ...tableMeta, rows: [] }],
           },
           versions: [],
           editable: false,
-          accessLevel
+          accessLevel,
         };
       }
       const title = `${service.name_ar} — ${new Date().toISOString().slice(0, 10)}`;
@@ -281,28 +390,37 @@ async function getServiceWorkspace(serviceId, actor, req, rapportTypeId = null, 
           rapport_type_id: rapportType.id,
           title,
           data_json: {
-            tables: [{ key: meta.table_key || "main", ...tableMeta, rows }]
-          }
+            tables: [{ key: meta.table_key || "main", ...tableMeta, rows }],
+          },
         },
         actor,
-        req
+        req,
       );
       rapport = created;
     } else if (statusEditable && accessLevel === "manage") {
       const detail = await rapportService.getRapportDetail(rapport.id);
       const version = detail.currentVersion || detail.versions?.[0];
       const rows = version?.data_json?.tables?.[0]?.rows;
-      if (!rows?.length && ["draft", "changes_requested"].includes(detail.status)) {
+      if (
+        !rows?.length &&
+        ["draft", "changes_requested"].includes(detail.status)
+      ) {
         const defaultRows = await buildDefaultTableRows(columns);
         await rapportService.updateRapportDraft(
           rapport.id,
           {
             data_json: {
-              tables: [{ key: meta.table_key || "main", ...tableMeta, rows: defaultRows }]
-            }
+              tables: [
+                {
+                  key: meta.table_key || "main",
+                  ...tableMeta,
+                  rows: defaultRows,
+                },
+              ],
+            },
           },
           actor,
-          req
+          req,
         );
       }
       rapport = await rapportService.getRapportDetail(rapport.id);
@@ -311,53 +429,77 @@ async function getServiceWorkspace(serviceId, actor, req, rapportTypeId = null, 
     }
   }
 
-  const schema = await resolveTableSchema(rapportType);
+  const schema = await resolveTableSchema(rapportType, serviceId);
   const columns = schema.columns_json || [];
   const layoutJson = schema.layout_json || {};
 
   const isEditable =
-    accessLevel === "manage" && ["draft", "changes_requested"].includes(rapport.status);
+    accessLevel === "manage" &&
+    ["draft", "changes_requested"].includes(rapport.status);
 
   const versions = await rapportService.listRapportVersions(rapport.id);
-  const current = rapport.currentVersion || rapport.versions?.find((v) => v.id === rapport.current_version_id);
-  const tableData = normalizeTablePayload(current?.data_json || {}, columns, layoutJson);
+  const current =
+    rapport.currentVersion ||
+    rapport.versions?.find((v) => v.id === rapport.current_version_id);
+  const tableData = normalizeTablePayload(
+    current?.data_json || {},
+    columns,
+    layoutJson,
+  );
 
   return {
     service: {
       id: service.id,
       slug: service.slug,
       name_ar: service.name_ar,
-      name_fr: service.name_fr
+      name_fr: service.name_fr,
     },
     rapportType: {
       id: rapportType.id,
       name_ar: rapportType.name_ar,
       name_fr: rapportType.name_fr,
       content_kind: rapportType.content_kind,
-      versioning_mode: rapportType.versioning_mode
+      versioning_mode: rapportType.versioning_mode,
     },
     schema: {
       slug: schema.slug,
       name_ar: schema.name_ar,
       name_fr: schema.name_fr,
       columns,
-      layout_json: layoutJson
+      layout_json: layoutJson,
     },
     rapport,
     tableData,
     versions,
     editable: isEditable,
-    accessLevel
+    accessLevel,
   };
 }
 
-async function getRapportView(rapportId, showHidden = false, actor = null) {
-  const rapport = await rapportService.getRapportDetail(rapportId);
+async function getRapportView(
+  rapportId,
+  showHidden = false,
+  actor = null,
+  versionId = null,
+) {
+  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
   const kind = rapport.rapportType?.content_kind;
   let view;
-  if (kind === "table_grid") view = { content_kind: kind, ...(await getWaliTableView(rapportId, showHidden, false)) };
-  else if (DOCUMENT_KINDS.has(kind)) view = { content_kind: kind, ...(await getWaliDocumentView(rapportId, false)) };
-  else if (kind === "commune_list") view = { content_kind: kind, ...(await getWaliCommuneView(rapportId)) };
+  if (kind === "table_grid")
+    view = {
+      content_kind: kind,
+      ...(await getWaliTableView(rapportId, showHidden, false, versionId)),
+    };
+  else if (DOCUMENT_KINDS.has(kind))
+    view = {
+      content_kind: kind,
+      ...(await getWaliDocumentView(rapportId, false, versionId)),
+    };
+  else if (kind === "commune_list")
+    view = {
+      content_kind: kind,
+      ...(await getWaliCommuneView(rapportId, versionId)),
+    };
   else view = { content_kind: kind || "unknown", rapport };
 
   if (actor) await rapportViewService.recordView(rapportId, actor);
@@ -373,7 +515,7 @@ async function saveTableData(rapportId, payload, actor, req) {
     throw err;
   }
 
-  const schema = await resolveTableSchema(rapport.rapportType);
+  const schema = await resolveTableSchema(rapport.rapportType, rapport.service_id);
   const columns = schema.columns_json || [];
   const layoutJson = schema.layout_json || {};
   const meta = rapport.rapportType?.schema_json || {};
@@ -384,14 +526,19 @@ async function saveTableData(rapportId, payload, actor, req) {
     _highlight: r._highlight || "none",
     _row_finished: r._row_finished === true,
     _wali_visible: r._wali_visible !== false,
-    _cell_colors: r._cell_colors && typeof r._cell_colors === "object" ? r._cell_colors : {}
+    _cell_colors:
+      r._cell_colors && typeof r._cell_colors === "object"
+        ? r._cell_colors
+        : {},
   }));
   rows = recalcTableRows(rows, columns);
   const mergeKeys = payload.merge_column_keys || [];
   rows = normalizeMergedRows(rows, mergeKeys);
 
   const existingTable = rapport.currentVersion?.data_json?.tables?.[0] || {};
-  const media_rows = normalizeMediaRows(payload.media_rows ?? existingTable.media_rows);
+  const media_rows = normalizeMediaRows(
+    payload.media_rows ?? existingTable.media_rows,
+  );
 
   const data_json = {
     tables: [
@@ -403,20 +550,34 @@ async function saveTableData(rapportId, payload, actor, req) {
         subtitle_fr: payload.subtitle_fr ?? "",
         merge_column_keys: mergeKeys,
         rows,
-        media_rows
-      }
-    ]
+        media_rows,
+      },
+    ],
   };
 
-  return rapportService.updateRapportDraft(rapportId, { data_json }, actor, req);
+  return rapportService.updateRapportDraft(
+    rapportId,
+    { data_json },
+    actor,
+    req,
+  );
 }
 
-async function getDocumentList(serviceId, contentKind = "document_compose", user, rapportTypeId = null, query = {}) {
+async function getDocumentList(
+  serviceId,
+  contentKind = "document_compose",
+  user,
+  rapportTypeId = null,
+  query = {},
+) {
   const accessLevel = await assertServiceAccess(user, serviceId, "view");
   const page = Math.max(1, parseInt(query.page, 10) || 1);
-  const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize, 10) || 20));
+  const pageSize = Math.min(
+    100,
+    Math.max(1, parseInt(query.pageSize, 10) || 20),
+  );
   const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }]
+    include: [{ model: RapportType, as: "rapportTypes" }],
   });
   if (!service) {
     const err = new Error("Not found");
@@ -426,40 +587,82 @@ async function getDocumentList(serviceId, contentKind = "document_compose", user
 
   let docTypes;
   if (rapportTypeId) {
-    const match = service.rapportTypes?.find((t) => Number(t.id) === Number(rapportTypeId));
+    const match = service.rapportTypes?.find(
+      (t) => Number(t.id) === Number(rapportTypeId),
+    );
     docTypes = match && DOCUMENT_KINDS.has(match.content_kind) ? [match] : [];
   } else {
     const kinds = contentKind === "all" ? [...DOCUMENT_KINDS] : [contentKind];
-    docTypes = (service.rapportTypes || []).filter((t) => kinds.includes(t.content_kind));
+    docTypes = (service.rapportTypes || []).filter((t) =>
+      kinds.includes(t.content_kind),
+    );
+  }
+  const hiddenOnly =
+    query.hidden_only === "1" || query.hidden_only === "true";
+  const includeHidden =
+    query.include_hidden === "1" || query.include_hidden === "true";
+  if (!includeHidden && !hiddenOnly) {
+    docTypes = docTypes.filter((t) => !t.hidden_at);
   }
   const typeIds = docTypes.map((t) => t.id);
   if (!typeIds.length) {
-    return { service, contentKind, documentTypes: [], rapports: [], accessLevel, total: 0, page, pageSize };
+    return {
+      service,
+      contentKind,
+      documentTypes: [],
+      rapports: [],
+      accessLevel,
+      total: 0,
+      page,
+      pageSize,
+    };
+  }
+
+  const rapportWhere = {
+    service_id: serviceId,
+    rapport_type_id: { [Op.in]: typeIds },
+  };
+  if (hiddenOnly) {
+    rapportWhere.hidden_at = { [Op.ne]: null };
+  } else if (!includeHidden) {
+    rapportWhere.hidden_at = null;
   }
 
   const { rows, count } = await Rapport.findAndCountAll({
-    where: {
-      service_id: serviceId,
-      rapport_type_id: { [Op.in]: typeIds }
-    },
+    where: rapportWhere,
     order: [["created_at", "DESC"]],
     offset: (page - 1) * pageSize,
     limit: pageSize,
     include: [
       { model: RapportType, as: "rapportType" },
-      { model: RapportVersion, as: "currentVersion", attributes: ["id", "submitted_at"] }
-    ]
+      {
+        model: RapportVersion,
+        as: "currentVersion",
+        attributes: ["id", "submitted_at"],
+      },
+    ],
   });
 
-  return { service, contentKind, documentTypes: docTypes, rapports: rows, accessLevel, total: count, page, pageSize };
+  return {
+    service,
+    contentKind,
+    documentTypes: docTypes,
+    rapports: rows,
+    accessLevel,
+    total: count,
+    page,
+    pageSize,
+  };
 }
 
 async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
   await assertServiceAccess(actor, serviceId, "manage");
   const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }]
+    include: [{ model: RapportType, as: "rapportTypes" }],
   });
-  const rapportType = service?.rapportTypes?.find((t) => Number(t.id) === Number(rapportTypeId));
+  const rapportType = service?.rapportTypes?.find(
+    (t) => Number(t.id) === Number(rapportTypeId),
+  );
   if (!rapportType || !DOCUMENT_KINDS.has(rapportType.content_kind)) {
     const err = new Error("Invalid document type");
     err.status = 400;
@@ -478,14 +681,24 @@ async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
     dataJson = await documentTemplateService.resolveInitialDataJson(
       serviceId,
       rapportType,
-      opts.template_id
+      opts.template_id,
     );
   } else if (!opts.skip_default) {
-    dataJson = await documentTemplateService.resolveInitialDataJson(serviceId, rapportType, null);
+    dataJson = await documentTemplateService.resolveInitialDataJson(
+      serviceId,
+      rapportType,
+      null,
+    );
   } else {
     const defaultBlocks = rapportType.schema_json?.default_blocks || [
-      { type: "heading", align: "center", bold: true, text_ar: rapportType.name_ar, text_fr: rapportType.name_fr },
-      { type: "paragraph", text_ar: "", text_fr: "" }
+      {
+        type: "heading",
+        align: "center",
+        bold: true,
+        text_ar: rapportType.name_ar,
+        text_fr: rapportType.name_fr,
+      },
+      { type: "paragraph", text_ar: "", text_fr: "" },
     ];
     dataJson = { blocks: defaultBlocks };
   }
@@ -496,10 +709,10 @@ async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
       rapport_type_id: rapportType.id,
       title,
       reference_date: localeDate,
-      data_json: dataJson
+      data_json: dataJson,
     },
     actor,
-    req
+    req,
   );
 }
 
@@ -508,21 +721,38 @@ async function saveDocumentBlocks(rapportId, payload, actor, req) {
   const rapport = await rapportService.getRapportDetail(rapportId);
   const data = { ...(rapport.currentVersion?.data_json || {}) };
   if (payload.blocks !== undefined) data.blocks = payload.blocks;
-  if (payload.rich_html_ar !== undefined) data.rich_html_ar = payload.rich_html_ar;
-  if (payload.rich_html_fr !== undefined) data.rich_html_fr = payload.rich_html_fr;
-  if (payload.embedded_tables !== undefined) data.embedded_tables = payload.embedded_tables;
-  return rapportService.updateRapportDraft(rapportId, { data_json: data }, actor, req);
+  if (payload.rich_html_ar !== undefined)
+    data.rich_html_ar = payload.rich_html_ar;
+  if (payload.rich_html_fr !== undefined)
+    data.rich_html_fr = payload.rich_html_fr;
+  if (payload.embedded_tables !== undefined)
+    data.embedded_tables = payload.embedded_tables;
+  return rapportService.updateRapportDraft(
+    rapportId,
+    { data_json: data },
+    actor,
+    req,
+  );
 }
 
-async function getWaliTableView(rapportId, showHidden = false, markReview = true) {
-  const rapport = await rapportService.getRapportDetail(rapportId);
+async function getWaliTableView(
+  rapportId,
+  showHidden = false,
+  markReview = true,
+  versionId = null,
+) {
+  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
   if (markReview) await rapportService.markUnderReview(rapportId, null);
 
-  const schema = await resolveTableSchema(rapport.rapportType);
+  const schema = await resolveTableSchema(rapport.rapportType, rapport.service_id);
   const columns = schema.columns_json || [];
   const layoutJson = schema.layout_json || {};
   const current = rapport.currentVersion;
-  const tableData = normalizeTablePayload(current?.data_json || {}, columns, layoutJson);
+  const tableData = normalizeTablePayload(
+    current?.data_json || {},
+    columns,
+    layoutJson,
+  );
   const table = tableData.tables[0];
   let rows = table.rows || [];
   if (!showHidden) rows = rows.filter((r) => r._wali_visible !== false);
@@ -536,63 +766,48 @@ async function getWaliTableView(rapportId, showHidden = false, markReview = true
       title_fr: table.title_fr,
       subtitle_ar: table.subtitle_ar,
       subtitle_fr: table.subtitle_fr,
-      merge_column_keys: table.merge_column_keys || []
+      merge_column_keys: table.merge_column_keys || [],
     },
     rows,
     media_rows: table.media_rows || [],
     versions,
-    waliResponses: rapport.waliResponses || []
+    waliResponses: rapport.waliResponses || [],
   };
 }
 
-async function getWaliDocumentView(rapportId, markReview = true) {
-  const rapport = await rapportService.getRapportDetail(rapportId);
+async function getWaliDocumentView(
+  rapportId,
+  markReview = true,
+  versionId = null,
+) {
+  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
   if (markReview) await rapportService.markUnderReview(rapportId, null);
   const blocks = rapport.currentVersion?.data_json?.blocks || [];
   const versions = await rapportService.listRapportVersions(rapportId);
-  return { rapport, blocks, versions, waliResponses: rapport.waliResponses || [] };
+  return {
+    rapport,
+    blocks,
+    versions,
+    waliResponses: rapport.waliResponses || [],
+  };
 }
 
 function buildDefaultCommuneBlocks(municipality) {
-  return [
-    {
-      type: "heading",
-      align: "center",
-      bold: true,
-      text_ar: municipality?.name_ar || "",
-      text_fr: municipality?.name_fr || ""
-    },
-    { type: "paragraph", text_ar: "", text_fr: "" }
-  ];
+  return buildCommuneDocumentDefaultBlocks(municipality);
 }
 
 function htmlHasContent(html) {
   if (!html || typeof html !== "string") return false;
-  const stripped = html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
-  return stripped.length > 0 || /<img\b/i.test(html) || /<video\b/i.test(html) || /<table\b/i.test(html);
-}
-
-function isCommuneEntryFilled(entry) {
-  if (!entry || typeof entry !== "object") return false;
-  if (htmlHasContent(entry.rich_html_ar) || htmlHasContent(entry.rich_html_fr)) return true;
-  if (Array.isArray(entry.embedded_tables) && entry.embedded_tables.length) return true;
-  if (Array.isArray(entry.blocks) && entry.blocks.length) {
-    return entry.blocks.some((b) => {
-      if (b.type === "media_row") return (b.items || []).length > 0;
-      if (b.type === "heading" || b.type === "paragraph") {
-        return Boolean(String(b.text_ar || "").trim() || String(b.text_fr || "").trim());
-      }
-      return false;
-    });
-  }
-  if (Array.isArray(entry.rows) && entry.rows.length) {
-    return entry.rows.some((row) =>
-      Object.entries(row).some(
-        ([k, v]) => !k.startsWith("_") && v != null && String(v).trim() !== ""
-      )
-    );
-  }
-  return false;
+  const stripped = html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+  return (
+    stripped.length > 0 ||
+    /<img\b/i.test(html) ||
+    /<video\b/i.test(html) ||
+    /<table\b/i.test(html)
+  );
 }
 
 function buildDefaultCommuneRows(columns, municipality) {
@@ -603,20 +818,27 @@ function buildDefaultCommuneRows(columns, municipality) {
     _highlight: "none",
     _row_finished: false,
     _wali_visible: true,
-    _cell_colors: {}
+    _cell_colors: {},
   };
   for (const col of columns) {
     if (col.type === "commune_ref") row[col.key] = municipality?.code || "";
-    else if (col.type === "number" || col.type === "formula") row[col.key] = null;
+    else if (col.type === "number" || col.type === "formula")
+      row[col.key] = null;
     else row[col.key] = "";
   }
   return [row];
 }
 
-async function getCommuneListWorkspace(serviceId, actor, req, rapportTypeId = null, rapportId = null) {
+async function getCommuneListWorkspace(
+  serviceId,
+  actor,
+  req,
+  rapportTypeId = null,
+  rapportId = null,
+) {
   const accessLevel = await assertServiceAccess(actor, serviceId, "view");
   const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }]
+    include: [{ model: RapportType, as: "rapportTypes" }],
   });
   if (!service) {
     const err = new Error("Not found");
@@ -649,10 +871,14 @@ async function getCommuneListWorkspace(serviceId, actor, req, rapportTypeId = nu
   } else {
     if (rapportTypeId) {
       rapportType = service.rapportTypes?.find(
-        (t) => Number(t.id) === Number(rapportTypeId) && t.content_kind === "commune_list"
+        (t) =>
+          Number(t.id) === Number(rapportTypeId) &&
+          t.content_kind === "commune_list",
       );
     } else {
-      rapportType = service.rapportTypes?.find((t) => t.content_kind === "commune_list");
+      rapportType = service.rapportTypes?.find(
+        (t) => t.content_kind === "commune_list",
+      );
     }
     if (!rapportType) {
       const err = new Error("Not a commune list service");
@@ -664,9 +890,10 @@ async function getCommuneListWorkspace(serviceId, actor, req, rapportTypeId = nu
       where: {
         service_id: service.id,
         rapport_type_id: rapportType.id,
-        status: { [Op.in]: ["draft", "changes_requested"] }
+        status: { [Op.in]: ["draft", "changes_requested"] },
+        hidden_at: null,
       },
-      order: [["updated_at", "DESC"]]
+      order: [["updated_at", "DESC"]],
     });
 
     if (!rapport && accessLevel === "manage") {
@@ -676,15 +903,15 @@ async function getCommuneListWorkspace(serviceId, actor, req, rapportTypeId = nu
           service_id: service.id,
           rapport_type_id: rapportType.id,
           title,
-          data_json: { communes: {} }
+          data_json: { communes: {} },
         },
         actor,
-        req
+        req,
       );
     } else if (!rapport) {
       rapport = await Rapport.findOne({
         where: { service_id: service.id, rapport_type_id: rapportType.id },
-        order: [["updated_at", "DESC"]]
+        order: [["updated_at", "DESC"]],
       });
       if (rapport) rapport = await rapportService.getRapportDetail(rapport.id);
     } else {
@@ -692,48 +919,157 @@ async function getCommuneListWorkspace(serviceId, actor, req, rapportTypeId = nu
     }
   }
 
-  const schema = await resolveTableSchema(rapportType);
-  const columns = schema.columns_json || [];
-  const municipalities = await Municipality.findAll({ order: [["code", "ASC"]] });
+  const schema = await resolveTableSchemaOptional(rapportType, serviceId);
+  const columns = schema?.columns_json || [];
+  const municipalities = await Municipality.findAll({
+    order: [["code", "ASC"]],
+  });
 
   const communesData = rapport?.currentVersion?.data_json?.communes || {};
+  const baselineCommunes = getBaselineCommunes(rapport);
   const municipalitySummaries = municipalities.map((m) => ({
     code: m.code,
     name_ar: m.name_ar,
     name_fr: m.name_fr,
-    filled: isCommuneEntryFilled(communesData[m.code])
+    ...summarizeMunicipality(
+      communesData[m.code],
+      baselineCommunes[m.code],
+      columns,
+    ),
   }));
 
   const editable =
-    accessLevel === "manage" && rapport && ["draft", "changes_requested"].includes(rapport.status);
+    accessLevel === "manage" &&
+    rapport &&
+    ["draft", "changes_requested"].includes(rapport.status);
 
   return {
     service: {
       id: service.id,
       slug: service.slug,
       name_ar: service.name_ar,
-      name_fr: service.name_fr
+      name_fr: service.name_fr,
     },
     rapportType: {
       id: rapportType.id,
       name_ar: rapportType.name_ar,
       name_fr: rapportType.name_fr,
       content_kind: rapportType.content_kind,
-      versioning_mode: rapportType.versioning_mode
+      versioning_mode: rapportType.versioning_mode,
+      commune_content_kind: rapportType.commune_content_kind,
     },
-    schema: {
-      slug: schema.slug,
-      name_ar: schema.name_ar,
-      name_fr: schema.name_fr,
-      columns,
-      layout_json: schema.layout_json || {}
-    },
+    schema: schema
+      ? {
+          slug: schema.slug,
+          name_ar: schema.name_ar,
+          name_fr: schema.name_fr,
+          columns,
+          layout_json: schema.layout_json || {},
+        }
+      : null,
     rapport,
     municipalities: municipalitySummaries,
     communesData,
     accessLevel,
-    editable
+    editable,
   };
+}
+
+async function getCommuneBulkWorkspace(
+  serviceId,
+  actor,
+  req,
+  rapportTypeId = null,
+  rapportId = null,
+) {
+  const ws = await getCommuneListWorkspace(
+    serviceId,
+    actor,
+    req,
+    rapportTypeId,
+    rapportId,
+  );
+  const rapport = ws.rapport;
+  if (!rapport) return ws;
+
+  if (!ws.schema) {
+    const err = new Error("tableSchemaNotConfigured");
+    err.status = 400;
+    throw err;
+  }
+
+  const schema = ws.schema;
+  const columns = schema.columns || [];
+  const communesData = ws.communesData || {};
+
+  const allRows = [];
+  for (const m of ws.municipalities) {
+    const entry = communesData[m.code] || {};
+    let rows = entry.rows || [];
+    if (!rows.length) {
+      rows = buildDefaultCommuneRows(columns, m);
+    }
+    for (const r of rows) {
+      allRows.push({
+        ...r,
+        municipality_code: m.code,
+        _municipality_name_ar: m.name_ar,
+        _municipality_name_fr: m.name_fr,
+      });
+    }
+  }
+
+  return {
+    ...ws,
+    tableData: {
+      tables: [
+        {
+          key: "bulk",
+          rows: recalcTableRows(allRows, columns),
+          ...buildDefaultTableMeta(schema.layout_json || {}, columns),
+        },
+      ],
+    },
+  };
+}
+
+async function saveBulkCommuneData(rapportId, payload, actor, req) {
+  await assertRapportAccess(actor, rapportId, "manage");
+  const rapport = await rapportService.getRapportDetail(rapportId);
+  if (rapport.rapportType?.content_kind !== "commune_list") {
+    const err = new Error("Not a commune list rapport");
+    err.status = 400;
+    throw err;
+  }
+
+  const table = payload.tables?.[0];
+  const rows = table?.rows || [];
+
+  const communes = { ...(rapport.currentVersion?.data_json?.communes || {}) };
+
+  // Group rows by commune
+  const byCommune = {};
+  for (const r of rows) {
+    const code = r.municipality_code;
+    if (!code) continue;
+    if (!byCommune[code]) byCommune[code] = [];
+    byCommune[code].push(r);
+  }
+
+  // Update communes data
+  // We keep existing non-row data (rich text, templates, etc.)
+  for (const code of Object.keys(byCommune)) {
+    if (!communes[code]) communes[code] = {};
+    communes[code].rows = byCommune[code];
+  }
+
+  await rapportService.updateRapportDraft(
+    rapportId,
+    { data_json: { ...(rapport.currentVersion?.data_json || {}), communes } },
+    actor,
+    req,
+  );
+  return rapportService.getRapportDetail(rapportId);
 }
 
 async function getCommuneRows(rapportId, municipalityCode, actor) {
@@ -745,9 +1081,14 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
     throw err;
   }
 
-  const schema = await resolveTableSchema(rapport.rapportType);
-  const columns = schema.columns_json || [];
-  const municipality = await Municipality.findOne({ where: { code: municipalityCode } });
+  const schema =
+    rapport.rapportType.commune_content_kind === "table"
+      ? await resolveTableSchema(rapport.rapportType, rapport.service_id)
+      : null;
+  const columns = schema?.columns_json || [];
+  const municipality = await Municipality.findOne({
+    where: { code: municipalityCode },
+  });
   if (!municipality) {
     const err = new Error("Not found");
     err.status = 404;
@@ -762,36 +1103,53 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
   const rich_html_ar = communeEntry.rich_html_ar || "";
   const rich_html_fr = communeEntry.rich_html_fr || "";
   const embedded_tables = communeEntry.embedded_tables || [];
+  const calendar_events = communeEntry.calendar_events || [];
 
   let rows = communeEntry.rows || [];
   if (rows.length) rows = recalcTableRows(rows, columns);
+  else if (rapport.rapportType.commune_content_kind === "table")
+    rows = buildDefaultCommuneRows(columns, municipality);
 
-  const tableMeta = {
-    title_ar: communeEntry.title_ar || municipality.name_ar || "",
-    title_fr: communeEntry.title_fr || municipality.name_fr || "",
-    subtitle_ar: communeEntry.subtitle_ar || "",
-    subtitle_fr: communeEntry.subtitle_fr || ""
-  };
+  const editable =
+    accessLevel === "manage" &&
+    ["draft", "changes_requested"].includes(rapport.status);
 
   return {
-    municipality,
+    municipality: {
+      code: municipality.code,
+      name_ar: municipality.name_ar,
+      name_fr: municipality.name_fr,
+    },
+    municipality_code: municipality.code,
     blocks,
     rich_html_ar,
     rich_html_fr,
     embedded_tables,
+    calendar_events,
     rows,
-    columns,
-    hasTableData: rows.length > 0,
-    layout_json: schema.layout_json || {},
-    tableMeta,
-    calendar_events: communeEntry.calendar_events || [],
-    accessLevel,
-    editable:
-      accessLevel === "manage" && ["draft", "changes_requested"].includes(rapport.status)
+    editable,
+    rapport: {
+      id: rapport.id,
+      title: rapport.title,
+      status: rapport.status,
+      current_version_id: rapport.current_version_id
+    },
+    schema: schema
+      ? {
+          columns,
+          layout_json: schema.layout_json || {},
+        }
+      : null,
   };
 }
 
-async function saveCommuneData(rapportId, municipalityCode, payload, actor, req) {
+async function saveCommuneData(
+  rapportId,
+  municipalityCode,
+  payload,
+  actor,
+  req,
+) {
   await assertRapportAccess(actor, rapportId, "manage");
   const rapport = await rapportService.getRapportDetail(rapportId);
   if (rapport.rapportType?.content_kind !== "commune_list") {
@@ -804,17 +1162,21 @@ async function saveCommuneData(rapportId, municipalityCode, payload, actor, req)
   const next = { ...prev };
 
   if (payload.blocks !== undefined) next.blocks = payload.blocks;
-  if (payload.rich_html_ar !== undefined) next.rich_html_ar = payload.rich_html_ar;
-  if (payload.rich_html_fr !== undefined) next.rich_html_fr = payload.rich_html_fr;
-  if (payload.embedded_tables !== undefined) next.embedded_tables = payload.embedded_tables;
-  if (payload.calendar_events !== undefined) next.calendar_events = payload.calendar_events;
+  if (payload.rich_html_ar !== undefined)
+    next.rich_html_ar = payload.rich_html_ar;
+  if (payload.rich_html_fr !== undefined)
+    next.rich_html_fr = payload.rich_html_fr;
+  if (payload.embedded_tables !== undefined)
+    next.embedded_tables = payload.embedded_tables;
+  if (payload.calendar_events !== undefined)
+    next.calendar_events = payload.calendar_events;
   if (payload.title_ar !== undefined) next.title_ar = payload.title_ar;
   if (payload.title_fr !== undefined) next.title_fr = payload.title_fr;
   if (payload.subtitle_ar !== undefined) next.subtitle_ar = payload.subtitle_ar;
   if (payload.subtitle_fr !== undefined) next.subtitle_fr = payload.subtitle_fr;
 
   if (payload.rows !== undefined) {
-    const schema = await resolveTableSchema(rapport.rapportType);
+    const schema = await resolveTableSchema(rapport.rapportType, rapport.service_id);
     const columns = schema.columns_json || [];
     let rows = payload.rows || [];
     rows = rows.map((r) => ({
@@ -822,30 +1184,64 @@ async function saveCommuneData(rapportId, municipalityCode, payload, actor, req)
       _highlight: r._highlight || "none",
       _row_finished: r._row_finished === true,
       _wali_visible: r._wali_visible !== false,
-      _cell_colors: r._cell_colors && typeof r._cell_colors === "object" ? r._cell_colors : {}
+      _cell_colors:
+        r._cell_colors && typeof r._cell_colors === "object"
+          ? r._cell_colors
+          : {},
     }));
     next.rows = recalcTableRows(rows, columns);
   }
 
   communes[municipalityCode] = next;
 
-  return rapportService.updateRapportDraft(rapportId, { data_json: { communes } }, actor, req);
+  return rapportService.updateRapportDraft(
+    rapportId,
+    { data_json: { communes } },
+    actor,
+    req,
+  );
 }
 
-async function getWaliCommuneView(rapportId) {
-  const rapport = await rapportService.getRapportDetail(rapportId);
-  await rapportService.markUnderReview(rapportId, null);
-  const schema = await resolveTableSchema(rapport.rapportType);
-  const communes = rapport.currentVersion?.data_json?.communes || {};
-  const municipalities = await Municipality.findAll({ order: [["code", "ASC"]] });
+async function getWaliCommuneView(rapportId, versionId = null, markReview = true) {
+  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
+  if (markReview) await rapportService.markUnderReview(rapportId, null);
+  const schemaRow =
+    rapport.rapportType?.commune_content_kind === "table"
+      ? await resolveTableSchema(rapport.rapportType, rapport.service_id)
+      : null;
+  const currentVersion = rapport.currentVersion;
+  const communes = currentVersion?.data_json?.communes || {};
+  const changedCodes = currentVersion?.changed_commune_codes || [];
+  const baselineCommunes = getBaselineCommunes(rapport);
+  const schemaColumns = schemaRow?.columns_json || [];
+  const municipalities = await Municipality.findAll({
+    order: [["code", "ASC"]],
+  });
+  const municipalitySummaries = municipalities.map((m) => ({
+    code: m.code,
+    name_ar: m.name_ar,
+    name_fr: m.name_fr,
+    is_changed: changedCodes.length
+      ? changedCodes.includes(m.code)
+      : summarizeMunicipality(
+          communes[m.code],
+          baselineCommunes[m.code],
+          schemaColumns,
+        ).is_changed,
+  }));
   const versions = await rapportService.listRapportVersions(rapportId);
   return {
     rapport,
-    schema: { columns: schema.columns_json || [], layout_json: schema.layout_json || {} },
-    municipalities,
+    schema: schemaRow
+      ? {
+          columns: schemaRow.columns_json || [],
+          layout_json: schemaRow.layout_json || {},
+        }
+      : null,
+    municipalities: municipalitySummaries,
     communes,
     versions,
-    waliResponses: rapport.waliResponses || []
+    waliResponses: rapport.waliResponses || [],
   };
 }
 
@@ -857,11 +1253,17 @@ async function getRapportTableSnapshot(rapportId, actor) {
     err.status = 400;
     throw err;
   }
-  const schema = await resolveTableSchema(rapport.rapportType);
+  const schema = await resolveTableSchema(rapport.rapportType, rapport.service_id);
   const columns = schema.columns_json || [];
   const layoutJson = schema.layout_json || {};
-  const current = rapport.currentVersion || rapport.versions?.find((v) => v.id === rapport.current_version_id);
-  const tableData = normalizeTablePayload(current?.data_json || {}, columns, layoutJson);
+  const current =
+    rapport.currentVersion ||
+    rapport.versions?.find((v) => v.id === rapport.current_version_id);
+  const tableData = normalizeTablePayload(
+    current?.data_json || {},
+    columns,
+    layoutJson,
+  );
   const table = tableData.tables?.[0] || {};
   return {
     rapport_id: rapport.id,
@@ -872,7 +1274,7 @@ async function getRapportTableSnapshot(rapportId, actor) {
     columns,
     layout_json: layoutJson,
     table_meta: extractTableMeta(table, layoutJson),
-    rows: (table.rows || []).map((row) => ({ ...row }))
+    rows: (table.rows || []).map((row) => ({ ...row })),
   };
 }
 
@@ -888,7 +1290,9 @@ module.exports = {
   getWaliDocumentView,
   getWaliCommuneView,
   getCommuneListWorkspace,
+  getCommuneBulkWorkspace,
+  saveBulkCommuneData,
   getCommuneRows,
   saveCommuneData,
-  getRapportView
+  getRapportView,
 };

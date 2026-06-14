@@ -10,6 +10,8 @@ const {
 } = require("../validation/schemas/adminCrud");
 const org = require("../modules/organization/organizationService");
 const rapportService = require("../modules/rapports/rapportService");
+const workspaceService = require("../modules/rapports/workspaceService");
+const { assertRapportAccess } = require("../modules/rapports/serviceAccessService");
 const schemaConfig = require("../modules/rapports/schemaConfigService");
 const serviceAdmin = require("../modules/rapports/serviceAdminService");
 const { PERMISSIONS } = require("../modules/access/permissionCatalog");
@@ -151,6 +153,16 @@ adminRouter.patch("/departments/:id", validateBody(departmentPatchSchema), async
   }
 });
 
+adminRouter.delete("/departments/:id", async (req, res, next) => {
+  try {
+    res.json(await serviceAdmin.deleteDepartment(req.params.id, req.user, req));
+  } catch (e) {
+    if (e.status === 404) return res.status(404).json({ error: e.message });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
 adminRouter.get("/services", async (req, res, next) => {
   try {
     const services = await serviceAdmin.listServicesAdmin();
@@ -176,6 +188,17 @@ adminRouter.patch("/services/:id", validateBody(servicePatchSchema), async (req,
     const service = await serviceAdmin.updateService(req.params.id, req.validatedBody, req.user, req);
     res.json({ service });
   } catch (e) {
+    if (e.status === 404) return res.status(404).json({ error: e.message });
+    next(e);
+  }
+});
+
+adminRouter.delete("/services/:id", async (req, res, next) => {
+  try {
+    res.json(await serviceAdmin.deleteService(req.params.id, req.user, req));
+  } catch (e) {
+    if (e.status === 404) return res.status(404).json({ error: e.message });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
     next(e);
   }
 });
@@ -215,6 +238,33 @@ adminRouter.get("/office-users", async (req, res, next) => {
 adminRouter.get("/rapports", async (req, res, next) => {
   try {
     res.json(await rapportService.listRapports(req.query));
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.delete("/rapports/:id", async (req, res, next) => {
+  try {
+    res.json(await rapportService.deleteRapportPermanently(req.params.id, req.user, req));
+  } catch (e) {
+    if (e.status === 404) return res.status(404).json({ error: e.message });
+    next(e);
+  }
+});
+
+adminRouter.get("/rapports/:id/view", async (req, res, next) => {
+  try {
+    await assertRapportAccess(req.user, req.params.id, "view");
+    const showHidden = req.query.showHidden === "1";
+    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+    res.json(
+      await workspaceService.getRapportView(
+        req.params.id,
+        showHidden,
+        req.user,
+        versionId,
+      ),
+    );
   } catch (e) {
     next(e);
   }

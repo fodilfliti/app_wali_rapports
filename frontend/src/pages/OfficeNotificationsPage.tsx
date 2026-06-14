@@ -6,7 +6,6 @@ import { BackButton } from '../components/BackButton'
 import { TablePagination } from '../components/TablePagination'
 import { waliResponseBodyText } from '../components/WaliRespondModal'
 import { HubIcon } from '../components/HubIcons'
-import { HubCountBadge } from '../components/HubCountBadge'
 import { useOfficeHubCounts } from '../hooks/useHubCounts'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
 import { waliDecisionLabel } from '../utils/waliDecision'
@@ -47,8 +46,9 @@ export function OfficeNotificationsBell({ token }: Props) {
   const { t } = useTranslation()
   const { counts } = useOfficeHubCounts(token)
   const unread = counts.unread_notifications
+  const countLabel = unread > 99 ? '99+' : String(unread)
   const label =
-    unread > 0 ? `${t('navNotifications')} (${unread > 99 ? '99+' : unread})` : t('navNotifications')
+    unread > 0 ? `${t('navNotifications')} (${countLabel})` : t('navNotifications')
 
   return (
     <Link
@@ -59,7 +59,11 @@ export function OfficeNotificationsBell({ token }: Props) {
     >
       <span className="notifBellIconWrap">
         <HubIcon name="notifications" className="notifBellIcon" />
-        <HubCountBadge count={unread} className="notifCount" />
+        {unread > 0 ? (
+          <span className="notifBellCount" aria-hidden="true">
+            {countLabel}
+          </span>
+        ) : null}
       </span>
       <span className="notifBellLabel">{t('navNotifications')}</span>
     </Link>

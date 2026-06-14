@@ -39,12 +39,12 @@ flowchart TD
 
 ## Four content kinds (`content_kind` on `rapport_types`)
 
-| Kind | Code | Summary | Versioning | Wali interaction |
-| ---- | ---- | ------- | ---------- | ---------------- |
-| **1 — Table grid** | `table_grid` | One or more **tables** per service; typed columns; formulas; row visibility; cell highlights | Usually **versioned**; archive old versions for graphs | Per-table or whole-rapport submit; feedback optional or required |
-| **2 — Document compose** | `document_compose` | **List of files**; each file = rich blocks (text, table, image) → PDF/Word | **Standalone** (new file per subject/date) | Wali reads export-like view; note on file |
-| **3 — Fiche lecture** | `fiche_lecture` | Same as type 2 but **shared** by all office users; **new file every time** (dated) | **Standalone** (always new file + date) | Wali inbox grouped by date; optional note |
-| **4 — Commune list** | `commune_list` | List of **communes** → per-commune table or form | Configurable: versioned whole état or standalone per period | Wali filters communes; sees highlighted rows |
+| Kind                     | Code               | Summary                                                                                      | Versioning                                                  | Wali interaction                                                 |
+| ------------------------ | ------------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| **1 — Table grid**       | `table_grid`       | One or more **tables** per service; typed columns; formulas; row visibility; cell highlights | Usually **versioned**; archive old versions for graphs      | Per-table or whole-rapport submit; feedback optional or required |
+| **2 — Document compose** | `document_compose` | **List of files**; each file = rich blocks (text, table, image) → PDF/Word                   | **Standalone** (new file per subject/date)                  | Wali reads export-like view; note on file                        |
+| **3 — Fiche lecture**    | `fiche_lecture`    | Same as type 2 but **shared** by all office users; **new file every time** (dated)           | **Standalone** (always new file + date)                     | Wali inbox grouped by date; optional note                        |
+| **4 — Commune list**     | `commune_list`     | List of **communes** → per-commune table or form                                             | Configurable: versioned whole état or standalone per period | Wali filters communes; sees highlighted rows                     |
 
 Admin configures `content_kind` when creating a service / rapport type. A **service** may contain **multiple tables** (type 1) or **multiple document instances** (types 2–3).
 
@@ -57,14 +57,14 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - **Service** → one or more **`rapport_tables`** (logical sheets).
 - Each table has a **column schema** (`rapport_table_schemas`) with typed columns (reuse Operations ideas):
 
-| Column type | Use | Graphs |
-| ----------- | --- | ------ |
-| `text` | Labels, free text | — |
-| `number` | Amounts, counts | Sum, trend, compare versions |
-| `date` | Dates in cells | Timeline charts |
-| `choice` | Enum / palette | Distribution |
-| `commune_ref` | FK to `municipalities.code` | By commune |
-| `formula` | Computed from other columns | Uses result as number |
+| Column type   | Use                         | Graphs                       |
+| ------------- | --------------------------- | ---------------------------- |
+| `text`        | Labels, free text           | —                            |
+| `number`      | Amounts, counts             | Sum, trend, compare versions |
+| `date`        | Dates in cells              | Timeline charts              |
+| `choice`      | Enum / palette              | Distribution                 |
+| `commune_ref` | FK to `municipalities.code` | By commune                   |
+| `formula`     | Computed from other columns | Uses result as number        |
 
 ### Calculated columns (Excel-like)
 
@@ -77,6 +77,12 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - Each row: `visibility_for_wali`: `visible` | `hidden_by_default`.
 - Wali UI: default shows **visible** rows; button **Afficher lignes masquées** reveals hidden rows when needed (reports with 3 vs 30 lines).
 - **Cell/row highlight**: office sets `highlight` (`none` | `important` | custom color) so Wali sees critical cases (e.g. 3 red rows).
+- **Row finished** (`_row_finished`): office marks a row as done; filter **Actives / Terminées / Toutes** in the table toolbar.
+- **Line numbers (`#`)**: sequential **1…N** in the **current visible list** (after filters), not raw array index. Toolbar shows total count (e.g. « 25 lignes »).
+- **Drag reorder**: editable tables show a drag handle (⋮⋮). Reorder updates `rows[]` array order on save. Scope:
+  - **`table`** (default): any row can move anywhere in the table (table grid, single-commune editor, embedded tables).
+  - **`commune`** (commune bulk entry): reorder **within the same `municipality_code` only** — a row in Tlemcen cannot move into another commune’s block.
+- **Hide rapport / type** (office): soft-hide individual rapports (`rapports.hidden_at`) or rapport types (`rapport_types.hidden_at`) from service hubs; **fiche_lecture** type cannot be hidden as a type. Restore from « hidden » filter. Confirm dialog before hide.
 
 ### Versioning & archive
 
@@ -92,6 +98,11 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ### Attachments at table end
 
 - Optional **attachments block** after table: images/files (like Word annex) stored with version; included in PDF export.
+
+### Table layout (view + export)
+
+- **In-app:** wide tables (`totalCols > 6`) scroll horizontally inside `TableScrollShell` (RTL shell for Arabic).
+- **Export:** same column-weight and landscape rules as `spec/CORE.md` § Table layout policy — PDF RTL column order for Arabic, Word `visuallyRightToLeft`, no automatic page break by row count alone.
 
 ---
 
@@ -111,7 +122,8 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - In-app editor with sticky formatting toolbar (physical left/center/right in RTL UI).
 - Export **PDF** and **DOCX** — body matches editor (colors, alignment, tables, images); **no** rapport title, service header, or calendar section in the file.
 - **Preview** before download; filename `{title} - {date}.pdf|.docx`.
-- Tables with **>3 rows** in export use a portrait page break.
+- Embedded/export tables follow **`spec/CORE.md` § Table layout policy** (no row-count page break; landscape only when width requires it).
+- **`fiche_lecture` export:** after the document body, append the **Wali response block** (decision + optional note + 2 blank ruled lines) when exported from Wali or office preview.
 
 ### Wali flow
 
@@ -132,17 +144,20 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 ## Type 4 — Commune list
 
-### Structure
-
-- Service shows **list of communes** (`municipalities` reference).
-- Click commune → **per-commune panel**: table (type-1 mini) or **custom inputs** (admin-defined schema).
-- Admin can switch **versioning_mode**:
-  - **Versioned**: whole état (all communes) one rapport, new version on send.
-  - **Standalone**: new rapport per period/subject.
-
-### Draft / send
-
-- Office saves **draft** per commune or whole grid; **send to wali** locks version and notifies.
+- Collection of data for **all municipalities** in the Wilaya.
+- **Office view**: Hub of municipalities; click one to edit its specific data **or** use **Bulk Entry** (table mode only) to edit all communes in one grid.
+- **Modes** (`commune_content_kind` on `rapport_types`):
+  - **`complex`**: Rich text document per commune (like type 2). **No linked table schema** required at create time.
+  - **`table`**: Grid rows per commune. **Requires linked table schema**. Same row tools as type 1 (Wali visibility, finished rows, cell colors, merge, filters).
+- **Create rapport type** (admin + office): schema selector shown only for `table_grid` and `commune_list` + `table` — **not** for `document_compose`, `fiche_lecture`, or `commune_list` + `complex`.
+- **Bulk entry (table mode)**:
+  - First column = commune name (read-only).
+  - One empty row per commune by default; add rows per commune without opening each commune page.
+  - Separate per-commune editor still available; commune name is fixed there (cannot rename municipality).
+  - **Drag reorder** uses **`commune` scope**: reorder and `#` numbering are **per commune** in the bulk UI (Tlemcen rows numbered 1…4 only within Tlemcen). Export `#` remains **global sequential** over all exported rows (PDF/Word/Excel).
+- **Versioning**: Incremental whole-état. On submit, compare each commune to last submitted version → `changed_commune_codes`. Unchanged communes keep prior snapshot reference in `commune_versions`.
+- **Wali view**: Hub with badges **Filled** / **Changed**; filter **Modifiées** to see only communes changed in current draft. **Versions archivées** modal (office, wali, admin) to open any past version read-only.
+- **Archive UI**: Use **Versions archivées** popup (not inline dropdown) on all versioned types including commune list and table grid.
 
 ---
 
@@ -184,7 +199,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - **`rapport_table_schemas`**: reusable column definitions — **admin creates/edits via `/admin/schemas`** (not hardcoded per domain).
 - Each **`rapport_type`** with `content_kind = table_grid` links to a schema via `schema_json.table_schema_slug`.
 - Type-2 document composer: **Import schema** into embedded tables; **document templates** for full HTML starters — `SCHEMA_CONFIGURATION.md`.
-- **Demo seeds** (Finance consommation crédits, Hydraulique barrages) are **sample data only** — add real services/schemas through admin UI.
+- **Demo seeds:** `npm run db:seed-demo` (`backend/scripts/seed-demo-presentation.js`) resets domain rapports/services and loads a **presentation dataset** (Hydraulique + Investissement) with table grids (grouped headers, formulas, colors, media, versions, Wali responses), document compose, commune list (table + complex modes), and rich **fiche lecture** (embedded tables, photos from `storage/uploads`). Logins: `office1`, `wali1` — password from `TEST_USER_PASSWORD` env or default `Test1234!`. Sample data only — add real services/schemas through admin UI.
 
 See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
 
@@ -194,48 +209,50 @@ See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
 
 ### Wali navigation
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/wali/office-users` | List office users with pending/submitted counts |
-| `GET` | `/wali/office-users/:userId/services` | Service tree for that user |
-| `GET` | `/wali/services/:serviceId/content` | Open service content (tables/docs/list) |
+| Method | Path                                  | Description                                     |
+| ------ | ------------------------------------- | ----------------------------------------------- |
+| `GET`  | `/wali/office-users`                  | List office users with pending/submitted counts |
+| `GET`  | `/wali/office-users/:userId/services` | Service tree for that user                      |
+| `GET`  | `/wali/services/:serviceId/content`   | Open service content (tables/docs/list)         |
 
 ### Office
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/office/services/tree` | Own service/sub-service tree |
-| `GET` | `/office/rapports/:id/versions` | Archive list |
-| `GET` | `/office/rapports/:id/versions/:versionId` | Read-only old version |
-| `GET` | `/office/notifications` | Wali notes unread |
-| `PATCH` | `/office/notifications/:id/read` | Mark read |
+| Method  | Path                                       | Description                  |
+| ------- | ------------------------------------------ | ---------------------------- |
+| `GET`   | `/office/services/tree`                    | Own service/sub-service tree |
+| `GET`   | `/office/rapports/:id/versions`            | Archive list                 |
+| `GET`   | `/office/rapports/:id/versions/:versionId` | Read-only old version        |
+| `GET`   | `/office/notifications`                    | Wali notes unread            |
+| `PATCH` | `/office/notifications/:id/read`           | Mark read                    |
 
 ### Table grid (type 1)
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/office/rapports/:id/tables/:tableKey` | Table data + schema |
-| `PATCH` | `/office/rapports/:id/tables/:tableKey` | Save draft rows + formulas |
-| `POST` | `/office/rapports/:id/tables/:tableKey/submit` | Submit single table to wali (optional partial submit) |
+| Method  | Path                                           | Description                                           |
+| ------- | ---------------------------------------------- | ----------------------------------------------------- |
+| `GET`   | `/office/rapports/:id/tables/:tableKey`        | Table data + schema                                   |
+| `PATCH` | `/office/rapports/:id/tables/:tableKey`        | Save draft rows + formulas                            |
+| `POST`  | `/office/rapports/:id/tables/:tableKey/submit` | Submit single table to wali (optional partial submit) |
 
 ### Document templates & create (office)
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/office/services/:serviceId/document-templates/for-create` | Templates for new document/fiche |
-| `POST` | `/office/services/:serviceId/documents` | Create document; body `template_id`, `skip_default` |
-| `POST` | `/office/rapports/:id/document/apply-template` | Import template (`replace` \| `append`) |
+| Method | Path                                                        | Description                                         |
+| ------ | ----------------------------------------------------------- | --------------------------------------------------- |
+| `GET`  | `/office/services/:serviceId/document-templates/for-create` | Templates for new document/fiche                    |
+| `POST` | `/office/services/:serviceId/documents`                     | Create document; body `template_id`, `skip_default` |
+| `POST` | `/office/rapports/:id/document/apply-template`              | Import template (`replace` \| `append`)             |
 
 See full CRUD in **`SCHEMA_CONFIGURATION.md`**.
 
 ### Export (office & wali)
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/office/rapports/:id/export.pdf` | PDF (`?locale=ar\|fr`) |
-| `GET` | `/office/rapports/:id/export.docx` | Word |
-| `GET` | `/wali/rapports/:id/export.pdf` | PDF + `?showHidden=0\|1` for table grids |
-| `GET` | `/wali/rapports/:id/export.docx` | Word |
+| Method | Path                               | Description                              |
+| ------ | ---------------------------------- | ---------------------------------------- |
+| `GET`  | `/office/rapports/:id/export.xlsx` | Excel (table grid; Wali/meta columns, cell colors) |
+| `GET`  | `/office/rapports/:id/export.pdf`  | PDF (`?locale=ar\|fr`)                   |
+| `GET`  | `/office/rapports/:id/export.docx` | Word                                     |
+| `GET`  | `/wali/rapports/:id/export.xlsx`   | Excel (same as office for table types)   |
+| `GET`  | `/wali/rapports/:id/export.pdf`    | PDF + `?showHidden=0\|1` for table grids |
+| `GET`  | `/wali/rapports/:id/export.docx`   | Word                                     |
 
 Details: **`spec/CORE.md`** § Rapport export.
 
@@ -243,7 +260,12 @@ Details: **`spec/CORE.md`** § Rapport export.
 
 ## UI/UX — Wali presentation rules
 
-- **Tables:** bordered grid, sticky header, RTL numbers aligned; hidden rows collapsed with expand control.
+- **Inbox list** (`/wali/rapports`): columns for title, **service**, **rapport type**, status, actions.
+- **Status colors:** row background tints by status (`submitted`, `under_review`, `acknowledged`, `changes_requested`); legend bar at top of inbox.
+- **New submissions:** `is_inbox_new` shows **« جديد »** badge on title; row classes `waliInboxRowNew` / `waliInboxRowPending`.
+- **Wali decision on row:** when a response exists, show compact decision badge under status (not a duplicate full note).
+- **Top bar counter:** **one** pending inbox count on `WaliInboxBell` (`inbox_pending` from hub counts API) — do not duplicate inbox badges on service hub tiles in Wali navigation.
+- **Tables:** bordered grid, sticky header, RTL column order in Arabic; horizontal scroll when wide; hidden rows collapsed with expand control.
 - **Highlights:** warm/yellow/red badges on rows/cells — legend at top.
 - **Documents:** A4-width editor; export preview modal; centered titles inside content; bold section headings; sticky toolbar.
 - **Version button:** prominent **Versions archivées** on versioned types.
@@ -254,25 +276,25 @@ Details: **`spec/CORE.md`** § Rapport export.
 
 ## Audit events (additional)
 
-| Action type | When |
-| ----------- | ---- |
-| `RAPPORT_TABLE_SAVE` | Draft table save |
-| `RAPPORT_TABLE_SUBMIT` | Table submitted to wali |
-| `RAPPORT_VERSION_OPEN` | User opens archived version |
-| `RAPPORT_FORMULA_RECALC` | Formula engine run |
-| `NOTIFICATION_READ` | Office marks notification read |
+| Action type              | When                           |
+| ------------------------ | ------------------------------ |
+| `RAPPORT_TABLE_SAVE`     | Draft table save               |
+| `RAPPORT_TABLE_SUBMIT`   | Table submitted to wali        |
+| `RAPPORT_VERSION_OPEN`   | User opens archived version    |
+| `RAPPORT_FORMULA_RECALC` | Formula engine run             |
+| `NOTIFICATION_READ`      | Office marks notification read |
 
 ---
 
 ## Implementation phases
 
-| Phase | Scope |
-| ----- | ----- |
+| Phase  | Scope                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------- |
 | **2a** | DB: sub_services, content_kind, schemas, notifications; Wali office-user → service tree API |
-| **2b** | Type 1 table UI + column types + row visibility + highlights |
-| **2c** | Formula engine + formats |
-| **2d** | Type 2/3 rich editor + document templates + PDF/DOCX export + preview **(implemented)** |
-| **2e** | Type 4 commune list + graphs from version archive |
+| **2b** | Type 1 table UI + column types + row visibility + highlights                                |
+| **2c** | Formula engine + formats                                                                    |
+| **2d** | Type 2/3 rich editor + document templates + PDF/DOCX export + preview **(implemented)**     |
+| **2e** | Type 4 commune list + graphs from version archive                                           |
 
 ---
 

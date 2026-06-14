@@ -1,0 +1,267 @@
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import * as api from "../api";
+import { BackButton } from "../components/BackButton";
+import {
+  TableTitleBlock,
+  TableWorkspace,
+} from "../components/TableGridView";
+import { RichDocumentView } from "../components/RichDocumentEditor";
+import { CalendarEventsView } from "../components/CalendarEventsEditor";
+import { WaliResponsesSection } from "../components/WaliResponsesSection";
+import { useSnackbar } from "../snackbar/SnackbarContext";
+import {
+  buildEmptyCommuneRow,
+  rowsWithCommuneNames,
+  sortRowsByCommune,
+  withCommuneNameColumn,
+} from "../utils/communeBulkTable";
+import type { TableMeta } from "../utils/tableLayout";
+import { versionsListPath } from "../utils/rapportVersionsNav";
+import { RapportExportButtons } from "../components/ExportPdfButton";
+
+type DetailProps = {
+  token: string;
+  wali?: boolean;
+  returnTo?: string;
+};
+
+export function RapportVersionDetail({
+  token,
+  wali = false,
+  returnTo,
+}: DetailProps) {
+  const { rapportId, versionId } = useParams();
+  const rid = Number(rapportId);
+  const vid = Number(versionId);
+  const { t, i18n } = useTranslation();
+  const snack = useSnackbar();
+  const [rapport, setRapport] = useState<any>(null);
+  const [version, setVersion] = useState<any>(null);
+  const [schema, setSchema] = useState<any>(null);
+  const [municipalities, setMunicipalities] = useState<
+    { code: string; name_ar: string; name_fr: string }[]
+  >([]);
+  const [loading, setLoading] = useState(true);
+
+  const listBack = versionsListPath(rid, wali, returnTo);
+
+  useEffect(() => {
+    if (!rid || !vid) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [rRes, vRes] = await Promise.all([
+          wali ? api.getWaliRapportView(token, rid, false) : api.getRapport(token, rid),
+          wali
+            ? api.getWaliRapportVersion(token, rid, vid)
+            : api.getRapportVersion(token, rid, vid),
+        ]);
+        if (cancelled) return;
+        setRapport(rRes.rapport);
+        setVersion(vRes.version);
+        const kind = rRes.rapport?.rapportType?.content_kind;
+        const snap = vRes.version?.data_json?.schema_snapshot;
+        if (kind === "table_grid") {
+          if (snap && !cancelled) {
+            setSchema(snap);
+          } else if (rRes.rapport?.service_id) {
+            try {
+              const ws = await api.getTableWorkspace(token, rRes.rapport.service_id, {
+                rapportId: rid,
+              });
+              if (!cancelled) setSchema(ws.schema);
+            } catch {
+              /* optional schema */
+            }
+          }
+        } else if (
+          kind === "commune_list" &&
+          rRes.rapport?.rapportType?.commune_content_kind === "table" &&
+          rRes.rapport?.service_id
+        ) {
+          try {
+            const ws = await api.getCommuneWorkspace(token, rRes.rapport.service_id, {
+              rapportId: rid,
+            });
+            if (!cancelled) {
+              setSchema(ws.schema);
+              setMunicipalities(ws.municipalities || []);
+            }
+          } catch {
+            /* optional schema */
+          }
+        } else if (kind === "commune_list" && rRes.rapport?.service_id) {
+          try {
+            const ws = await api.getCommuneWorkspace(token, rRes.rapport.service_id, {
+              rapportId: rid,
+            });
+            if (!cancelled) setMunicipalities(ws.municipalities || []);
+          } catch {
+            /* optional */
+          }
+        }
+      } catch {
+        if (!cancelled) snack.show(t("errorGeneric"), "error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rid, vid, token, wali, snack, t]);
+
+  const kind = rapport?.rapportType?.content_kind;
+  const data = version?.data_json || {};
+
+  const tableContent = useMemo(() => {
+    if (kind === "table_grid") {
+      const table = data.tables?.[0] || {};
+      const snap = data.schema_snapshot;
+      const columns = snap?.columns || schema?.columns || [];
+      const layoutJson = snap?.layout_json || schema?.layout_json || null;
+      const tableMeta: TableMeta = {
+        title_ar: table.title_ar,
+        title_fr: table.title_fr,
+        subtitle_ar: table.subtitle_ar,
+        subtitle_fr: table.subtitle_fr,
+        merge_column_keys: table.merge_column_keys || [],
+      };
+      return { columns, layoutJson, tableMeta, rows: table.rows || [] };
+    }
+    if (kind === "commune_list" && rapport?.rapportType?.commune_content_kind === "table") {
+      const communes = data.communes || {};
+      const nameByCode = new Map(
+        municipalities.map((m) => [m.code, { name_ar: m.name_ar, name_fr: m.name_fr }]),
+      );
+      const columns = schema?.columns || [];
+      const allRows: Record<string, unknown>[] = [];
+      for (const [code, entry] of Object.entries(communes) as [string, any][]) {
+        const names = nameByCode.get(code);
+        const nameAr = names?.name_ar || entry?.name_ar || code;
+        const nameFr = names?.name_fr || entry?.name_fr || code;
+        const communeRows = entry?.rows?.length
+          ? entry.rows
+          : [buildEmptyCommuneRow({ code, name_ar: nameAr, name_fr: nameFr })];
+        for (const r of communeRows) {
+          allRows.push({
+            ...r,
+            municipality_code: code,
+            _municipality_name_ar: nameAr,
+            _municipality_name_fr: nameFr,
+          });
+        }
+      }
+      return {
+        columns: withCommuneNameColumn(columns),
+        layoutJson: schema?.layout_json || null,
+        tableMeta: { title_ar: rapport.title, title_fr: rapport.title },
+        rows: rowsWithCommuneNames(sortRowsByCommune(allRows), i18n.language),
+      };
+    }
+    return null;
+  }, [kind, data, schema, rapport, municipalities, i18n.language]);
+
+  return (
+    <div className="page rapportVersionViewPage">
+      <div className="pageHeader row compact">
+        <div>
+          <h1>{rapport?.title || t("viewVersion")}</h1>
+          {version ? (
+            <p className="muted small rapportVersionViewMeta">
+              {t("viewVersion")} v{version.version_number}
+              {version.submitted_at
+                ? ` — ${new Date(version.submitted_at).toLocaleString()}`
+                : ` — ${t("statusDraft")}`}
+            </p>
+          ) : null}
+        </div>
+        <div className="pageHeaderActions">
+          <span className="badge badge-submitted">{t("accessView")}</span>
+          {rapport?.id && version?.id ? (
+            <RapportExportButtons
+              token={token}
+              rapportId={rid}
+              wali={wali}
+              versionId={vid}
+            />
+          ) : null}
+          <BackButton to={listBack} fallbackTo={listBack} replace />
+        </div>
+      </div>
+
+      {loading ? <p className="muted">{t("loading")}</p> : null}
+
+      {!loading && tableContent ? (
+        <div className="card rapportVersionViewCard">
+          <TableTitleBlock tableMeta={tableContent.tableMeta} editable={false} />
+          <TableWorkspace
+            columns={tableContent.columns}
+            rows={tableContent.rows}
+            layoutJson={tableContent.layoutJson}
+            tableMeta={tableContent.tableMeta}
+            editable={false}
+            showRowMeta
+            rowCount={tableContent.rows.length}
+            finishedCount={0}
+            filterMode="all"
+            onFilterModeChange={() => {}}
+            showHeader={false}
+          />
+        </div>
+      ) : null}
+
+      {!loading && (kind === "document_compose" || kind === "fiche_lecture") ? (
+        <div className="card rapportVersionViewCard">
+          <RichDocumentView
+            data={{
+              rich_html_ar: data.rich_html_ar,
+              rich_html_fr: data.rich_html_fr,
+              blocks: data.blocks,
+              embedded_tables: data.embedded_tables,
+            }}
+            locale={i18n.language}
+            token={token}
+            serviceId={rapport?.service_id}
+          />
+        </div>
+      ) : null}
+
+      {!loading &&
+      kind === "commune_list" &&
+      rapport?.rapportType?.commune_content_kind !== "table" ? (
+        <div className="card rapportVersionViewCard">
+          <p className="muted">{t("communeVersionComplexHint")}</p>
+          <ul className="rapportVersionCommuneList">
+            {Object.keys(data.communes || {}).map((code) => {
+              const m = municipalities.find((x) => x.code === code);
+              const label =
+                i18n.language === "fr"
+                  ? m?.name_fr || code
+                  : m?.name_ar || code;
+              return <li key={code}>{label}</li>;
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {!loading && data.calendar_events?.length ? (
+        <CalendarEventsView events={data.calendar_events} />
+      ) : null}
+
+      {wali && rapport?.waliResponses ? (
+        <WaliResponsesSection responses={rapport.waliResponses} />
+      ) : null}
+    </div>
+  );
+}
+
+/** @deprecated Use RapportVersionsArchivePage with optional :versionId route param */
+export function RapportVersionViewPage(props: { token: string; wali?: boolean }) {
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || undefined;
+  return <RapportVersionDetail {...props} returnTo={returnTo} />;
+}

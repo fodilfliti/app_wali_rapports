@@ -42,6 +42,7 @@ import { useSnackbar } from '../snackbar/SnackbarContext'
 
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { hasBilingualText } from '../utils/bilingual'
+import { needsLinkedTableSchema } from '../utils/rapportTypeSchema'
 
 
 
@@ -99,6 +100,8 @@ export function AdminSchemasPage({ token }: Props) {
     content_kind: 'table_grid',
 
     versioning_mode: 'versioned',
+
+    commune_content_kind: 'complex',
 
     table_schema_slug: '',
 
@@ -382,10 +385,12 @@ export function AdminSchemasPage({ token }: Props) {
 
         versioning_mode: typeForm.versioning_mode,
 
-        table_schema_slug:
-          typeForm.content_kind === 'table_grid' || typeForm.content_kind === 'commune_list'
-            ? typeForm.table_schema_slug
-            : undefined,
+        commune_content_kind:
+          typeForm.content_kind === 'commune_list' ? typeForm.commune_content_kind : undefined,
+
+        table_schema_slug: needsLinkedTableSchema(typeForm.content_kind, typeForm.commune_content_kind)
+          ? typeForm.table_schema_slug
+          : undefined,
 
       })
 
@@ -692,7 +697,22 @@ export function AdminSchemasPage({ token }: Props) {
 
             </ExpandableHelp>
 
-            {typeForm.content_kind === 'table_grid' || typeForm.content_kind === 'commune_list' ? (
+            {typeForm.content_kind === 'commune_list' ? (
+              <label>
+                {t('communeContentKind')}
+                <select
+                  value={typeForm.commune_content_kind}
+                  onChange={(e) =>
+                    setTypeForm({ ...typeForm, commune_content_kind: e.target.value })
+                  }
+                >
+                  <option value="complex">{t('communeContentKind_complex')}</option>
+                  <option value="table">{t('communeContentKind_table')}</option>
+                </select>
+              </label>
+            ) : null}
+
+            {needsLinkedTableSchema(typeForm.content_kind, typeForm.commune_content_kind) ? (
               <label>
                 {t('linkedSchema')}
                 <select

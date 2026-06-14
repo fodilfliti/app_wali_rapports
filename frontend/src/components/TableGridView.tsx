@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { useTranslation } from 'react-i18next'
 
@@ -39,8 +39,46 @@ import {
 
 } from '../utils/tableCellColors'
 import { filterTableRowEntries, type TableRowFilterMode } from '../utils/tableRowMeta'
+import {
+  canReorderRowTo,
+  visibleRowLineNumberForScope,
+  reorderRowsArray,
+  type TableRowReorderScope,
+} from '../utils/tableRowReorder'
+import { TableScrollShell } from './TableScrollShell'
+import { countViewMetaColumns } from '../utils/tableLayoutPolicy'
 
+function TableCellTextarea({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
 
+  function resize() {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.max(el.scrollHeight, 28)}px`
+  }
+
+  useEffect(() => {
+    resize()
+  }, [value])
+
+  return (
+    <textarea
+      ref={ref}
+      className="tableCellTextarea"
+      rows={1}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onInput={resize}
+    />
+  )
+}
 
 type Props = {
 
@@ -62,6 +100,8 @@ type Props = {
 
   onUpdateCellColor?: (rowIdx: number, colKey: string, color: string | null) => void
   onDeleteRow?: (rowIdx: number) => void
+  onReorderRows?: (fromIdx: number, toIdx: number) => void
+  reorderScope?: TableRowReorderScope
   showFinishedRows?: boolean
   rowFilterMode?: TableRowFilterMode
   onTableMetaChange?: (patch: Partial<TableMeta>) => void
@@ -71,6 +111,8 @@ type Props = {
   hideColorToolbar?: boolean
   activeCellColor?: TableColorKey
   onActiveCellColorChange?: (color: TableColorKey) => void
+  /** Table embedded in document/fiche (affects layout policy). */
+  embedded?: boolean
 
 }
 
@@ -280,6 +322,33 @@ function TableRowDeleteButton({
   )
 }
 
+function TableRowDragHandle({
+  title,
+  active,
+  onPointerDown,
+}: {
+  title: string
+  active?: boolean
+      onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`tableRowDragHandle${active ? ' tableRowDragHandle--active' : ''}`}
+      title={title}
+      aria-label={title}
+      onPointerDown={onPointerDown}
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden focusable="false">
+        <path
+          fill="currentColor"
+          d="M9 5h2v2H9V5zm0 6h2v2H9v-2zm0 6h2v2H9v-2zm4-12h2v2h-2V5zm0 6h2v2h-2v-2zm0 6h2v2h-2v-2z"
+        />
+      </svg>
+    </button>
+  )
+}
+
 function TableRowDeleteHeader({ title, rowSpan }: { title: string; rowSpan?: number }) {
   return (
     <th className="tableRowDeleteCol" title={title} aria-label={title} rowSpan={rowSpan}>
@@ -367,6 +436,7 @@ export function TableRowFilterBar({
           </button>
         ))}
       </div>
+      <p className="muted small tableRowTotalHint">{t('tableRowTotalLines', { count: totalCount })}</p>
     </div>
   )
 }
@@ -391,13 +461,15 @@ export function TableWorkspaceHeader({
 
   return (
     <div className="tableWorkspaceHeader">
-      <TableRowFilterBar
-        filterMode={filterMode}
-        finishedCount={finishedCount}
-        activeCount={activeCount}
-        totalCount={rowCount}
-        onFilterModeChange={onFilterModeChange}
-      />
+      {editable ? (
+        <TableRowFilterBar
+          filterMode={filterMode}
+          finishedCount={finishedCount}
+          activeCount={activeCount}
+          totalCount={rowCount}
+          onFilterModeChange={onFilterModeChange}
+        />
+      ) : null}
       <TableRowActions editable={editable} onAddRow={onAddRow} prominent />
     </div>
   )
@@ -417,6 +489,7 @@ export function TableWorkspace({
   onAddRow,
   showHeader = true,
   className,
+  reorderScope,
   ...gridProps
 }: Props & {
   rowCount: number
@@ -426,6 +499,7 @@ export function TableWorkspace({
   onAddRow?: () => void
   showHeader?: boolean
   className?: string
+  reorderScope?: TableRowReorderScope
 }) {
   const [activeCellColor, setActiveCellColor] = useState<TableColorKey>('none')
   const canPaintCells = gridProps.editable && !!gridProps.onUpdateCellColor
@@ -452,6 +526,7 @@ export function TableWorkspace({
       <div className="tableWorkspaceBody tableWrap excelTable">
         <TableGridView
           {...gridProps}
+          reorderScope={reorderScope}
           rowFilterMode={filterMode}
           hideColorToolbar
           activeCellColor={activeCellColor}
@@ -521,6 +596,10 @@ export function TableGridView({
 
   onDeleteRow,
 
+  onReorderRows,
+
+  reorderScope = 'table',
+
   showFinishedRows,
 
   rowFilterMode: rowFilterModeProp,
@@ -530,6 +609,8 @@ export function TableGridView({
   activeCellColor: activeCellColorProp,
 
   onActiveCellColorChange,
+
+  embedded = false,
 
 }: Props) {
 
@@ -557,6 +638,79 @@ export function TableGridView({
 
   const canDeleteRows = editable && !!onDeleteRow && rows.length > 1
 
+  const showLineNumbers = showRowMeta
+  const showAdminMeta = showRowMeta && editable
+
+  const showDragCol = showAdminMeta && !!onReorderRows
+
+  const tbodyRef = useRef<HTMLTableSectionElement>(null)
+
+  const [dragFromIdx, setDragFromIdx] = useState<number | null>(null)
+
+  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null)
+
+  const dragFromRef = useRef<number | null>(null)
+
+  function resolveRowIndexFromPointer(clientY: number) {
+    const tbody = tbodyRef.current
+    if (!tbody) return null
+    const trs = [...tbody.querySelectorAll('tr[data-row-idx]')] as HTMLElement[]
+    for (const tr of trs) {
+      const rect = tr.getBoundingClientRect()
+      const mid = rect.top + rect.height / 2
+      if (clientY < mid) {
+        const idx = Number(tr.dataset.rowIdx)
+        return Number.isFinite(idx) ? idx : null
+      }
+    }
+    const last = trs[trs.length - 1]
+    if (!last) return null
+    const idx = Number(last.dataset.rowIdx)
+    return Number.isFinite(idx) ? idx : null
+  }
+
+  function finishRowDrag() {
+    dragFromRef.current = null
+    setDragFromIdx(null)
+    setDropTargetIdx(null)
+  }
+
+  function startRowDrag(e: ReactPointerEvent<HTMLButtonElement>, fromIdx: number) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragFromRef.current = fromIdx
+    setDragFromIdx(fromIdx)
+    setDropTargetIdx(fromIdx)
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  useEffect(() => {
+    if (dragFromIdx == null) return
+
+    function onMove(e: PointerEvent) {
+      if (dragFromRef.current == null) return
+      setDropTargetIdx(resolveRowIndexFromPointer(e.clientY))
+    }
+
+    function onUp(e: PointerEvent) {
+      if (dragFromRef.current == null) return
+      const from = dragFromRef.current
+      const to = resolveRowIndexFromPointer(e.clientY) ?? dropTargetIdx
+      if (to != null && onReorderRows && canReorderRowTo(rows, from, to, reorderScope)) {
+        onReorderRows(from, to)
+      }
+      finishRowDrag()
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [dragFromIdx, dropTargetIdx, onReorderRows, reorderScope, rows])
+
   const [internalCellColor, setInternalCellColor] = useState<TableColorKey>('none')
 
   const activeCellColor = activeCellColorProp ?? internalCellColor
@@ -579,43 +733,53 @@ export function TableGridView({
 
   }
 
+  const showDeleteCol = showAdminMeta && !!onDeleteRow
 
+  const dragHintKey = reorderScope === 'commune' ? 'dragRowCommuneHint' : 'dragRowHint'
 
-  const metaHeaderCells = showRowMeta ? (
-
-    <>
-
-      <th className="tableWaliVisibleCol">
-        <WaliVisibleHeaderContent rows={rows} editable={editable} onSetAllWaliVisible={onSetAllWaliVisible} />
-      </th>
-
-      <th className="tableRowNumCol">#</th>
-
-    </>
-
+  const dragHeaderCell = showDragCol ? (
+    <th rowSpan={header.hasGroupRow ? 2 : 1} className="tableRowDragCol" title={t(dragHintKey)}>
+      ⋮⋮
+    </th>
   ) : null
-
-
-
-  const metaFooterCells = showRowMeta ? (
-
-    <>
-
-      <td />
-
-      <td className="tableFooterLabel" />
-
-    </>
-
-  ) : null
-
-  const showDeleteCol = showRowMeta && !!onDeleteRow
 
   const deleteMetaHeader = showDeleteCol ? (
     <TableRowDeleteHeader title={t('deleteRow')} />
   ) : null
 
+  const metaHeaderCells = showLineNumbers || showAdminMeta ? (
 
+    <>
+
+      {dragHeaderCell}
+
+      {showAdminMeta ? (
+        <th className="tableWaliVisibleCol">
+          <WaliVisibleHeaderContent rows={rows} editable={editable} onSetAllWaliVisible={onSetAllWaliVisible} />
+        </th>
+      ) : null}
+
+      {showLineNumbers ? <th className="tableRowNumCol">#</th> : null}
+
+    </>
+
+  ) : null
+
+
+
+  const metaFooterCells = showLineNumbers || showAdminMeta ? (
+
+    <>
+
+      {showDragCol ? <td className="tableRowDragCol" /> : null}
+
+      {showAdminMeta ? <td /> : null}
+
+      {showLineNumbers ? <td className="tableFooterLabel" /> : null}
+
+    </>
+
+  ) : null
 
   return (
 
@@ -627,6 +791,13 @@ export function TableGridView({
 
       ) : null}
 
+      <TableScrollShell
+        columns={columns}
+        rows={visibleRows}
+        metaColCount={countViewMetaColumns(showRowMeta, !!editable)}
+        embedded={embedded}
+      >
+
       <table>
 
         <thead>
@@ -635,19 +806,25 @@ export function TableGridView({
 
             <tr className="headerGroupRow">
 
-              {showRowMeta ? (
+              {(showLineNumbers || showAdminMeta) ? (
 
                 <>
 
-                  <th rowSpan={2} className="tableWaliVisibleCol">
-                    <WaliVisibleHeaderContent rows={rows} editable={editable} onSetAllWaliVisible={onSetAllWaliVisible} />
-                  </th>
+                  {dragHeaderCell}
 
-                  <th rowSpan={2} className="tableRowNumCol">
+                  {showAdminMeta ? (
+                    <th rowSpan={2} className="tableWaliVisibleCol">
+                      <WaliVisibleHeaderContent rows={rows} editable={editable} onSetAllWaliVisible={onSetAllWaliVisible} />
+                    </th>
+                  ) : null}
 
-                    #
+                  {showLineNumbers ? (
+                    <th rowSpan={2} className="tableRowNumCol">
 
-                  </th>
+                      #
+
+                    </th>
+                  ) : null}
 
                 </>
 
@@ -663,7 +840,7 @@ export function TableGridView({
 
               ))}
 
-              {showRowMeta ? (
+              {showAdminMeta ? (
 
                 <>
 
@@ -683,7 +860,7 @@ export function TableGridView({
 
           <tr>
 
-            {showRowMeta && !header.hasGroupRow ? metaHeaderCells : null}
+            {(showLineNumbers || showAdminMeta) && !header.hasGroupRow ? metaHeaderCells : null}
 
             {displayCols.map((c) => (
 
@@ -691,47 +868,79 @@ export function TableGridView({
 
             ))}
 
-            {showRowMeta && !header.hasGroupRow ? (
+            {showAdminMeta && !header.hasGroupRow ? (
 
               <th className="tableFinishedCol" title={t('rowFinished')}>{t('rowFinishedShort')}</th>
 
             ) : null}
 
-            {showRowMeta && !header.hasGroupRow && showDeleteCol ? deleteMetaHeader : null}
+            {showAdminMeta && !header.hasGroupRow && showDeleteCol ? deleteMetaHeader : null}
 
           </tr>
 
         </thead>
 
-        <tbody>
+        <tbody ref={tbodyRef}>
 
           {rowEntries.map(({ row, idx }, visibleIdx) => {
 
+            const isDropTarget =
+              dragFromIdx != null &&
+              dropTargetIdx === idx &&
+              dragFromIdx !== idx &&
+              canReorderRowTo(rows, dragFromIdx, idx, reorderScope)
+
             return (
 
-              <tr key={idx} className={row._row_finished === true ? 'tableRowFinished' : undefined}>
+              <tr
+                key={idx}
+                data-row-idx={idx}
+                className={[
+                  row._row_finished === true ? 'tableRowFinished' : '',
+                  dragFromIdx === idx ? 'tableRowDragging' : '',
+                  isDropTarget ? 'tableRowDropTarget' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined}
+              >
 
-                {showRowMeta ? (
+                {(showLineNumbers || showAdminMeta) ? (
 
                   <>
 
-                    <td className="tableWaliVisibleCol">
-                      <div className="tableWaliVisibleCell">
-                        {editable && onUpdateRow ? (
-                          <input
-                            type="checkbox"
-                            checked={row._wali_visible !== false}
-                            onChange={(e) => onUpdateRow(idx, '_wali_visible', e.target.checked)}
-                          />
-                        ) : row._wali_visible !== false ? (
-                          '✓'
-                        ) : (
-                          '—'
-                        )}
-                      </div>
-                    </td>
+                    {showDragCol ? (
+                      <td className="tableRowDragCol">
+                        <TableRowDragHandle
+                          title={t(dragHintKey)}
+                          active={dragFromIdx === idx}
+                          onPointerDown={(e) => startRowDrag(e, idx)}
+                        />
+                      </td>
+                    ) : null}
 
-                    <td className="tableRowNumCol">{idx + 1}</td>
+                    {showAdminMeta ? (
+                      <td className="tableWaliVisibleCol">
+                        <div className="tableWaliVisibleCell">
+                          {editable && onUpdateRow ? (
+                            <input
+                              type="checkbox"
+                              checked={row._wali_visible !== false}
+                              onChange={(e) => onUpdateRow(idx, '_wali_visible', e.target.checked)}
+                            />
+                          ) : row._wali_visible !== false ? (
+                            '✓'
+                          ) : (
+                            '—'
+                          )}
+                        </div>
+                      </td>
+                    ) : null}
+
+                    {showLineNumbers ? (
+                      <td className="tableRowNumCol">
+                        {visibleRowLineNumberForScope(rowEntries, visibleIdx, reorderScope)}
+                      </td>
+                    ) : null}
 
                   </>
 
@@ -773,6 +982,8 @@ export function TableGridView({
 
                         cellBg ? 'tableColoredCell' : '',
 
+                        col.type === 'text' ? 'tableTextCol' : '',
+
                       ]
 
                         .filter(Boolean)
@@ -787,9 +998,9 @@ export function TableGridView({
 
                     >
 
-                      {col.type === 'formula' || col.type === 'commune_ref' ? (
+                      {col.type === 'formula' || col.type === 'commune_ref' || col.key === '__commune_name' ? (
 
-                        <span>{col.type === 'commune_ref' ? String(cellVal ?? '') : formatCell(row[col.key], col, locale)}</span>
+                        <span>{col.type === 'commune_ref' || col.key === '__commune_name' ? String(cellVal ?? '') : formatCell(row[col.key], col, locale)}</span>
 
                       ) : editable && onUpdateRow && col.type === 'choice' ? (
 
@@ -815,6 +1026,16 @@ export function TableGridView({
 
                         </select>
 
+                      ) : editable && onUpdateRow && col.type === 'text' ? (
+
+                        <TableCellTextarea
+
+                          value={String(row[col.key] ?? '')}
+
+                          onChange={(v) => onUpdateRow(idx, col.key, v)}
+
+                        />
+
                       ) : editable && onUpdateRow ? (
 
                         <input
@@ -833,6 +1054,14 @@ export function TableGridView({
 
                         />
 
+                      ) : col.type === 'text' ? (
+
+                        <span className="tableCellTextDisplay">
+
+                          {formatCell(row[col.key], col, locale)}
+
+                        </span>
+
                       ) : (
 
                         formatCell(row[col.key], col, locale)
@@ -845,7 +1074,7 @@ export function TableGridView({
 
                 })}
 
-                {showRowMeta ? (
+                {showAdminMeta ? (
 
                   <td className="tableFinishedCol">
 
@@ -908,7 +1137,7 @@ export function TableGridView({
 
             <tr className="tableFooterRow">
 
-              {showRowMeta ? metaFooterCells : null}
+              {(showLineNumbers || showAdminMeta) ? metaFooterCells : null}
 
               {displayCols.map((dc) => {
 
@@ -958,7 +1187,7 @@ export function TableGridView({
 
               })}
 
-              {showRowMeta ? <td className="tableFinishedCol" /> : null}
+              {showAdminMeta ? <td className="tableFinishedCol" /> : null}
 
               {showDeleteCol ? <td className="tableRowDeleteCol" /> : null}
 
@@ -969,6 +1198,8 @@ export function TableGridView({
         ) : null}
 
       </table>
+
+      </TableScrollShell>
 
     </>
 

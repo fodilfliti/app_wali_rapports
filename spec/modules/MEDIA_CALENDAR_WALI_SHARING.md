@@ -38,7 +38,8 @@ Canonical rules: **`spec/CORE.md`** § Rapport export.
 - **Document/fiche body:** rich HTML + embedded tables/images only — **excludes** rapport title, service name, and **calendar events** (calendar stays in Wali hub + editor UI).
 - **Table grid:** table title/subtitle, grid, table media attachments.
 - PDF and DOCX include **images**; videos show a placeholder note (not embedded).
-- Arabic: Tahoma + PDF RTL shaping; tables/bordered blocks have export margins; tables **>3 rows** → portrait page break.
+- Arabic: Tahoma; PDF tables use RTL column order + right-aligned cells (`liga`/`calt`, not `rtla`); tables follow **`spec/CORE.md` § Table layout policy** (margins, landscape when wide, no row-count page break).
+- **Fiche lecture:** Wali response export block appended after body — `spec/CORE.md` § Wali response export block.
 - Audit: `RAPPORT_PDF_EXPORT`, `RAPPORT_DOCX_EXPORT`
 
 ### Calendar events

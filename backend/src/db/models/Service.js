@@ -5,7 +5,7 @@ module.exports = (sequelize) =>
     "Service",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
-      department_id: { type: DataTypes.BIGINT, allowNull: false },
+      department_id: { type: DataTypes.BIGINT, allowNull: true },
       slug: { type: DataTypes.STRING(80), allowNull: false, unique: true },
       name_ar: { type: DataTypes.STRING(200), allowNull: false },
       name_fr: { type: DataTypes.STRING(200), allowNull: false },

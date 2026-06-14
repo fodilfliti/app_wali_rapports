@@ -139,10 +139,6 @@ export function GuestLoginPage({ onSuccess, lang, onToggleLang }: Props) {
               {loading ? '…' : t('signIn')}
             </button>
           </form>
-
-          {import.meta.env.DEV ? (
-            <p className="guestDevLoginHint">{t('guestDevLoginHint')}</p>
-          ) : null}
         </div>
       </section>
     </div>

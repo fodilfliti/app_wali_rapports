@@ -3,7 +3,7 @@ const { bilingualNameShape, refineBilingualNames } = require("../bilingual");
 
 const serviceCreateSchema = refineBilingualNames(
   z.object({
-    department_id: z.number().int().positive(),
+    department_id: z.number().int().positive().nullable().optional(),
     slug: z
       .string()
       .trim()
@@ -23,7 +23,7 @@ const servicePatchSchema = z.object({
   name_fr: z.string().trim().max(200).optional(),
   sort_order: z.number().int().min(0).optional(),
   is_active: z.boolean().optional(),
-  department_id: z.number().int().positive().optional()
+  department_id: z.number().int().positive().nullable().optional()
 });
 
 const serviceGrantsSchema = z.object({

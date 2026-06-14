@@ -10,10 +10,24 @@ const {
   loadExportData
 } = require("./rapportExportData");
 const { drawRichHtmlToPdf, resolveMediaFile } = require("./richHtmlExport");
-const { tableNeedsPortraitPage } = require("./rapportExportTable");
+const {
+  computeTableLayoutPolicy,
+  pdfColumnWidths,
+  pdfCellAlign,
+  buildTableColumnSlots,
+  tableColumnSpanRect,
+  tableNeedsPortraitPage,
+  estimateTableHeightPt,
+  ensurePdfTablePage,
+} = require("./tableLayoutPolicy");
 const { registerPdfFonts, pdfTextOpts } = require("./exportFonts");
 const { EXPORT_ELEMENT_MARGIN_V_PT } = require("./exportLayout");
+const { metaLabel, communeNameCell, metaValuesForRow, exportMetaColumnKeys } = require("./tableExportMeta");
 const { rapportExportFilename } = require("./rapportExportFilename");
+const {
+  getLatestWaliResponse,
+  drawWaliResponseSectionPdf,
+} = require("./waliResponseExport");
 
 const MARGIN = 40;
 const IMAGE_MAX_H = 220;
@@ -145,7 +159,8 @@ function drawRichDocument(doc, dataJson, files, locale, fontName, boldFontName) 
         meta,
         table.rows || [],
         locale,
-        fontName
+        fontName,
+        { embedded: true },
       );
     }
   }
@@ -190,37 +205,71 @@ function portraitPageOpts() {
   return { size: "A4", layout: "portrait", margin: MARGIN };
 }
 
-function drawTable(doc, columns, layoutJson, tableMeta, rows, locale, fontName) {
+function drawTable(
+  doc,
+  columns,
+  layoutJson,
+  tableMeta,
+  rows,
+  locale,
+  fontName,
+  opts = {},
+) {
+  const includeLineNumbers = opts.includeLineNumbers !== false;
+  const includeAdminMeta = !!opts.includeAdminMeta;
+  const includeCommuneNames = !!opts.includeCommuneNames;
   const header = buildHeaderModel(columns, layoutJson, locale);
   const cols = header.columnRow;
-  if (!cols.length) return;
+  if (!cols.length && !includeLineNumbers && !includeCommuneNames && !includeAdminMeta) return;
 
   const dataRows = rows || [];
-  const forcePortrait = tableNeedsPortraitPage(dataRows);
-  if (forcePortrait) {
-    startPortraitTablePage(doc);
+  const metaKeys = exportMetaColumnKeys({ includeCommuneNames, includeAdminMeta });
+  if (!includeLineNumbers) {
+    const numIdx = metaKeys.indexOf("num");
+    if (numIdx !== -1) metaKeys.splice(numIdx, 1);
   }
+  const metaColCount = metaKeys.length;
+  const policy = computeTableLayoutPolicy({
+    columns: cols.map((c) => columns.find((col) => col.key === c.key) || { type: "text" }),
+    rows: dataRows,
+    dataColCount: cols.length,
+    metaColCount,
+    locale,
+    embedded: !!opts.embedded,
+    includeCommuneNames,
+    includeLineNumbers,
+    includeAdminMeta,
+  });
 
-  const landscape = !forcePortrait && cols.length > 6;
-  if (landscape) doc.addPage({ size: "A4", layout: "landscape", margin: MARGIN });
+  ensurePdfTablePage(
+    doc,
+    policy,
+    estimateTableHeightPt(dataRows.length, header.hasGroupRow),
+    MARGIN,
+  );
+
+  const landscape = policy.useLandscape;
 
   const pageW = doc.page.width - MARGIN * 2;
-  const colW = pageW / cols.length;
+  const colWidths = pdfColumnWidths(pageW, policy);
+  const slots = buildTableColumnSlots(colWidths, pageW, MARGIN, locale);
+  const totalCols = policy.totalCols;
   const rowH = 16;
-  const fontSize = cols.length > 10 ? 7 : cols.length > 7 ? 8 : 9;
+  const fontSize = policy.fontSize;
 
   doc.y += EXPORT_ELEMENT_MARGIN_V_PT;
   doc.x = MARGIN;
   let y = doc.y;
 
-  function drawCell(x, cy, w, h, text, opts = {}) {
+  function drawCell(x, cy, w, h, text, cellOpts = {}) {
     doc.rect(x, cy, w, h).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
-    if (opts.fill) {
+    if (cellOpts.fill) {
       doc.save();
-      doc.rect(x, cy, w, h).fillColor(opts.fill).fill();
+      doc.rect(x, cy, w, h).fillColor(cellOpts.fill).fill();
       doc.restore();
       doc.rect(x, cy, w, h).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
     }
+    const cellAlign = cellOpts.center ? "center" : pdfCellAlign(locale);
     doc
       .font(fontName)
       .fontSize(fontSize)
@@ -229,14 +278,24 @@ function drawTable(doc, columns, layoutJson, tableMeta, rows, locale, fontName) 
         String(text ?? ""),
         x + 2,
         cy + 3,
-        pdfTextOpts(locale, { width: w - 4, height: h - 4, align: "center", ellipsis: true })
+        pdfTextOpts(locale, {
+          width: w - 4,
+          height: h - 4,
+          align: cellAlign,
+          ellipsis: true,
+        }),
       );
+  }
+
+  function drawCellAt(colIndex, cy, text, cellOpts = {}) {
+    const slot = slots[colIndex];
+    if (!slot) return;
+    drawCell(slot.x, cy, slot.w, rowH, text, cellOpts);
   }
 
   function newPageIfNeeded(extra) {
     if (y + extra > doc.page.height - MARGIN) {
-      if (forcePortrait) doc.addPage(portraitPageOpts());
-      else if (landscape) doc.addPage({ size: "A4", layout: "landscape", margin: MARGIN });
+      if (landscape) doc.addPage({ size: "A4", layout: "landscape", margin: MARGIN });
       else doc.addPage(portraitPageOpts());
       y = MARGIN;
     }
@@ -244,27 +303,46 @@ function drawTable(doc, columns, layoutJson, tableMeta, rows, locale, fontName) 
 
   if (header.hasGroupRow) {
     newPageIfNeeded(rowH);
-    let x = MARGIN;
+    let colIndex = 0;
+    metaKeys.forEach((key) => {
+      drawCellAt(colIndex++, y, metaLabel(key, locale), { fill: "#e2e8f0", center: true });
+    });
     for (const g of header.groupRow) {
       if (!g.label && g.colSpan === 1) {
-        x += colW;
+        colIndex += 1;
         continue;
       }
-      drawCell(x, y, colW * g.colSpan, rowH, g.label, { fill: "#e2e8f0" });
-      x += colW * g.colSpan;
+      const { x, w } = tableColumnSpanRect(slots, colIndex, g.colSpan);
+      drawCell(x, y, w, rowH, g.label, { fill: "#e2e8f0", center: true });
+      colIndex += g.colSpan;
     }
     y += rowH;
   }
 
   newPageIfNeeded(rowH);
-  cols.forEach((c, i) => {
-    drawCell(MARGIN + i * colW, y, colW, rowH, c.label, { fill: "#f1f5f9" });
+  let colIndex = 0;
+  metaKeys.forEach((key) => {
+    drawCellAt(colIndex++, y, metaLabel(key, locale), { fill: "#f1f5f9", center: true });
+  });
+  cols.forEach((c) => {
+    drawCellAt(colIndex++, y, c.label, { fill: "#f1f5f9", center: true });
   });
   y += rowH;
 
-  for (const row of dataRows) {
+  dataRows.forEach((row, rIdx) => {
     newPageIfNeeded(rowH);
-    cols.forEach((c, i) => {
+    colIndex = 0;
+    if (includeCommuneNames) {
+      drawCellAt(colIndex++, y, communeNameCell(row, locale));
+    }
+    if (metaKeys.length) {
+      const meta = metaValuesForRow(row, rIdx + 1, { includeAdminMeta });
+      for (const key of metaKeys) {
+        if (key === "commune") continue;
+        drawCellAt(colIndex++, y, meta[key] ?? "", { center: true });
+      }
+    }
+    cols.forEach((c) => {
       const colDef = columns.find((col) => col.key === c.key);
       let val = row[c.key];
       if (colDef?.type === "commune_ref") {
@@ -273,11 +351,12 @@ function drawTable(doc, columns, layoutJson, tableMeta, rows, locale, fontName) 
       } else if (colDef) {
         val = formatCellDisplay(val, colDef.format);
       }
-      drawCell(MARGIN + i * colW, y, colW, rowH, val);
+      drawCellAt(colIndex++, y, val);
     });
     y += rowH;
-  }
+  });
 
+  void tableMeta;
   doc.y = y + EXPORT_ELEMENT_MARGIN_V_PT;
   doc.x = MARGIN;
 }
@@ -312,21 +391,56 @@ function renderPdfBuffer(data, locale) {
         doc.moveDown(0.5);
         doc.fillColor("#0f172a");
       }
-      drawTable(doc, schema?.columns || [], schema?.layout_json, tableMeta, viewPart.rows, locale, fontName);
+      drawTable(
+        doc,
+        schema?.columns || [],
+        schema?.layout_json,
+        tableMeta,
+        viewPart.rows,
+        locale,
+        fontName,
+        { includeLineNumbers: true, includeAdminMeta: false },
+      );
       for (const row of viewPart.media_rows || []) {
         drawMediaRow(doc, row, files, locale, fontName);
       }
+    } else if (kind === "commune_list") {
+      const table = dataJson.tables?.[0];
+      if (table?.rows?.length) {
+        const title = pickText(table, locale, "title_ar", "title_fr") || pickText(rapport, locale, "title_ar", "title_fr");
+        if (title) {
+          doc.font(fontName).fontSize(14).text(title, { align: "center" });
+          doc.moveDown(0.2);
+        }
+        drawTable(
+          doc,
+          viewPart.columns || [],
+          viewPart.layoutJson,
+          {},
+          table.rows,
+          locale,
+          fontName,
+          { includeLineNumbers: true, includeAdminMeta: false, includeCommuneNames: true },
+        );
+      }
     } else {
       drawRichDocument(doc, dataJson, files, locale, fontName, boldFontName);
+      if (kind === "fiche_lecture") {
+        const waliResponse = getLatestWaliResponse(rapport.waliResponses);
+        drawWaliResponseSectionPdf(doc, waliResponse, locale, fontName, boldFontName, {
+          margin: MARGIN,
+          ensureSpace,
+        });
+      }
     }
 
     doc.end();
   });
 }
 
-async function generateRapportPdf(rapportId, { locale = "ar", showHidden = false, actor, req } = {}) {
+async function generateRapportPdf(rapportId, { locale = "ar", showHidden = false, versionId = null, actor, req } = {}) {
   const loc = locale === "fr" ? "fr" : "ar";
-  const data = await loadExportData(rapportId, showHidden);
+  const data = await loadExportData(rapportId, showHidden, versionId);
   const buffer = await renderPdfBuffer(data, loc);
   await audit(actor?.id, "RAPPORT_PDF_EXPORT", { rapport_id: Number(rapportId), locale: loc }, { req });
   return { buffer, filename: rapportExportFilename(data.rapport, "pdf") };

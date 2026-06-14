@@ -5,6 +5,7 @@ import type { EmbeddedTable } from '../../types/embeddedTable'
 import type { TableMeta } from '../../utils/tableLayout'
 import { emptyRowsForColumns } from '../../types/embeddedTable'
 import { countFinishedRows, type TableRowFilterMode } from '../../utils/tableRowMeta'
+import { reorderRowsArray } from '../../utils/tableRowReorder'
 
 type Props = {
   table: EmbeddedTable
@@ -51,6 +52,10 @@ export function SchemaTableEditModal({ table, onSave, onClose }: Props) {
     setRows((prev) => prev.filter((_, i) => i !== idx))
   }
 
+  function reorderRow(fromIdx: number, toIdx: number) {
+    setRows((prev) => reorderRowsArray(prev, fromIdx, toIdx))
+  }
+
   const mergeKeys = tableMeta.merge_column_keys || []
   const finishedRowCount = countFinishedRows(rows)
 
@@ -71,6 +76,7 @@ export function SchemaTableEditModal({ table, onSave, onClose }: Props) {
           onSetAllWaliVisible={setAllWaliVisible}
           onUpdateCellColor={updateCellColor}
           onDeleteRow={removeRow}
+          onReorderRows={reorderRow}
           rowCount={rows.length}
           finishedCount={finishedRowCount}
           filterMode={rowFilterMode}

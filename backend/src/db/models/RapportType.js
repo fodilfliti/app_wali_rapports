@@ -16,7 +16,13 @@ module.exports = (sequelize) =>
         defaultValue: "table_grid"
       },
       versioning_mode: { type: DataTypes.ENUM("versioned", "standalone"), allowNull: false, defaultValue: "versioned" },
-      schema_json: { type: DataTypes.JSONB, allowNull: true }
+      commune_content_kind: {
+        type: DataTypes.ENUM("table", "complex"),
+        allowNull: false,
+        defaultValue: "complex"
+      },
+      schema_json: { type: DataTypes.JSONB, allowNull: true },
+      hidden_at: { type: DataTypes.DATE, allowNull: true },
     },
     { tableName: "rapport_types", timestamps: false }
   );

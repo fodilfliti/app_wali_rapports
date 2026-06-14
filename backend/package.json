@@ -11,6 +11,8 @@
     "db:migrate:undo": "sequelize db:migrate:undo",
     "db:migrate:undo:all": "sequelize db:migrate:undo:all",
     "db:seed-dev": "node scripts/seed-dev.js",
+    "db:seed-test": "node scripts/seed-test-fixtures.js",
+    "db:seed-demo": "node scripts/seed-demo-presentation.js",
     "db:seed": "sequelize db:seed:all"
   },
   "dependencies": {

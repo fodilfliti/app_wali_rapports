@@ -85,6 +85,7 @@ export function SchemaTableNodeView({ node, selected, deleteNode }: NodeViewProp
             showRowMeta={false}
             rowFilterMode="active"
             hideColorToolbar
+            embedded={true}
           />
         </div>
       </div>

@@ -3,16 +3,7 @@ const { Service, Department, RapportType, UserServiceGrant, User } = require("..
 const { audit } = require("../../services/audit");const { baseSlugFromNames, ensureUniqueSlug } = require("../../utils/slugUtils");
 const { listGrantsForService, replaceServiceGrants } = require("./serviceAccessService");
 
-const FICHE_BLOCKS = [
-  {
-    type: "heading",
-    align: "center",
-    bold: true,
-    text_ar: "مذكرة استخلاصية",
-    text_fr: "Fiche lecture"
-  },
-  { type: "paragraph", text_ar: "", text_fr: "" }
-];
+const { buildFicheDefaultBlocks } = require("./documentDefaults");
 
 async function listDepartments() {
   return Department.findAll({
@@ -80,6 +71,24 @@ async function updateDepartment(id, data, actor, req) {
   });
   await audit(actor.id, "DEPARTMENT_UPDATE", { department_id: row.id }, { req });
   return row;
+}
+
+async function deleteDepartment(id, actor, req) {
+  const row = await Department.findByPk(id);
+  if (!row) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!row.is_active) {
+    const err = new Error("Already deleted");
+    err.status = 409;
+    throw err;
+  }
+  await Service.update({ department_id: null }, { where: { department_id: row.id } });
+  await row.update({ is_active: false });
+  await audit(actor.id, "DEPARTMENT_DELETE", { department_id: row.id }, { req });
+  return { ok: true };
 }
 
 async function listServicesAdmin() {
@@ -164,7 +173,7 @@ async function createService(data, actor, req) {
   }
 
   const service = await Service.create({
-    department_id: data.department_id,
+    department_id: data.department_id ?? null,
     slug,
     name_ar: data.name_ar,
     name_fr: data.name_fr,
@@ -183,7 +192,7 @@ async function createService(data, actor, req) {
       layout_kind: "memo",
       content_kind: "fiche_lecture",
       versioning_mode: "standalone",
-      schema_json: { default_blocks: FICHE_BLOCKS }
+      schema_json: { default_blocks: buildFicheDefaultBlocks() }
     });
   }
 
@@ -204,11 +213,47 @@ async function updateService(id, data, actor, req) {
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
     ...(data.sort_order != null ? { sort_order: data.sort_order } : {}),
     ...(data.is_active != null ? { is_active: data.is_active } : {}),
-    ...(data.department_id != null ? { department_id: data.department_id } : {})
+    ...(data.department_id !== undefined ? { department_id: data.department_id } : {}),
   });
 
   await audit(actor.id, "SERVICE_UPDATE", { service_id: service.id }, { req });
   return service;
+}
+
+async function collectActiveServiceSubtreeIds(rootId) {
+  const ids = [Number(rootId)];
+  const queue = [Number(rootId)];
+  while (queue.length) {
+    const id = queue.shift();
+    const children = await Service.findAll({
+      where: { parent_service_id: id, is_active: true },
+      attributes: ["id"],
+    });
+    for (const child of children) {
+      const cid = Number(child.id);
+      ids.push(cid);
+      queue.push(cid);
+    }
+  }
+  return ids;
+}
+
+async function deleteService(id, actor, req) {
+  const service = await Service.findByPk(id);
+  if (!service) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!service.is_active) {
+    const err = new Error("Already deleted");
+    err.status = 409;
+    throw err;
+  }
+  const ids = await collectActiveServiceSubtreeIds(service.id);
+  await Service.update({ is_active: false }, { where: { id: ids } });
+  await audit(actor.id, "SERVICE_DELETE", { service_id: service.id, count: ids.length }, { req });
+  return { ok: true };
 }
 
 async function listOfficeUsersForGrantPicker() {
@@ -224,9 +269,11 @@ module.exports = {
   listDepartments,
   createDepartment,
   updateDepartment,
+  deleteDepartment,
   listServicesAdmin,
   createService,
   updateService,
+  deleteService,
   listGrantsForService,
   replaceServiceGrants,
   listOfficeUsersForGrantPicker

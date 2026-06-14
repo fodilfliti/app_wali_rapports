@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { HubTile } from '../components/HubTile'
-import { HubCountBadge } from '../components/HubCountBadge'
 import { TablePagination } from '../components/TablePagination'
 import { ServiceRapportTypesHub } from '../components/ServiceRapportTypesHub'
 import { serviceHubIcon } from '../components/HubIcons'
@@ -16,23 +15,14 @@ import {
   waliRapportTypeListPath,
   type RapportTypeNav,
 } from '../utils/rapportNavigation'
+import { rapportStatusLabel } from '../utils/officeRapportList'
+import { waliInboxRowClass } from '../utils/waliInboxList'
 import { ServiceContentKindsHub } from '../components/ServiceContentKindsHub'
 import { findServiceNode, folderBackPath, serviceLabel } from '../utils/serviceTree'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
 
 type Props = { token: string }
-
-function statusLabel(status: string, t: (k: string) => string) {
-  const map: Record<string, string> = {
-    draft: 'statusDraft',
-    submitted: 'statusSubmitted',
-    under_review: 'statusUnderReview',
-    changes_requested: 'statusChangesRequested',
-    acknowledged: 'statusAcknowledged',
-  }
-  return t(map[status] || 'statusDraft')
-}
 
 export function WaliOfficeUsersPage({ token }: Props) {
   const { t } = useTranslation()
@@ -68,9 +58,6 @@ export function WaliOfficeUsersPage({ token }: Props) {
             icon="users"
             title={u.name || u.username}
             subtitle={u.job_title || undefined}
-            badge={
-              u.pending_rapports_count > 0 ? <HubCountBadge count={u.pending_rapports_count} /> : undefined
-            }
           />
         ))}
         {!users.length ? <p className="muted">{t('noResults')}</p> : null}
@@ -127,9 +114,6 @@ export function WaliUserServicesPage({ token, userId }: Props & { userId: number
               to={to}
               icon={s.is_folder ? 'folder' : serviceHubIcon(s)}
               title={label}
-              badge={
-                Number(s.action_count) > 0 ? <HubCountBadge count={Number(s.action_count)} /> : undefined
-              }
             />
           )
         })}
@@ -320,9 +304,18 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
-                <td>{r.title}</td>
-                <td>{statusLabel(r.status, t)}</td>
+              <tr key={r.id} className={waliInboxRowClass(r)}>
+                <td className="rapportTitleCell">
+                  <div className="rapportRowTitleCell">
+                    <span className="rapportRowTitle">{r.title}</span>
+                    {r.is_inbox_new ? (
+                      <span className="badge badge-submitted rapportUnreadBadge">{t('waliInboxNew')}</span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className="rapportStatusCell">
+                  <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+                </td>
                 <td>
                   <Link className="btn btn-ghost" to={`/wali/rapports/${r.id}/view`}>
                     {t('details')}

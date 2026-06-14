@@ -6,16 +6,57 @@ import { BackButton } from '../components/BackButton'
 
 type Props = { token: string }
 
+type CalendarEvent = {
+  id: number
+  rapport_id: number
+  event_date: string
+  title_ar?: string
+  title_fr?: string
+  note_ar?: string | null
+  note_fr?: string | null
+  rapport?: {
+    title?: string
+    content_kind?: string
+    service?: { name_ar?: string; name_fr?: string }
+  } | null
+}
+
 function addDays(iso: string, days: number) {
   const d = new Date(`${iso}T12:00:00`)
   d.setDate(d.getDate() + days)
   return d.toISOString().slice(0, 10)
 }
 
+function formatDayHeading(iso: string, locale: string) {
+  const d = new Date(`${iso}T12:00:00`)
+  return d.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'ar-DZ', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function pickLocalized(
+  locale: string,
+  ar?: string | null,
+  fr?: string | null,
+) {
+  if (locale === 'fr') return String(fr || ar || '').trim()
+  return String(ar || fr || '').trim()
+}
+
+function contentKindKey(kind?: string) {
+  if (!kind) return null
+  return `contentKind_${kind}`
+}
+
 export function WaliCalendarPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const [anchor, setAnchor] = useState(() => new Date().toISOString().slice(0, 10))
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<{ from?: string; to?: string; events?: CalendarEvent[] } | null>(
+    null,
+  )
 
   const load = useCallback(async () => {
     try {
@@ -31,17 +72,19 @@ export function WaliCalendarPage({ token }: Props) {
 
   const days = useMemo(() => {
     if (!data?.from) return []
-    return Array.from({ length: 7 }, (_, i) => addDays(data.from, i))
+    return Array.from({ length: 7 }, (_, i) => addDays(data.from!, i))
   }, [data?.from])
 
   const byDay = useMemo(() => {
-    const map: Record<string, any[]> = {}
+    const map: Record<string, CalendarEvent[]> = {}
     for (const d of days) map[d] = []
     for (const e of data?.events || []) {
       if (map[e.event_date]) map[e.event_date].push(e)
     }
     return map
   }, [data?.events, days])
+
+  const locale = i18n.language === 'fr' ? 'fr' : 'ar'
 
   return (
     <div className="page">
@@ -61,23 +104,65 @@ export function WaliCalendarPage({ token }: Props) {
       <p className="muted">
         {data?.from} — {data?.to}
       </p>
-      <div className="waliCalendarGrid">
-        {days.map((d) => (
-          <div key={d} className="waliCalendarDay card">
-            <h3>{d}</h3>
-            <ul>
-              {(byDay[d] || []).map((e: any) => (
-                <li key={e.id}>
-                  <Link to={`/wali/rapports/${e.rapport_id}/view`}>
-                    {i18n.language === 'fr' ? e.title_fr || e.title_ar : e.title_ar || e.title_fr}
-                  </Link>
-                  <span className="muted small block">{e.rapport?.title}</span>
-                </li>
-              ))}
-            </ul>
-            {!byDay[d]?.length ? <p className="muted small">{t('noResults')}</p> : null}
-          </div>
-        ))}
+      <div className="waliCalendarList">
+        {days.map((d) => {
+          const events = byDay[d] || []
+          return (
+            <section key={d} className="waliCalendarDay card">
+              <header className="waliCalendarDayHeader">
+                <time dateTime={d} className="waliCalendarDayDate">
+                  {formatDayHeading(d, locale)}
+                </time>
+                <span className="waliCalendarDayIso muted small">{d}</span>
+                {events.length ? (
+                  <span className="waliCalendarDayCount badge">{events.length}</span>
+                ) : null}
+              </header>
+              {events.length ? (
+                <ul className="waliCalendarEvents">
+                  {events.map((e) => {
+                    const eventTitle = pickLocalized(locale, e.title_ar, e.title_fr)
+                    const serviceName = pickLocalized(
+                      locale,
+                      e.rapport?.service?.name_ar,
+                      e.rapport?.service?.name_fr,
+                    )
+                    const kindKey = contentKindKey(e.rapport?.content_kind)
+                    const note = pickLocalized(locale, e.note_ar, e.note_fr)
+                    const showRapportTitle =
+                      e.rapport?.title &&
+                      eventTitle &&
+                      e.rapport.title.trim() !== eventTitle.trim()
+                    return (
+                      <li key={e.id} className="waliCalendarEvent">
+                        <Link
+                          to={`/wali/rapports/${e.rapport_id}/view`}
+                          className="waliCalendarEventTitle"
+                        >
+                          {eventTitle || e.rapport?.title || `#${e.rapport_id}`}
+                        </Link>
+                        <div className="waliCalendarEventMeta">
+                          {kindKey ? (
+                            <span className="waliCalendarEventKind badge">{t(kindKey)}</span>
+                          ) : null}
+                          {serviceName ? (
+                            <span className="waliCalendarEventService muted small">{serviceName}</span>
+                          ) : null}
+                          {showRapportTitle ? (
+                            <span className="waliCalendarEventRapport muted small">{e.rapport!.title}</span>
+                          ) : null}
+                        </div>
+                        {note ? <p className="waliCalendarEventNote muted small">{note}</p> : null}
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <p className="waliCalendarEmpty muted small">{t('noResults')}</p>
+              )}
+            </section>
+          )
+        })}
       </div>
     </div>
   )

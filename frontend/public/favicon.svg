@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Algeria">
+  <rect width="16" height="32" fill="#006233"/>
+  <rect x="16" width="16" height="32" fill="#ffffff"/>
+  <g fill="#D21034" transform="translate(16 16)">
+    <circle cx="-2.2" cy="0" r="6.2"/>
+    <circle cx="0.8" cy="0" r="5.1" fill="#ffffff"/>
+    <path d="M4.2 -1.1 L5.6 2.3 L9.2 2.3 L6.3 4.4 L7.7 7.8 L4.2 5.7 L0.7 7.8 L2.1 4.4 L-0.8 2.3 L2.8 2.3 Z"/>
+  </g>
+</svg>

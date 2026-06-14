@@ -1,13 +1,26 @@
 const express = require("express");
-const { requireAuth, attachUser, requireRole, checkBlocked } = require("../middleware/auth");
+const {
+  requireAuth,
+  attachUser,
+  requireRole,
+  checkBlocked,
+} = require("../middleware/auth");
 const { validateBody } = require("../middleware/validateBody");
-const { rapportCreateSchema, rapportPatchSchema } = require("../validation/schemas/adminCrud");
+const {
+  rapportCreateSchema,
+  rapportPatchSchema,
+} = require("../validation/schemas/adminCrud");
 const rapportService = require("../modules/rapports/rapportService");
 const navigationService = require("../modules/rapports/navigationService");
 const hubCountsService = require("../modules/rapports/hubCountsService");
 
 const officeRouter = express.Router();
-officeRouter.use(requireAuth, attachUser, checkBlocked, requireRole(["OFFICE_USER", "ADMIN"]));
+officeRouter.use(
+  requireAuth,
+  attachUser,
+  checkBlocked,
+  requireRole(["OFFICE_USER", "ADMIN"]),
+);
 
 officeRouter.get("/services/tree", async (req, res, next) => {
   try {
@@ -27,6 +40,7 @@ officeRouter.get("/hub-counts", async (req, res, next) => {
 
 officeRouter.get("/rapports/:id/versions", async (req, res, next) => {
   try {
+    await assertRapportAccess(req.user, req.params.id, "view");
     const versions = await rapportService.listRapportVersions(req.params.id);
     res.json({ versions });
   } catch (e) {
@@ -34,19 +48,29 @@ officeRouter.get("/rapports/:id/versions", async (req, res, next) => {
   }
 });
 
-officeRouter.get("/rapports/:id/versions/:versionId", async (req, res, next) => {
-  try {
-    const version = await rapportService.getRapportVersion(req.params.id, req.params.versionId);
-    res.json({ version });
-  } catch (e) {
-    next(e);
-  }
-});
+officeRouter.get(
+  "/rapports/:id/versions/:versionId",
+  async (req, res, next) => {
+    try {
+      await assertRapportAccess(req.user, req.params.id, "view");
+      const version = await rapportService.getRapportVersion(
+        req.params.id,
+        req.params.versionId,
+      );
+      res.json({ version });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 officeRouter.get("/notifications", async (req, res, next) => {
   try {
     const unreadOnly = req.query.unread === "1";
-    const rows = await rapportService.listNotifications(req.user.id, unreadOnly);
+    const rows = await rapportService.listNotifications(
+      req.user.id,
+      unreadOnly,
+    );
     res.json({ notifications: rows });
   } catch (e) {
     next(e);
@@ -55,7 +79,10 @@ officeRouter.get("/notifications", async (req, res, next) => {
 
 officeRouter.patch("/notifications/:id/read", async (req, res, next) => {
   try {
-    const n = await rapportService.markNotificationRead(req.params.id, req.user.id);
+    const n = await rapportService.markNotificationRead(
+      req.params.id,
+      req.user.id,
+    );
     res.json({ notification: n });
   } catch (e) {
     next(e);
@@ -66,12 +93,21 @@ const workspaceService = require("../modules/rapports/workspaceService");
 const officeSchemaService = require("../modules/rapports/officeSchemaService");
 const calendarEventService = require("../modules/rapports/calendarEventService");
 const broadcastService = require("../modules/rapports/broadcastService");
-const { saveUploadedBuffer, enrichDataJsonWithFiles } = require("../services/uploadService");
+const {
+  saveUploadedBuffer,
+  enrichDataJsonWithFiles,
+} = require("../services/uploadService");
 const { generateRapportPdf } = require("../services/rapportPdfService");
 const { generateRapportDocx } = require("../services/rapportDocxService");
-const { contentDispositionAttachment } = require("../services/rapportExportFilename");
+const { generateRapportExcel } = require("../services/rapportExcelService");
+const {
+  contentDispositionAttachment,
+} = require("../services/rapportExportFilename");
 const { singleUpload } = require("../middleware/upload");
-const { assertRapportAccess, resolveAccessLevel } = require("../modules/rapports/serviceAccessService");
+const {
+  assertRapportAccess,
+  resolveAccessLevel,
+} = require("../modules/rapports/serviceAccessService");
 const documentTemplateService = require("../modules/rapports/documentTemplateService");
 const {
   tableSchemaCreateSchema,
@@ -80,42 +116,49 @@ const {
   rapportTypePatchSchema,
   documentTemplateCreateSchema,
   documentTemplatePatchSchema,
-  applyDocumentTemplateSchema
+  applyDocumentTemplateSchema,
 } = require("../validation/schemas/schemaConfig");
 
-officeRouter.get("/services/:serviceId/document-templates", async (req, res, next) => {
-  try {
-    const templates = await documentTemplateService.listForService(
-      req.params.serviceId,
-      req.user,
-      {
-        rapportTypeId: req.query.rapport_type_id || null,
-        contentKind: req.query.content_kind || null
-      }
-    );
-    res.json({ templates });
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    next(e);
-  }
-});
+officeRouter.get(
+  "/services/:serviceId/document-templates",
+  async (req, res, next) => {
+    try {
+      const templates = await documentTemplateService.listForService(
+        req.params.serviceId,
+        req.user,
+        {
+          rapportTypeId: req.query.rapport_type_id || null,
+          contentKind: req.query.content_kind || null,
+        },
+      );
+      res.json({ templates });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
 
-officeRouter.get("/services/:serviceId/document-templates/for-create", async (req, res, next) => {
-  try {
-    const rapportTypeId = req.query.rapport_type_id;
-    if (!rapportTypeId) return res.status(400).json({ error: "rapportTypeIdRequired" });
-    const templates = await documentTemplateService.listForRapportCreate(
-      req.params.serviceId,
-      req.user,
-      rapportTypeId
-    );
-    res.json({ templates });
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    if (e.status === 400) return res.status(400).json({ error: e.message });
-    next(e);
-  }
-});
+officeRouter.get(
+  "/services/:serviceId/document-templates/for-create",
+  async (req, res, next) => {
+    try {
+      const rapportTypeId = req.query.rapport_type_id;
+      if (!rapportTypeId)
+        return res.status(400).json({ error: "rapportTypeIdRequired" });
+      const templates = await documentTemplateService.listForRapportCreate(
+        req.params.serviceId,
+        req.user,
+        rapportTypeId,
+      );
+      res.json({ templates });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
 
 officeRouter.post(
   "/services/:serviceId/document-templates",
@@ -126,7 +169,7 @@ officeRouter.post(
         req.params.serviceId,
         req.validatedBody,
         req.user,
-        req
+        req,
       );
       res.status(201).json({ template });
     } catch (e) {
@@ -134,7 +177,7 @@ officeRouter.post(
       if (e.status === 409) return res.status(409).json({ error: e.message });
       next(e);
     }
-  }
+  },
 );
 
 officeRouter.patch(
@@ -146,7 +189,7 @@ officeRouter.patch(
         req.params.id,
         req.validatedBody,
         req.user,
-        req
+        req,
       );
       res.json({ template });
     } catch (e) {
@@ -154,7 +197,7 @@ officeRouter.patch(
       if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
-  }
+  },
 );
 
 officeRouter.delete("/document-templates/:id", async (req, res, next) => {
@@ -178,7 +221,7 @@ officeRouter.post(
         req.validatedBody.template_id,
         req.validatedBody.mode || "replace",
         req.user,
-        req
+        req,
       );
       res.json({ rapport });
     } catch (e) {
@@ -187,12 +230,15 @@ officeRouter.post(
       if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
-  }
+  },
 );
 
 officeRouter.get("/services/:serviceId/schemas", async (req, res, next) => {
   try {
-    const data = await officeSchemaService.listSchemasForOfficeService(req.params.serviceId, req.user);
+    const data = await officeSchemaService.listSchemasForOfficeService(
+      req.params.serviceId,
+      req.user,
+    );
     res.json(data);
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -209,7 +255,7 @@ officeRouter.post(
         req.params.serviceId,
         req.validatedBody,
         req.user,
-        req
+        req,
       );
       res.status(201).json({ schema });
     } catch (e) {
@@ -217,58 +263,69 @@ officeRouter.post(
       if (e.status === 409) return res.status(409).json({ error: e.message });
       next(e);
     }
-  }
+  },
 );
 
-officeRouter.patch("/schemas/:id", validateBody(tableSchemaPatchSchema), async (req, res, next) => {
-  try {
-    const schema = await officeSchemaService.updateSchemaForOffice(
-      req.params.id,
-      req.validatedBody,
-      req.user,
-      req
-    );
-    res.json({ schema });
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    if (e.status === 409) return res.status(409).json({ error: e.message });
-    next(e);
-  }
-});
-
-officeRouter.post("/services/:serviceId/schemas/duplicate", async (req, res, next) => {
-  try {
-    const { source_schema_id, slug } = req.body || {};
-    if (!source_schema_id) {
-      return res.status(400).json({ error: "sourceSchemaIdRequired" });
+officeRouter.patch(
+  "/schemas/:id",
+  validateBody(tableSchemaPatchSchema),
+  async (req, res, next) => {
+    try {
+      const schema = await officeSchemaService.updateSchemaForOffice(
+        req.params.id,
+        req.validatedBody,
+        req.user,
+        req,
+      );
+      res.json({ schema });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
     }
-    const schema = await officeSchemaService.duplicateSchemaToService(
-      req.params.serviceId,
-      source_schema_id,
-      slug,
-      req.user,
-      req
-    );
-    res.status(201).json({ schema });
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    if (e.status === 409) return res.status(409).json({ error: e.message });
-    next(e);
-  }
-});
+  },
+);
 
-officeRouter.get("/services/:serviceId/rapport-types", async (req, res, next) => {
-  try {
-    const { service, rapportTypes } = await officeSchemaService.listRapportTypesForOffice(
-      req.params.serviceId,
-      req.user
-    );
-    res.json({ service, rapportTypes });
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    next(e);
-  }
-});
+officeRouter.post(
+  "/services/:serviceId/schemas/duplicate",
+  async (req, res, next) => {
+    try {
+      const { source_schema_id, slug } = req.body || {};
+      if (!source_schema_id) {
+        return res.status(400).json({ error: "sourceSchemaIdRequired" });
+      }
+      const schema = await officeSchemaService.duplicateSchemaToService(
+        req.params.serviceId,
+        source_schema_id,
+        slug,
+        req.user,
+        req,
+      );
+      res.status(201).json({ schema });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+officeRouter.get(
+  "/services/:serviceId/rapport-types",
+  async (req, res, next) => {
+    try {
+      const { service, rapportTypes } =
+        await officeSchemaService.listRapportTypesForOffice(
+          req.params.serviceId,
+          req.user,
+        );
+      res.json({ service, rapportTypes });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
 
 officeRouter.post(
   "/services/:serviceId/rapport-types",
@@ -279,7 +336,7 @@ officeRouter.post(
         req.params.serviceId,
         req.validatedBody,
         req.user,
-        req
+        req,
       );
       res.status(201).json({ rapportType });
     } catch (e) {
@@ -288,45 +345,76 @@ officeRouter.post(
       if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
-  }
+  },
 );
 
-officeRouter.patch("/rapport-types/:id", validateBody(rapportTypePatchSchema), async (req, res, next) => {
+officeRouter.patch(
+  "/rapport-types/:id",
+  validateBody(rapportTypePatchSchema),
+  async (req, res, next) => {
+    try {
+      const rapportType = await officeSchemaService.updateRapportTypeForOffice(
+        req.params.id,
+        req.validatedBody,
+        req.user,
+        req,
+      );
+      res.json({ rapportType });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+officeRouter.post("/rapport-types/:id/hide", async (req, res, next) => {
   try {
-    const rapportType = await officeSchemaService.updateRapportTypeForOffice(
+    const rapportType = await officeSchemaService.hideRapportTypeForOffice(
       req.params.id,
-      req.validatedBody,
       req.user,
-      req
+      req,
     );
     res.json({ rapportType });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
     if (e.status === 404) return res.status(404).json({ error: "Not found" });
-    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
+officeRouter.post("/rapport-types/:id/restore", async (req, res, next) => {
+  try {
+    const rapportType = await officeSchemaService.restoreRapportTypeForOffice(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json({ rapportType });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 404) return res.status(404).json({ error: "Not found" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
     next(e);
   }
 });
 
 officeRouter.get("/services/:serviceId/content", async (req, res, next) => {
   try {
-    res.json(await workspaceService.getServiceContentHub(req.params.serviceId, req.user));
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    next(e);
-  }
-});
-
-officeRouter.get("/services/:serviceId/table-workspace", async (req, res, next) => {
-  try {
     res.json(
-      await workspaceService.getServiceWorkspace(
+      await workspaceService.getServiceContentHub(
         req.params.serviceId,
         req.user,
-        req,
-        req.query.rapport_type_id || null,
-        req.query.rapport_id || null
-      )
+        {
+          includeHiddenTypes:
+            req.query.include_hidden === "1" ||
+            req.query.include_hidden === "true",
+          hiddenTypesOnly:
+            req.query.hidden_only === "1" || req.query.hidden_only === "true",
+        },
+      ),
     );
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -334,9 +422,34 @@ officeRouter.get("/services/:serviceId/table-workspace", async (req, res, next) 
   }
 });
 
+officeRouter.get(
+  "/services/:serviceId/table-workspace",
+  async (req, res, next) => {
+    try {
+      res.json(
+        await workspaceService.getServiceWorkspace(
+          req.params.serviceId,
+          req.user,
+          req,
+          req.query.rapport_type_id || null,
+          req.query.rapport_id || null,
+        ),
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
+
 officeRouter.patch("/rapports/:id/table-data", async (req, res, next) => {
   try {
-    const rapport = await workspaceService.saveTableData(req.params.id, req.body || {}, req.user, req);
+    const rapport = await workspaceService.saveTableData(
+      req.params.id,
+      req.body || {},
+      req.user,
+      req,
+    );
     res.json({ rapport });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -353,8 +466,8 @@ officeRouter.get("/services/:serviceId/documents", async (req, res, next) => {
         contentKind,
         req.user,
         req.query.rapport_type_id || null,
-        req.query
-      )
+        req.query,
+      ),
     );
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -369,7 +482,10 @@ officeRouter.post("/services/:serviceId/documents", async (req, res, next) => {
       req.body?.rapport_type_id,
       req.user,
       req,
-      { template_id: req.body?.template_id || null, skip_default: !!req.body?.skip_default }
+      {
+        template_id: req.body?.template_id || null,
+        skip_default: !!req.body?.skip_default,
+      },
     );
     res.status(201).json({ rapport });
   } catch (e) {
@@ -379,7 +495,12 @@ officeRouter.post("/services/:serviceId/documents", async (req, res, next) => {
 
 officeRouter.patch("/rapports/:id/document", async (req, res, next) => {
   try {
-    const rapport = await workspaceService.saveDocumentBlocks(req.params.id, req.body || {}, req.user, req);
+    const rapport = await workspaceService.saveDocumentBlocks(
+      req.params.id,
+      req.body || {},
+      req.user,
+      req,
+    );
     res.json({ rapport });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -387,31 +508,81 @@ officeRouter.patch("/rapports/:id/document", async (req, res, next) => {
   }
 });
 
-officeRouter.get("/services/:serviceId/commune-workspace", async (req, res, next) => {
-  try {
-    res.json(
-      await workspaceService.getCommuneListWorkspace(
-        req.params.serviceId,
+officeRouter.get(
+  "/services/:serviceId/commune-workspace",
+  async (req, res, next) => {
+    try {
+      res.json(
+        await workspaceService.getCommuneListWorkspace(
+          req.params.serviceId,
+          req.user,
+          req,
+          req.query.rapport_type_id || null,
+          req.query.rapport_id || null,
+        ),
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
+
+officeRouter.get(
+  "/services/:serviceId/commune-bulk-workspace",
+  async (req, res, next) => {
+    try {
+      res.json(
+        await workspaceService.getCommuneBulkWorkspace(
+          req.params.serviceId,
+          req.user,
+          req,
+          req.query.rapport_type_id || null,
+          req.query.rapport_id || null,
+        ),
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
+
+officeRouter.patch(
+  "/rapports/:id/commune-bulk-data",
+  async (req, res, next) => {
+    try {
+      const rapport = await workspaceService.saveBulkCommuneData(
+        req.params.id,
+        req.body || {},
         req.user,
         req,
-        req.query.rapport_type_id || null,
-        req.query.rapport_id || null
-      )
-    );
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    next(e);
-  }
-});
+      );
+      res.json({ rapport });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
 
-officeRouter.get("/rapports/:id/communes/:municipalityCode", async (req, res, next) => {
-  try {
-    res.json(await workspaceService.getCommuneRows(req.params.id, req.params.municipalityCode, req.user));
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    next(e);
-  }
-});
+officeRouter.get(
+  "/rapports/:id/communes/:municipalityCode",
+  async (req, res, next) => {
+    try {
+      res.json(
+        await workspaceService.getCommuneRows(
+          req.params.id,
+          req.params.municipalityCode,
+          req.user,
+        ),
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
 
 officeRouter.patch("/rapports/:id/commune-data", async (req, res, next) => {
   try {
@@ -420,7 +591,7 @@ officeRouter.patch("/rapports/:id/commune-data", async (req, res, next) => {
       req.body?.municipality_code,
       req.body || {},
       req.user,
-      req
+      req,
     );
     res.json({ rapport });
   } catch (e) {
@@ -440,7 +611,11 @@ officeRouter.get("/services", async (req, res, next) => {
 
 officeRouter.get("/rapports", async (req, res, next) => {
   try {
-    res.json(await rapportService.listRapports(req.query, { enrichForOfficeUserId: req.user.id }));
+    res.json(
+      await rapportService.listRapports(req.query, {
+        enrichForOfficeUserId: req.user.id,
+      }),
+    );
   } catch (e) {
     next(e);
   }
@@ -448,7 +623,10 @@ officeRouter.get("/rapports", async (req, res, next) => {
 
 officeRouter.get("/rapports/:id/table-snapshot", async (req, res, next) => {
   try {
-    const snapshot = await workspaceService.getRapportTableSnapshot(req.params.id, req.user);
+    const snapshot = await workspaceService.getRapportTableSnapshot(
+      req.params.id,
+      req.user,
+    );
     res.json({ snapshot });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -461,48 +639,76 @@ officeRouter.get("/rapports/:id", async (req, res, next) => {
   try {
     const rapport = await rapportService.getRapportDetail(req.params.id);
     const accessLevel = await resolveAccessLevel(req.user, rapport.service_id);
-    if (accessLevel === "none") return res.status(403).json({ error: "Forbidden" });
+    if (accessLevel === "none")
+      return res.status(403).json({ error: "Forbidden" });
     res.json({ rapport, accessLevel });
   } catch (e) {
     next(e);
   }
 });
 
-officeRouter.post("/rapports/:id/mark-notifications-read", async (req, res, next) => {
-  try {
-    await assertRapportAccess(req.user, req.params.id, "view");
-    await rapportService.markRapportNotificationsRead(req.params.id, req.user.id);
-    res.json({ ok: true });
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    next(e);
-  }
-});
+officeRouter.post(
+  "/rapports/:id/mark-notifications-read",
+  async (req, res, next) => {
+    try {
+      await assertRapportAccess(req.user, req.params.id, "view");
+      await rapportService.markRapportNotificationsRead(
+        req.params.id,
+        req.user.id,
+      );
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
 
-officeRouter.post("/rapports", validateBody(rapportCreateSchema), async (req, res, next) => {
-  try {
-    const rapport = await rapportService.createRapport(req.validatedBody, req.user, req);
-    res.status(201).json({ rapport });
-  } catch (e) {
-    next(e);
-  }
-});
+officeRouter.post(
+  "/rapports",
+  validateBody(rapportCreateSchema),
+  async (req, res, next) => {
+    try {
+      const rapport = await rapportService.createRapport(
+        req.validatedBody,
+        req.user,
+        req,
+      );
+      res.status(201).json({ rapport });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
-officeRouter.patch("/rapports/:id", validateBody(rapportPatchSchema), async (req, res, next) => {
-  try {
-    await assertRapportAccess(req.user, req.params.id, "manage");
-    const rapport = await rapportService.updateRapportDraft(req.params.id, req.validatedBody, req.user, req);
-    res.json({ rapport });
-  } catch (e) {
-    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    next(e);
-  }
-});
+officeRouter.patch(
+  "/rapports/:id",
+  validateBody(rapportPatchSchema),
+  async (req, res, next) => {
+    try {
+      await assertRapportAccess(req.user, req.params.id, "manage");
+      const rapport = await rapportService.updateRapportDraft(
+        req.params.id,
+        req.validatedBody,
+        req.user,
+        req,
+      );
+      res.json({ rapport });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
 
 officeRouter.post("/rapports/:id/submit", async (req, res, next) => {
   try {
     await assertRapportAccess(req.user, req.params.id, "manage");
-    const rapport = await rapportService.submitRapport(req.params.id, req.user, req);
+    const rapport = await rapportService.submitRapport(
+      req.params.id,
+      req.user,
+      req,
+    );
     res.json({ rapport });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -510,29 +716,69 @@ officeRouter.post("/rapports/:id/submit", async (req, res, next) => {
   }
 });
 
-officeRouter.post("/rapports/:id/uploads", singleUpload("file"), async (req, res, next) => {
+officeRouter.post("/rapports/:id/finish", async (req, res, next) => {
   try {
     await assertRapportAccess(req.user, req.params.id, "manage");
-    if (!req.file?.buffer) return res.status(400).json({ error: "File required" });
-    const file = await saveUploadedBuffer({
-      buffer: req.file.buffer,
-      originalName: req.file.originalname,
-      mimeType: req.file.mimetype,
-      rapportId: Number(req.params.id),
-      actor: req.user,
-      req
-    });
-    res.status(201).json({ file });
+    const rapport = await rapportService.hideRapport(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json({ rapport });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-    if (e.status === 413) return res.status(413).json({ error: e.message });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
     next(e);
   }
 });
 
+officeRouter.post("/rapports/:id/restore", async (req, res, next) => {
+  try {
+    await assertRapportAccess(req.user, req.params.id, "manage");
+    const rapport = await rapportService.restoreRapport(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json({ rapport });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
+officeRouter.post(
+  "/rapports/:id/uploads",
+  singleUpload("file"),
+  async (req, res, next) => {
+    try {
+      await assertRapportAccess(req.user, req.params.id, "manage");
+      if (!req.file?.buffer)
+        return res.status(400).json({ error: "File required" });
+      const file = await saveUploadedBuffer({
+        buffer: req.file.buffer,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        rapportId: Number(req.params.id),
+        actor: req.user,
+        req,
+      });
+      res.status(201).json({ file });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 413) return res.status(413).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
 officeRouter.get("/rapports/:id/calendar-events", async (req, res, next) => {
   try {
-    const events = await calendarEventService.listForRapport(req.params.id, req.user);
+    const events = await calendarEventService.listForRapport(
+      req.params.id,
+      req.user,
+    );
     res.json({ events });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -542,7 +788,11 @@ officeRouter.get("/rapports/:id/calendar-events", async (req, res, next) => {
 
 officeRouter.put("/rapports/:id/calendar-events", async (req, res, next) => {
   try {
-    const events = await calendarEventService.replaceForRapport(req.params.id, req.body?.events || [], req.user);
+    const events = await calendarEventService.replaceForRapport(
+      req.params.id,
+      req.body?.events || [],
+      req.user,
+    );
     res.json({ events });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -555,7 +805,8 @@ officeRouter.get("/rapports/:id/media", async (req, res, next) => {
   try {
     const rapport = await rapportService.getRapportDetail(req.params.id);
     const accessLevel = await resolveAccessLevel(req.user, rapport.service_id);
-    if (accessLevel === "none") return res.status(403).json({ error: "Forbidden" });
+    if (accessLevel === "none")
+      return res.status(403).json({ error: "Forbidden" });
     const dataJson = rapport.currentVersion?.data_json || {};
     const { files } = await enrichDataJsonWithFiles(dataJson);
     res.json({ files });
@@ -569,14 +820,50 @@ officeRouter.get("/rapports/:id/export.pdf", async (req, res, next) => {
     await assertRapportAccess(req.user, req.params.id, "view");
     const showHidden = req.query.showHidden === "1";
     const locale = req.query.locale === "fr" ? "fr" : "ar";
+    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
     const { buffer, filename } = await generateRapportPdf(req.params.id, {
       locale,
       showHidden,
+      versionId: versionId || null,
       actor: req.user,
-      req
+      req,
     });
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", contentDispositionAttachment(filename));
+    res.setHeader(
+      "Content-Disposition",
+      contentDispositionAttachment(filename),
+    );
+    res.send(buffer);
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+officeRouter.get("/rapports/:id/export.xlsx", async (req, res, next) => {
+  try {
+    await assertRapportAccess(req.user, req.params.id, "view");
+    const showHidden = req.query.showHidden === "1";
+    const locale = req.query.locale === "fr" ? "fr" : "ar";
+    const rowFilter = req.query.rowFilter;
+    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+    const { buffer, filename } = await generateRapportExcel(req.params.id, {
+      locale,
+      showHidden,
+      rowFilter,
+      versionId: versionId || null,
+      actor: req.user,
+      req,
+    });
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      contentDispositionAttachment(filename),
+    );
     res.send(buffer);
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -590,17 +877,22 @@ officeRouter.get("/rapports/:id/export.docx", async (req, res, next) => {
     await assertRapportAccess(req.user, req.params.id, "view");
     const showHidden = req.query.showHidden === "1";
     const locale = req.query.locale === "fr" ? "fr" : "ar";
+    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
     const { buffer, filename } = await generateRapportDocx(req.params.id, {
       locale,
       showHidden,
+      versionId: versionId || null,
       actor: req.user,
-      req
+      req,
     });
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );
-    res.setHeader("Content-Disposition", contentDispositionAttachment(filename));
+    res.setHeader(
+      "Content-Disposition",
+      contentDispositionAttachment(filename),
+    );
     res.send(buffer);
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -620,7 +912,10 @@ officeRouter.get("/broadcasts", async (req, res, next) => {
 
 officeRouter.get("/broadcasts/:id", async (req, res, next) => {
   try {
-    const broadcast = await broadcastService.getBroadcastDetail(req.params.id, req.user);
+    const broadcast = await broadcastService.getBroadcastDetail(
+      req.params.id,
+      req.user,
+    );
     res.json({ broadcast });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -630,7 +925,10 @@ officeRouter.get("/broadcasts/:id", async (req, res, next) => {
 
 officeRouter.post("/broadcasts/:id/read", async (req, res, next) => {
   try {
-    const broadcast = await broadcastService.markBroadcastRead(req.params.id, req.user);
+    const broadcast = await broadcastService.markBroadcastRead(
+      req.params.id,
+      req.user,
+    );
     res.json({ broadcast });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
@@ -640,7 +938,11 @@ officeRouter.post("/broadcasts/:id/read", async (req, res, next) => {
 
 officeRouter.post("/broadcasts/:id/comments", async (req, res, next) => {
   try {
-    const broadcast = await broadcastService.addComment(req.params.id, req.body?.body_text, req.user);
+    const broadcast = await broadcastService.addComment(
+      req.params.id,
+      req.body?.body_text,
+      req.user,
+    );
     res.json({ broadcast });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: e.message });

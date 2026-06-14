@@ -6,6 +6,7 @@ const {
   marginTwip
 } = require("./exportLayout");
 const { pdfTextOpts } = require("./exportFonts");
+const { buildTableColumnSlots } = require("./tableLayoutPolicy");
 
 function elTag(el) {
   return String(el?.rawTagName || el?.tagName || "").toLowerCase();
@@ -466,7 +467,6 @@ function drawRichHtmlToPdf(doc, html, locale, fontName, helpers) {
     }
 
     if (block.type === "html_table") {
-      if (tableNeedsPortraitPage?.(block.rows || [])) startPortraitTablePage?.(doc);
       drawPdfHtmlTable(doc, block, locale, fontName, helpers);
       continue;
     }
@@ -477,7 +477,6 @@ function drawRichHtmlToPdf(doc, html, locale, fontName, helpers) {
           ? block.table
           : findEmbeddedTable(embeddedTables, block.tableId);
       if (!table) continue;
-      if (tableNeedsPortraitPage?.(table.rows || [])) startPortraitTablePage?.(doc);
       ensureSpace(doc, 80, fontName);
       const meta = table.table_meta || {};
       const title = locale === "fr" ? meta.title_fr || meta.title_ar : meta.title_ar || meta.title_fr;
@@ -489,7 +488,9 @@ function drawRichHtmlToPdf(doc, html, locale, fontName, helpers) {
           .text(title, pdfTextOpts(locale, { width, align: "center" }));
         doc.moveDown(0.3);
       }
-      drawTable(doc, table.columns || [], table.layout_json, meta, table.rows || [], locale, fontName);
+      drawTable(doc, table.columns || [], table.layout_json, meta, table.rows || [], locale, fontName, {
+        embedded: true,
+      });
     }
   }
 }
@@ -522,6 +523,8 @@ function drawPdfHtmlTable(doc, block, locale, fontName, helpers) {
   const colCount = Math.max(...rows.map((r) => r.length));
   const pageW = doc.page.width - MARGIN * 2;
   const colW = pageW / colCount;
+  const colWidths = Array(colCount).fill(colW);
+  const slots = buildTableColumnSlots(colWidths, pageW, MARGIN, locale);
   const rowH = 18;
   const fontSize = 9;
 
@@ -540,13 +543,15 @@ function drawPdfHtmlTable(doc, block, locale, fontName, helpers) {
   for (const row of rows) {
     newPageIfNeeded(rowH);
     row.forEach((cell, i) => {
-      const x = MARGIN + i * colW;
-      doc.rect(x, y, colW, rowH).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
+      const slot = slots[i];
+      if (!slot) return;
+      const { x, w } = slot;
+      doc.rect(x, y, w, rowH).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
       if (cell.header) {
         doc.save();
-        doc.rect(x, y, colW, rowH).fillColor("#f1f5f9").fill();
+        doc.rect(x, y, w, rowH).fillColor("#f1f5f9").fill();
         doc.restore();
-        doc.rect(x, y, colW, rowH).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
+        doc.rect(x, y, w, rowH).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
       }
       const text = (cell.runs || []).map((r) => r.text).join("");
       doc
@@ -558,11 +563,11 @@ function drawPdfHtmlTable(doc, block, locale, fontName, helpers) {
           x + 3,
           y + 4,
           pdfTextOpts(locale, {
-            width: colW - 6,
+            width: w - 6,
             height: rowH - 6,
             align: pdfAlign(cell.align, locale),
-            ellipsis: true
-          })
+            ellipsis: true,
+          }),
         );
     });
     y += rowH;
@@ -796,7 +801,6 @@ function richHtmlToDocxChildren(html, locale, docx, helpers) {
     if (block.type === "html_table") {
       const parts = [];
       const tableMargin = marginTwip();
-      if (tableNeedsPortraitPage?.(block.rows || [])) parts.push(portraitPageBreak(locale));
       const rows = (block.rows || []).map(
         (row) =>
           new TableRow({
@@ -842,7 +846,8 @@ function richHtmlToDocxChildren(html, locale, docx, helpers) {
         table.layout_json,
         table.table_meta || {},
         table.rows || [],
-        locale
+        locale,
+        { embedded: true },
       );
       return parts;
     }

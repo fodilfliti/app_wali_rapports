@@ -6,6 +6,7 @@ export type RapportTypeNav = {
   name_fr?: string
   content_kind: string
   action_count?: number
+  hidden_at?: string | null
 }
 
 const FICHE_LECTURE_AR = 'مذكرة استخلاصية'
@@ -61,6 +62,10 @@ export function rapportTypeHubIcon(contentKind: string): HubIconName {
   return 'rapports'
 }
 
+export function officeServiceHubPath(serviceId: number) {
+  return `/office/services/${serviceId}`
+}
+
 export function officeRapportTypeListPath(serviceId: number, rapportTypeId: number) {
   return `/office/services/${serviceId}/rapports/${rapportTypeId}`
 }
@@ -101,6 +106,15 @@ export function waliRapportTypeListPath(userId: number, serviceId: number, rt: R
 
 export function canOfficeEditRapport(status: string) {
   return status === 'draft' || status === 'changes_requested'
+}
+
+export function isAwaitingWaliResponse(status: string) {
+  return status === 'submitted' || status === 'under_review'
+}
+
+/** Soft-hide (finish) — not deleted from DB. Drafts must be submitted first. */
+export function canFinishRapport(status: string) {
+  return status !== 'draft'
 }
 
 export function officeRapportWorkspacePath(r: {
@@ -144,6 +158,17 @@ export function officeCommuneEditorPath(
   if (opts?.rapportId) q.set('rapport_id', String(opts.rapportId))
   const qs = q.toString()
   return `/office/services/${serviceId}/communes/${encodeURIComponent(municipalityCode)}${qs ? `?${qs}` : ''}`
+}
+
+export function officeCommuneBulkPath(
+  serviceId: number,
+  opts?: { rapportTypeId?: number; rapportId?: number },
+) {
+  const q = new URLSearchParams()
+  if (opts?.rapportTypeId) q.set('rapport_type_id', String(opts.rapportTypeId))
+  if (opts?.rapportId) q.set('rapport_id', String(opts.rapportId))
+  const qs = q.toString()
+  return `/office/services/${serviceId}/communes/bulk${qs ? `?${qs}` : ''}`
 }
 
 /** Flatten grouped contentKinds when rapportTypes is missing (older API). */

@@ -91,42 +91,56 @@ export function WaliRespondModal({ open, onClose, onSubmit }: Props) {
         {showFollowUp ? (
           <fieldset className="waliFollowUpFieldset">
             <legend>{t('waliFollowUpLegend')}</legend>
-            <label className="waliFollowUpOption">
-              <input
-                type="radio"
-                name="follow_up_status"
-                checked={followUpStatus === 'none'}
-                onChange={() => setFollowUpStatus('none')}
-              />
-              <span>
-                <strong>{t('waliFollowUp_none')}</strong>
-                <span className="muted small block">{t('waliFollowUp_noneHint')}</span>
-              </span>
-            </label>
-            <label className="waliFollowUpOption">
-              <input
-                type="radio"
-                name="follow_up_status"
-                checked={followUpStatus === 'pending'}
-                onChange={() => setFollowUpStatus('pending')}
-              />
-              <span>
-                <strong>{t('waliFollowUp_pending')}</strong>
-                <span className="muted small block">{t('waliFollowUp_pendingHint')}</span>
-              </span>
-            </label>
-            <label className="waliFollowUpOption">
-              <input
-                type="radio"
-                name="follow_up_status"
-                checked={followUpStatus === 'completed'}
-                onChange={() => setFollowUpStatus('completed')}
-              />
-              <span>
-                <strong>{t('waliFollowUp_completed')}</strong>
-                <span className="muted small block">{t('waliFollowUp_completedHint')}</span>
-              </span>
-            </label>
+            <div className="waliFollowUpOptions">
+              <label
+                className={`waliFollowUpOption${followUpStatus === 'none' ? ' waliFollowUpOption--selected' : ''}`}
+              >
+                <span className="waliFollowUpOptionRadio">
+                  <input
+                    type="radio"
+                    name="follow_up_status"
+                    checked={followUpStatus === 'none'}
+                    onChange={() => setFollowUpStatus('none')}
+                  />
+                </span>
+                <span className="waliFollowUpOptionText">
+                  <strong>{t('waliFollowUp_none')}</strong>
+                  <span className="muted small waliFollowUpOptionHint">{t('waliFollowUp_noneHint')}</span>
+                </span>
+              </label>
+              <label
+                className={`waliFollowUpOption${followUpStatus === 'pending' ? ' waliFollowUpOption--selected' : ''}`}
+              >
+                <span className="waliFollowUpOptionRadio">
+                  <input
+                    type="radio"
+                    name="follow_up_status"
+                    checked={followUpStatus === 'pending'}
+                    onChange={() => setFollowUpStatus('pending')}
+                  />
+                </span>
+                <span className="waliFollowUpOptionText">
+                  <strong>{t('waliFollowUp_pending')}</strong>
+                  <span className="muted small waliFollowUpOptionHint">{t('waliFollowUp_pendingHint')}</span>
+                </span>
+              </label>
+              <label
+                className={`waliFollowUpOption${followUpStatus === 'completed' ? ' waliFollowUpOption--selected' : ''}`}
+              >
+                <span className="waliFollowUpOptionRadio">
+                  <input
+                    type="radio"
+                    name="follow_up_status"
+                    checked={followUpStatus === 'completed'}
+                    onChange={() => setFollowUpStatus('completed')}
+                  />
+                </span>
+                <span className="waliFollowUpOptionText">
+                  <strong>{t('waliFollowUp_completed')}</strong>
+                  <span className="muted small waliFollowUpOptionHint">{t('waliFollowUp_completedHint')}</span>
+                </span>
+              </label>
+            </div>
           </fieldset>
         ) : null}
 

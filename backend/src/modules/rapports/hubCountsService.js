@@ -22,7 +22,7 @@ async function countUnreadSharedFiles(userId) {
 
 async function countWaliInboxPending() {
   return Rapport.count({
-    where: { status: { [Op.in]: ["submitted", "under_review"] } }
+    where: { status: "submitted", hidden_at: null },
   });
 }
 
@@ -100,9 +100,10 @@ async function getOfficeHubCounts(userId) {
 async function countWaliOfficeUsersPending() {
   return Rapport.count({
     where: {
-      status: { [Op.in]: ["submitted", "under_review"] },
-      owner_office_user_id: { [Op.ne]: null }
-    }
+      status: "submitted",
+      owner_office_user_id: { [Op.ne]: null },
+      hidden_at: null,
+    },
   });
 }
 
@@ -129,7 +130,8 @@ async function getOfficeServiceActionCounts(userId) {
 async function getWaliServicePendingCounts(officeUserId) {
   const where = {
     owner_office_user_id: officeUserId,
-    status: { [Op.in]: ["submitted", "under_review"] }
+    status: "submitted",
+    hidden_at: null,
   };
   const [byService, byType] = await Promise.all([
     loadRapportCountsByService(where),

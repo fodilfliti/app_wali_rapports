@@ -17,6 +17,7 @@ module.exports = (sequelize) =>
       current_version_id: { type: DataTypes.BIGINT, allowNull: true },
       created_by_user_id: { type: DataTypes.BIGINT, allowNull: false },
       owner_office_user_id: { type: DataTypes.BIGINT, allowNull: true },
+      hidden_at: { type: DataTypes.DATE, allowNull: true },
       created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
       updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
     },

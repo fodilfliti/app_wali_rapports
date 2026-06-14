@@ -102,15 +102,88 @@ Shared backend: `rapportExportData.js`, `rapportPdfService.js`, `rapportDocxServ
 
 #### Typography & Arabic
 
-- PDF Arabic: register **Tahoma** (fallback Arial/Trad Arabic); PDFKit `features: ['rtla']` per text call.
-- Word Arabic: **Tahoma** font family; merge adjacent runs where possible for spacing.
+- PDF Arabic: register **Tahoma** (fallback Arial/Trad Arabic).
+- PDF Arabic text: **logical order** in storage; **right align** in tables and body text.
+- PDFKit font features for Arabic: **`liga`**, **`calt`** only — **do not use `rtla`** (breaks letter joining into disconnected glyphs).
+- Word Arabic: **Tahoma** font family; `bidirectional` / `rightToLeft` on runs; merge adjacent runs where possible for spacing.
 - French: Calibri.
 
-#### Layout rules
+#### Table layout policy (view + export)
+
+Canonical code (backend + frontend must stay aligned):
+
+| Layer | Path |
+| ----- | ---- |
+| Backend policy | `backend/src/services/tableLayoutPolicy.js` |
+| Frontend policy | `frontend/src/utils/tableLayoutPolicy.ts` |
+| View wrapper | `frontend/src/components/TableScrollShell.tsx` |
+| PDF tables | `backend/src/services/rapportPdfService.js` (`drawTable`) |
+| PDF HTML/embedded tables | `backend/src/services/richHtmlExport.js` (`drawPdfHtmlTable`) |
+| Word tables | `backend/src/services/rapportDocxService.js` |
+
+**Shared thresholds**
+
+| Rule | Value | Effect |
+| ---- | ----- | ------ |
+| Wide table (view scroll) | `totalCols > 6` | `TableScrollShell` adds horizontal scroll + `--table-min-width` |
+| Landscape (PDF width) | `totalCols × 48pt > 515pt` | PDF uses landscape A4 for that table |
+| Portrait inner width | 515pt | A4 portrait minus margins |
+| Row height (PDF) | 16pt (schema tables), 18pt (HTML tables) | Used in height estimates |
+| Export font size | 9 / 8 / 7pt | Scales down when `totalCols` > 9 / > 12 |
+
+**Column widths:** weighted by column type (`text` > `commune_ref` > `number` > meta `#`). Meta columns use a fixed narrow weight. Same ratios drive PDF points and Word twips (`pdfColumnWidths`, `docxColumnWidthsTwip`).
+
+**In-app view**
+
+- `TableGridView` wraps tables in `TableScrollShell`.
+- Shell sets `dir="rtl"` for Arabic, `dir="ltr"` for French.
+- `data-table-cols` and `data-table-orient` attributes reflect computed policy (debug/layout).
+
+**PDF pagination (`ensurePdfTablePage`)**
+
+- **Default:** draw on the **current page** when the table fits vertically in portrait.
+- **New landscape page:** only when column count requires landscape width.
+- **New portrait page:** only when remaining vertical space is insufficient (continuation).
+- **Removed:** automatic page break before tables based on row count alone (old « >3 rows » rule).
+- **Removed:** double page break (blank portrait page followed by landscape).
+
+**PDF Arabic table RTL**
+
+- Column **order** is right-to-left for `locale=ar`: `#` column on the far right, schema columns flow leftward (`buildTableColumnSlots`).
+- Group header rows with **colspan** use `tableColumnSpanRect` so merged cells align correctly in RTL.
+- Cell text: headers **center**; data cells **right** for Arabic, **left** for French (`pdfCellAlign`).
+- All table cell text goes through `pdfTextOpts(locale, …)` from `exportFonts.js`.
+
+**Word Arabic tables**
+
+- `TableLayoutType.FIXED` with weighted `columnWidths` (twips).
+- `visuallyRightToLeft: true` when `locale=ar`.
+- Header cells centered; data cells right (AR) / left (FR).
+
+**Embedded tables in rich HTML**
+
+- Same pagination and RTL slot rules as schema tables when rendered in PDF.
+- Rich HTML export does **not** insert an extra portrait page break before embedded/schema tables when the current page has room.
+
+#### Wali response export block (`fiche_lecture` only)
+
+Shared: `backend/src/services/waliResponseExport.js`.
+
+- Appended **after** the fiche document body in PDF and Word exports (not on `table_grid` / `document_compose` / `commune_list` exports).
+- Bordered box with **8px rounded corners** (PDF); decision line + optional note text.
+- Skips empty notes and placeholder `—`.
+- Includes **2 ruled blank lines** below the decision for manual annotations (PDF + Word).
+- Labels localized (ar/fr): section title « رد الوالي », decision variants including follow-up status.
+
+#### Layout rules (general)
 
 - Vertical margin ~14pt around exported tables and bordered HTML blocks (`exportLayout.js`).
-- Embedded/export tables with **more than 3 data rows** start on a **portrait A4** page break.
 - Images: embedded when file resolves; **videos**: placeholder line only (not embedded in PDF/Word).
+- **Table meta columns** (PDF, Word, Excel): prepended before schema columns on all table exports:
+  - **#** (sequential line number in export row order, 1-based).
+  - **Commune list** exports also prepend **Commune** name column.
+  - **Wali** and **Terminé** are **edit-mode only** (office table editor) — not shown in read-only view or exports.
+  - Labels localized (`tableExportMeta.js`: ar/fr). Line numbers follow **stored row order** after drag reorder.
 
 #### Audit
 
