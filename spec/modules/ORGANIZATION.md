@@ -20,7 +20,9 @@
 #### `users`
 
 - `id`, `username` (unique), `password_hash`, `name`, `role` (`ADMIN` | `OFFICE_USER` | `WALI`)
-- `department_id` (FK, nullable), `is_blocked`, profile fields per ACCESS_PROFILES
+- `department_id` (FK, nullable), `job_title` (nullable string), `email` (nullable string), `email_hidden` (boolean, default false)
+- `access_role_template_id` (nullable FK to role templates), `use_custom_permissions` (boolean, default false)
+- `is_blocked`, `created_at`
 - No `municipality_id` — communes are reference only
 
 ### Workflows

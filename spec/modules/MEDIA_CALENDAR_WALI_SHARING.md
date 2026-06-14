@@ -43,31 +43,70 @@ Canonical rules: **`spec/CORE.md`** § Rapport export.
 
 ### Calendar events
 
-Table `rapport_calendar_events` — multiple events per rapport.
+Table `rapport_calendar_events`
 
-| Field | Notes |
-| ----- | ----- |
-| `event_date` | DATE — shown on Wali calendar |
-| `title_ar`, `title_fr` | Short label |
-| `note_ar`, `note_fr` | Optional detail |
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `id` | BIGINT | Primary key |
+| `rapport_id` | BIGINT | FK to rapports |
+| `event_date` | DATEONLY | Date shown on Wali calendar |
+| `title_ar`, `title_fr` | STRING(200) | Short label |
+| `note_ar`, `note_fr` | TEXT | Optional detail |
+| `created_by_user_id` | BIGINT | FK to users |
+| `created_at`, `updated_at` | DATE | Timestamps |
 
 Office users manage events on draft/editable rapports. Events appear on the **Wali hub calendar** (`GET /wali/calendar`); they are **not** appended to PDF/Word export files. Help text in the calendar editor should reflect Wali calendar visibility only.
 
 ### Rapport views
 
-Table `rapport_views` — `(rapport_id, user_id, viewed_at)` unique. Recorded when Wali opens a rapport. Exposed to Wali on rapport detail.
+Table `rapport_views`
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `id` | BIGINT | Primary key |
+| `rapport_id` | BIGINT | FK to rapports |
+| `user_id` | BIGINT | FK to users (Wali) |
+| `viewed_at` | DATE | Timestamp |
+
+Recorded when Wali opens a rapport. Exposed to Wali on rapport detail. Unique index on `(rapport_id, user_id)`.
 
 ### Wali broadcasts
 
 Wali uploads a file and shares with all office users or selected recipients.
 
-| Table | Purpose |
-| ----- | ------- |
-| `wali_broadcasts` | Title, message, file ref, `allow_comments` |
-| `wali_broadcast_recipients` | Per-user `read_at`, notification state |
-| `wali_broadcast_comments` | Optional thread when enabled |
+#### `wali_broadcasts`
 
-Notifications: `message_key` = `waliBroadcast` on share; office bell shows unread. Recipients who have not opened receive reminder notifications.
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `id` | BIGINT | Primary key |
+| `uploaded_file_id` | BIGINT | FK to `uploaded_files` |
+| `title_ar`, `title_fr` | STRING(200) | Title |
+| `message_ar`, `message_fr` | TEXT | Description |
+| `allow_comments` | BOOLEAN | Allow comments toggle |
+| `created_by_user_id` | BIGINT | FK to users (Wali) |
+| `created_at` | DATE | Timestamp |
+
+#### `wali_broadcast_recipients`
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `id` | BIGINT | Primary key |
+| `broadcast_id` | BIGINT | FK to `wali_broadcasts` |
+| `user_id` | BIGINT | FK to users (recipient) |
+| `read_at` | DATE | Timestamp (nullable) |
+| `created_at` | DATE | Timestamp |
+
+#### `wali_broadcast_comments`
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `id` | BIGINT | Primary key |
+| `broadcast_id` | BIGINT | FK to `wali_broadcasts` |
+| `user_id` | BIGINT | FK to users |
+| `body_text` | TEXT | Comment body |
+| `created_at` | DATE | Timestamp |
+
+**Notifications wiring:** Sharing a broadcast creates notifications for recipients with `message_key = 'waliBroadcast'`, `broadcast_id` pointing to the broadcast record, and a `null` `rapport_id` (which is nullable in the database). Recipients who have not opened receive reminder notifications.
 
 ### API summary
 

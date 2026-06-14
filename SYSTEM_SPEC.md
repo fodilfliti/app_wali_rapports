@@ -7,6 +7,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 ### Canonical spec documents
 
 - **Core (shared standards + app shell + export + validation)**: `spec/CORE.md`
+- **System Architecture Context (directories + models + flows)**: `spec/ARCHITECTURE_CONTEXT.md`
 - **Modules**:
   - **Organization (communes reference + user accounts)**: `spec/modules/ORGANIZATION.md`
   - **Access profiles (domain permissions)**: `spec/modules/ACCESS_PROFILES.md`
@@ -15,6 +16,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
   - **Investissement rapport slice (placeholder)**: `spec/modules/RAPPORT_INVESTISSEMENT.md`
   - **Schema configuration (admin schemas + rapport types)**: `spec/modules/SCHEMA_CONFIGURATION.md`
   - **Service sharing (view / editor per office user)**: `spec/modules/SERVICE_SHARING.md`
+  - **Media, calendar events & Wali sharing (image/video, calendars, broadcast)**: `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`
 
 ### Cross-cutting updates (initial)
 

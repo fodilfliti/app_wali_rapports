@@ -23,8 +23,10 @@ import { HubTile } from '../components/HubTile'
 import { ServiceRapportTypesHub } from '../components/ServiceRapportTypesHub'
 import { ServiceContentKindsHub } from '../components/ServiceContentKindsHub'
 import {
+  isDirectWorkspaceKind,
   localizedRapportTypeName,
   officeRapportTypeListPath,
+  officeRapportTypeWorkspacePath,
   rapportTypesForContentKind,
 } from '../utils/rapportNavigation'
 import { notifyHubCountsRefresh, HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
@@ -398,7 +400,11 @@ export function OfficeServiceContentHubPage({ token }: Props) {
       contentKinds={hub.contentKinds}
       accessLevel={hub.accessLevel}
       backTo="/office/services"
-      rapportTypePath={(rt) => officeRapportTypeListPath(sid, rt.id)}
+      rapportTypePath={(rt) =>
+        isDirectWorkspaceKind(rt.content_kind)
+          ? officeRapportTypeWorkspacePath(sid, rt)
+          : officeRapportTypeListPath(sid, rt.id)
+      }
       mode="office"
       showConfig={hub.accessLevel === 'manage'}
     />

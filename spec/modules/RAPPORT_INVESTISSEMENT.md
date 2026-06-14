@@ -12,7 +12,21 @@
 - **WALI** with `rapports.inbox.view`: read submitted versions.
 - **ADMIN**: configure type; support edits.
 
-### Data model (in `rapport_versions.data_json`)
+### Implemented Schema (`investissement-projets`)
+
+The system seeds a table schema with slug `investissement-projets` containing the following columns:
+
+| Column key | Type | Label (AR) | Label (FR) | Format |
+| ---------- | ---- | ---------- | ---------- | ------ |
+| `project_title` | `text` | عنوان المشروع | Intitulé du projet | — |
+| `owner` | `text` | صاحب المشروع | Maître d'ouvrage | — |
+| `municipality_code` | `commune_ref` | البلدية | Commune | — |
+| `location` | `text` | موقع المشروع | Localisation | — |
+| `total_amount_kdzd` | `number` | المبلغ الإجمالي (دج) | Montant total (DA) | `currency` |
+| `completion_pct` | `number` | نسبة الإنجاز | Taux d'avancement | `percent` |
+| `notes` | `text` | ملاحظات | Observations | — |
+
+### Target Data model (in `rapport_versions.data_json`)
 
 ```json
 {

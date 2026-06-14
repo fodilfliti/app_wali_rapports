@@ -72,25 +72,12 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 #### `departments`
 
-
-
-Wilaya departments (Investissement, Finance, Hydraulique).
-
-
+- `id`, `name_ar`, `name_fr`, `sort_order`, `is_active`
 
 #### `services`
 
-
-
-- `id`, `department_id`, `slug`, `name_ar`, `name_fr`, `is_folder`, `parent_service_id` (nullable), `sort_order`, `is_active`
-
-
-
-#### `sub_services` (optional normalized folder; may merge into `services.parent_service_id`)
-
-
-
-- See migration 004; Finance → Banque / Budget example in `RAPPORT_SERVICE_TYPES.md`.
+- `id`, `department_id`, `slug`, `name_ar`, `name_fr`, `is_folder`, `parent_service_id` (nullable self-referential FK), `sort_order`, `is_active`
+- **Sub-services & folder hierarchy:** stored directly in this table using `parent_service_id` and `is_folder`. There is no separate `sub_services` table.
 
 
 
@@ -160,19 +147,11 @@ Wilaya departments (Investissement, Finance, Hydraulique).
 
 #### `wali_responses`
 
-
-
-- `decision`: `accepted` | `changes_requested` | `viewed`
-
-- `body_text`, optional `scope` / `scope_id` (table, document, commune)
-
-
+- `id`, `rapport_id` (FK), `rapport_version_id` (FK), `decision` (`accepted` | `changes_requested` | `viewed`), `follow_up_status` (`none` | `pending` | `completed`), `body_text`, `scope` (`whole_rapport` | `table` | `document` | `commune`), `scope_id` (nullable), `created_by_user_id` (FK), `created_at`
 
 #### `notifications`
 
-
-
-- Office user alerted when Wali comments; `read_at` nullable.
+- `id`, `user_id` (FK), `rapport_id` (FK, nullable), `broadcast_id` (FK, nullable), `wali_response_id` (FK, nullable), `message_key` (default `waliFeedback`), `read_at` (nullable), `created_at`
 
 
 

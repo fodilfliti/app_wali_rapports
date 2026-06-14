@@ -1,0 +1,17 @@
+{
+  "name": "app-wali-rapports",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "dev:front": "cd frontend && npm run dev",
+    "dev:back": "cd backend && npm run dev",
+    "restart:back": "node scripts/restart-back.js",
+    "kill": "node scripts/kill-all.js",
+    "migrate": "cd backend && npm run db:migrate",
+    "migrate:undo": "cd backend && npm run db:migrate:undo",
+    "migrate:undo:all": "cd backend && npm run db:migrate:undo:all",
+    "seed": "cd backend && npm run db:seed-dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+  }
+}

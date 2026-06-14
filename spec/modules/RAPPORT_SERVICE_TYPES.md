@@ -162,12 +162,14 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ### `wali_responses` (extended)
 
 - `decision`: `accepted` | `changes_requested` | `viewed` (no comment — wali saw update only)
+- `follow_up_status`: `none` | `pending` | `completed` (only applicable when `decision` is `accepted`)
+- `rapport_version_id`: FK to the specific snapshot version reviewed
 - `body_text`: note / command (required when `changes_requested`)
 - `scope`: `whole_rapport` | `table` | `document` | `commune` (optional `scope_id`)
 
 ### `notifications`
 
-- `user_id` (office recipient), `rapport_id`, `wali_response_id`, `read_at`, `created_at`
+- `user_id` (office recipient), `rapport_id` (nullable FK), `broadcast_id` (nullable FK to `wali_broadcasts`), `wali_response_id` (nullable FK), `message_key` (e.g. `waliFeedback` or `waliBroadcast`), `read_at`, `created_at`
 - Office hub badge + list **Notifications du wali**
 - Mark read when user opens rapport
 

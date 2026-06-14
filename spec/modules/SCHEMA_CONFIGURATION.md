@@ -10,12 +10,14 @@ Admin defines **reusable table column schemas** and **rapport types** per servic
 
 | Field | Description |
 | ----- | ----------- |
+| `id` | Primary key (BIGINT) |
 | `slug` | Unique key (e.g. `consommation-credits`) |
 | `name_ar`, `name_fr` | Display name |
 | `columns_json` | Array of column defs (see below) |
 | `layout_json` | Optional table presentation (see below) |
 | `service_id` | Optional link to one service |
 | `is_system` | Seed/demo schemas; admin cannot delete |
+| `created_at` | Date created |
 
 #### Column definition (`columns_json[]`)
 
@@ -61,13 +63,16 @@ Reusable **rich HTML starters** for `document_compose` and `fiche_lecture` on a 
 
 | Field | Notes |
 | ----- | ----- |
+| `id` | Primary key (BIGINT) |
 | `service_id` | Owner service (required) |
-| `rapport_type_id` | Optional — limit template to one rapport type |
-| `content_kind` | Optional — `document_compose` \| `fiche_lecture` when no type id |
+| `rapport_type_id` | Legacy optional field — limit template to one rapport type |
+| `rapport_type_ids` | JSONB array of numbers — limit template to multiple rapport types |
+| `content_kind` | Optional — `document_compose` \| `fiche_lecture` when no type ids |
 | `slug` | Unique key |
 | `name_ar`, `name_fr` | List label |
 | `is_default` | At most one default per scope (type → kind → service-wide) |
 | `content_json` | `{ rich_html_ar, rich_html_fr, embedded_tables[] }` |
+| `created_at`, `updated_at` | Timestamps |
 
 **Create rapport:** `POST …/documents` body may include `template_id` or `skip_default: true` (blank document).
 
