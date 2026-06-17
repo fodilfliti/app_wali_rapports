@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TableGridView, TableMergeToolbar, TableWorkspace, TableTitleBlock } from '../TableGridView'
+import { TableMergeToolbar, TableWorkspace, TableTitleBlock } from '../TableGridView'
 import type { EmbeddedTable } from '../../types/embeddedTable'
 import type { TableMeta } from '../../utils/tableLayout'
 import { emptyRowsForColumns } from '../../types/embeddedTable'

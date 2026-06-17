@@ -48,6 +48,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [versions, setVersions] = useState<any[]>([]);
+  const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
   const [addRowCommuneCode, setAddRowCommuneCode] = useState("");
 
   const listPath = `/office/services/${sid}/communes${

@@ -32,7 +32,6 @@ import {
   type CalendarEvent,
 } from "../components/CalendarEventsEditor";
 import {
-  DocumentBlocksView,
   MediaRowsEditor,
   MediaRowsView,
 } from "../components/MediaBlocks";
@@ -56,7 +55,6 @@ import { ServiceContentKindsHub } from "../components/ServiceContentKindsHub";
 import {
   isDirectWorkspaceKind,
   localizedRapportTypeName,
-  canFinishRapport,
   officeRapportTypeListPath,
   officeRapportTypeWorkspacePath,
   officeServiceHubPath,

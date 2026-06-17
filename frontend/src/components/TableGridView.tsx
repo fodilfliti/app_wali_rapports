@@ -42,7 +42,6 @@ import { filterTableRowEntries, type TableRowFilterMode } from '../utils/tableRo
 import {
   canReorderRowTo,
   visibleRowLineNumberForScope,
-  reorderRowsArray,
   type TableRowReorderScope,
 } from '../utils/tableRowReorder'
 import { TableScrollShell } from './TableScrollShell'

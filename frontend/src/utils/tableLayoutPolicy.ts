@@ -40,6 +40,7 @@ export function computeTableLayoutPolicy(input: {
   rows?: Record<string, unknown>[]
   dataColCount?: number
   metaColCount?: number
+  embedded?: boolean
 }): TableLayoutPolicy {
   const rows = input.rows || []
   const rowCount = rows.length

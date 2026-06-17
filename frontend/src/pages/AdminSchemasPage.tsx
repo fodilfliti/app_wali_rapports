@@ -261,6 +261,8 @@ export function AdminSchemasPage({ token }: Props) {
 
       versioning_mode: 'versioned',
 
+      commune_content_kind: 'complex',
+
       table_schema_slug: '',
 
     })

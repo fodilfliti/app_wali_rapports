@@ -8,6 +8,7 @@ import { CalendarEventsView } from './CalendarEventsEditor'
 import { MediaRowsView } from './MediaBlocks'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import type { Column, LayoutJson } from '../utils/tableLayout'
+import type { EmbeddedTable } from '../types/embeddedTable'
 import type { MediaFile } from '../utils/media'
 
 type Municipality = {
@@ -129,7 +130,7 @@ export function CommuneListVersionView({
               rich_html_ar: selected.entry.rich_html_ar,
               rich_html_fr: selected.entry.rich_html_fr,
               blocks: selected.entry.blocks,
-              embedded_tables: selected.entry.embedded_tables,
+              embedded_tables: (selected.entry.embedded_tables || []) as EmbeddedTable[],
             }}
             locale={i18n.language}
             token={token}
