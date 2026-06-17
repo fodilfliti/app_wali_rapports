@@ -112,6 +112,25 @@ export function isAwaitingWaliResponse(status: string) {
   return status === 'submitted' || status === 'under_review'
 }
 
+/** Archived version UI for versioned types once at least one snapshot was submitted. */
+export function supportsRapportVersionArchive(
+  rapportType?: { versioning_mode?: string } | null,
+  versions: { submitted_at?: string | null }[] = [],
+) {
+  return (
+    rapportType?.versioning_mode === 'versioned' &&
+    versions.some((v) => v.submitted_at)
+  )
+}
+
+export function latestSubmittedVersion<
+  T extends { version_number: number; submitted_at?: string | null },
+>(versions: T[]): T | undefined {
+  return [...versions]
+    .filter((v) => v.submitted_at)
+    .sort((a, b) => b.version_number - a.version_number)[0]
+}
+
 /** Soft-hide (finish) — not deleted from DB. Drafts must be submitted first. */
 export function canFinishRapport(status: string) {
   return status !== 'draft'

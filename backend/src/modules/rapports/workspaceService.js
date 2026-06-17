@@ -50,15 +50,20 @@ function normalizeMediaRows(rows) {
 }
 
 async function attachMediaAndCalendar(view, rapportId, actor) {
-  const { files } = await enrichDataJsonWithFiles(
-    view.blocks != null
-      ? { blocks: view.blocks }
+  const dj = view.rapport?.currentVersion?.data_json || {};
+  const enrichPayload =
+    view.rows != null
+      ? {
+          tables: [{ media_rows: view.media_rows || [], rows: view.rows || [] }],
+        }
       : {
-          tables: [
-            { media_rows: view.media_rows || [], rows: view.rows || [] },
-          ],
-        },
-  );
+          blocks: view.blocks ?? dj.blocks ?? [],
+          media_rows: view.media_rows ?? dj.media_rows ?? [],
+          rich_html_ar: dj.rich_html_ar,
+          rich_html_fr: dj.rich_html_fr,
+          embedded_tables: dj.embedded_tables,
+        };
+  const { files } = await enrichDataJsonWithFiles(enrichPayload, rapportId);
   let calendarEvents = [];
   if (actor) {
     calendarEvents = await calendarEventService.listForRapport(
@@ -727,6 +732,8 @@ async function saveDocumentBlocks(rapportId, payload, actor, req) {
     data.rich_html_fr = payload.rich_html_fr;
   if (payload.embedded_tables !== undefined)
     data.embedded_tables = payload.embedded_tables;
+  if (payload.media_rows !== undefined)
+    data.media_rows = normalizeMediaRows(payload.media_rows);
   return rapportService.updateRapportDraft(
     rapportId,
     { data_json: data },
@@ -782,11 +789,13 @@ async function getWaliDocumentView(
 ) {
   const rapport = await rapportService.getRapportDetail(rapportId, versionId);
   if (markReview) await rapportService.markUnderReview(rapportId, null);
-  const blocks = rapport.currentVersion?.data_json?.blocks || [];
+  const dj = rapport.currentVersion?.data_json || {};
+  const blocks = dj.blocks || [];
   const versions = await rapportService.listRapportVersions(rapportId);
   return {
     rapport,
     blocks,
+    media_rows: normalizeMediaRows(dj.media_rows),
     versions,
     waliResponses: rapport.waliResponses || [],
   };
@@ -896,6 +905,17 @@ async function getCommuneListWorkspace(
       order: [["updated_at", "DESC"]],
     });
 
+    if (!rapport) {
+      rapport = await Rapport.findOne({
+        where: {
+          service_id: service.id,
+          rapport_type_id: rapportType.id,
+          hidden_at: null,
+        },
+        order: [["updated_at", "DESC"]],
+      });
+    }
+
     if (!rapport && accessLevel === "manage") {
       const title = `${service.name_ar} — ${new Date().toISOString().slice(0, 10)}`;
       rapport = await rapportService.createRapport(
@@ -908,13 +928,7 @@ async function getCommuneListWorkspace(
         actor,
         req,
       );
-    } else if (!rapport) {
-      rapport = await Rapport.findOne({
-        where: { service_id: service.id, rapport_type_id: rapportType.id },
-        order: [["updated_at", "DESC"]],
-      });
-      if (rapport) rapport = await rapportService.getRapportDetail(rapport.id);
-    } else {
+    } else if (rapport) {
       rapport = await rapportService.getRapportDetail(rapport.id);
     }
   }
@@ -1104,6 +1118,7 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
   const rich_html_fr = communeEntry.rich_html_fr || "";
   const embedded_tables = communeEntry.embedded_tables || [];
   const calendar_events = communeEntry.calendar_events || [];
+  const media_rows = normalizeMediaRows(communeEntry.media_rows);
 
   let rows = communeEntry.rows || [];
   if (rows.length) rows = recalcTableRows(rows, columns);
@@ -1126,6 +1141,7 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
     rich_html_fr,
     embedded_tables,
     calendar_events,
+    media_rows,
     rows,
     editable,
     rapport: {
@@ -1174,29 +1190,43 @@ async function saveCommuneData(
   if (payload.title_fr !== undefined) next.title_fr = payload.title_fr;
   if (payload.subtitle_ar !== undefined) next.subtitle_ar = payload.subtitle_ar;
   if (payload.subtitle_fr !== undefined) next.subtitle_fr = payload.subtitle_fr;
+  if (payload.media_rows !== undefined)
+    next.media_rows = normalizeMediaRows(payload.media_rows);
 
   if (payload.rows !== undefined) {
-    const schema = await resolveTableSchema(rapport.rapportType, rapport.service_id);
-    const columns = schema.columns_json || [];
     let rows = payload.rows || [];
-    rows = rows.map((r) => ({
-      ...r,
-      _highlight: r._highlight || "none",
-      _row_finished: r._row_finished === true,
-      _wali_visible: r._wali_visible !== false,
-      _cell_colors:
-        r._cell_colors && typeof r._cell_colors === "object"
-          ? r._cell_colors
-          : {},
-    }));
-    next.rows = recalcTableRows(rows, columns);
+    if (rapport.rapportType?.commune_content_kind === "table") {
+      const schema = await resolveTableSchema(
+        rapport.rapportType,
+        rapport.service_id,
+      );
+      const columns = schema.columns_json || [];
+      rows = rows.map((r) => ({
+        ...r,
+        _highlight: r._highlight || "none",
+        _row_finished: r._row_finished === true,
+        _wali_visible: r._wali_visible !== false,
+        _cell_colors:
+          r._cell_colors && typeof r._cell_colors === "object"
+            ? r._cell_colors
+            : {},
+      }));
+      next.rows = recalcTableRows(rows, columns);
+    } else {
+      next.rows = rows;
+    }
   }
 
   communes[municipalityCode] = next;
 
   return rapportService.updateRapportDraft(
     rapportId,
-    { data_json: { communes } },
+    {
+      data_json: {
+        ...(rapport.currentVersion?.data_json || {}),
+        communes,
+      },
+    },
     actor,
     req,
   );

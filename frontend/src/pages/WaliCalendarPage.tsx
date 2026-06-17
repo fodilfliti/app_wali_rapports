@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
+import { backNavigationState } from '../utils/navigationBack'
 
 type Props = { token: string }
 
@@ -51,6 +52,18 @@ function contentKindKey(kind?: string) {
   return `contentKind_${kind}`
 }
 
+const EVENT_KIND_CLASS: Record<string, string> = {
+  table_grid: 'waliCalendarEvent--table_grid',
+  document_compose: 'waliCalendarEvent--document_compose',
+  fiche_lecture: 'waliCalendarEvent--fiche_lecture',
+  commune_list: 'waliCalendarEvent--commune_list',
+}
+
+function eventCardClass(kind?: string, index = 0) {
+  if (kind && EVENT_KIND_CLASS[kind]) return EVENT_KIND_CLASS[kind]
+  return `waliCalendarEvent--tone${index % 4}`
+}
+
 export function WaliCalendarPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const [anchor, setAnchor] = useState(() => new Date().toISOString().slice(0, 10))
@@ -85,6 +98,7 @@ export function WaliCalendarPage({ token }: Props) {
   }, [data?.events, days])
 
   const locale = i18n.language === 'fr' ? 'fr' : 'ar'
+  const todayIso = new Date().toISOString().slice(0, 10)
 
   return (
     <div className="page">
@@ -99,7 +113,7 @@ export function WaliCalendarPage({ token }: Props) {
         <button type="button" className="btn btn-secondary" onClick={() => setAnchor(addDays(anchor, 7))}>
           {t('nextWeek')}
         </button>
-        <BackButton fallbackTo="/wali" />
+        <BackButton to="/wali" fallbackTo="/wali" />
       </div>
       <p className="muted">
         {data?.from} — {data?.to}
@@ -107,20 +121,27 @@ export function WaliCalendarPage({ token }: Props) {
       <div className="waliCalendarList">
         {days.map((d) => {
           const events = byDay[d] || []
+          const isToday = d === todayIso
           return (
-            <section key={d} className="waliCalendarDay card">
+            <section
+              key={d}
+              className={`waliCalendarDay card${isToday ? ' waliCalendarDay--today' : ''}`}
+            >
               <header className="waliCalendarDayHeader">
                 <time dateTime={d} className="waliCalendarDayDate">
                   {formatDayHeading(d, locale)}
                 </time>
-                <span className="waliCalendarDayIso muted small">{d}</span>
+                <span className="waliCalendarDayIso">{d}</span>
+                {isToday ? (
+                  <span className="waliCalendarDayToday badge badge-submitted">{t('today')}</span>
+                ) : null}
                 {events.length ? (
                   <span className="waliCalendarDayCount badge">{events.length}</span>
                 ) : null}
               </header>
               {events.length ? (
                 <ul className="waliCalendarEvents">
-                  {events.map((e) => {
+                  {events.map((e, eventIndex) => {
                     const eventTitle = pickLocalized(locale, e.title_ar, e.title_fr)
                     const serviceName = pickLocalized(
                       locale,
@@ -134,9 +155,13 @@ export function WaliCalendarPage({ token }: Props) {
                       eventTitle &&
                       e.rapport.title.trim() !== eventTitle.trim()
                     return (
-                      <li key={e.id} className="waliCalendarEvent">
+                      <li
+                        key={e.id}
+                        className={`waliCalendarEvent ${eventCardClass(e.rapport?.content_kind, eventIndex)}`}
+                      >
                         <Link
                           to={`/wali/rapports/${e.rapport_id}/view`}
+                          state={backNavigationState('/wali/calendar')}
                           className="waliCalendarEventTitle"
                         >
                           {eventTitle || e.rapport?.title || `#${e.rapport_id}`}

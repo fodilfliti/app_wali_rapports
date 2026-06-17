@@ -41,7 +41,7 @@ async function listOfficeUsersForWali() {
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"]
     ],
     where: {
-      status: "submitted",
+      status: { [Op.in]: hubCountsService.WALI_INBOX_ACTION_STATUSES },
       owner_office_user_id: { [Op.ne]: null },
       hidden_at: null,
     },

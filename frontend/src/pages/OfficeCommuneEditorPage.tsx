@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams, useSearchParams, useLocation } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { ApiError } from "../api";
@@ -14,11 +14,14 @@ import {
 } from "../components/RapportTitleField";
 import { RichDocumentEditor } from "../components/RichDocumentEditor";
 import { TableMergeToolbar, TableWorkspace } from "../components/TableGridView";
-import { ArchiveVersionsLink } from "./RapportVersionsArchivePage";
+import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
+import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import type { EmbeddedTable } from "../types/embeddedTable";
 import { mergeRichHtmlIntoData } from "../utils/richDocument";
 import { markOfficeRapportOpened } from "../utils/officeRapportList";
+import type { MediaFile, MediaRow } from "../utils/media";
+import { MediaRowsEditor, MediaRowsView } from "../components/MediaBlocks";
 import { countFinishedRows, type TableRowFilterMode } from "../utils/tableRowMeta";
 import { reorderRowsArray } from "../utils/tableRowReorder";
 import type { TableMeta } from "../utils/tableLayout";
@@ -31,6 +34,7 @@ type CommuneContent = {
   blocks?: any[];
   embedded_tables?: EmbeddedTable[];
   calendar_events?: CalendarEvent[];
+  media_rows?: MediaRow[];
 };
 
 export function OfficeCommuneEditorPage({ token }: Props) {
@@ -58,9 +62,10 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [versions, setVersions] = useState<any[]>([]);
-  const location = useLocation();
   const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
   const [tableMeta, setTableMeta] = useState<TableMeta>({});
+  const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
 
   const listPath = `/office/services/${sid}/communes${
     rapportTypeId || rapportIdParam
@@ -101,8 +106,13 @@ export function OfficeCommuneEditorPage({ token }: Props) {
       });
       setEmbeddedTables(tables);
       setCalendarEvents(detail.calendar_events || []);
+      setMediaRows(detail.media_rows || []);
       setRows(detail.rows || []);
       setEditable(detail.editable === true);
+      api
+        .getRapportMediaFiles(token, ws.rapport.id)
+        .then((r) => setMediaFiles(r.files || {}))
+        .catch(() => {});
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
       setLoadError(msg);
@@ -128,6 +138,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
         rich_html_fr: content.rich_html_fr,
         embedded_tables: embeddedTables,
         calendar_events: calendarEvents,
+        media_rows: mediaRows,
         rows: rows,
       });
       snack.show(t("save"), "success");
@@ -201,7 +212,6 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const isEditable = editable;
   const finishedRowCount = countFinishedRows(rows);
   const mergeKeys = tableMeta.merge_column_keys || [];
-  const returnTo = location.pathname + location.search;
 
   return (
     <div className="page communeEditorPage">
@@ -216,8 +226,13 @@ export function OfficeCommuneEditorPage({ token }: Props) {
           <p className="muted small communeEditorCommuneLabel">{communeName}</p>
         </div>
         <div className="pageHeaderActions">
-          {rapportId && versions.length > 0 ? (
-            <ArchiveVersionsLink rapportId={rapportId} returnTo={returnTo} />
+          {rapportId ? (
+            <RapportVersionHeaderActions
+              rapportId={rapportId}
+              rapportType={workspace?.rapportType}
+              versions={versions}
+              showSentVersion={!isEditable}
+            />
           ) : null}
           {isEditable ? (
             <button
@@ -250,6 +265,11 @@ export function OfficeCommuneEditorPage({ token }: Props) {
 
       {!loading && !loadError && rapportId ? (
         <>
+          <RapportOfficeStatusBanner
+            rapport={workspace?.rapport}
+            editable={isEditable}
+          />
+
           {workspace?.rapportType?.commune_content_kind === "table" ? (
             <>
               <TableWorkspace
@@ -300,6 +320,24 @@ export function OfficeCommuneEditorPage({ token }: Props) {
               }
             />
           )}
+          {workspace?.rapportType?.commune_content_kind !== "table" ? (
+            isEditable ? (
+              <MediaRowsEditor
+                rows={mediaRows}
+                files={mediaFiles}
+                token={token}
+                editable
+                onChange={setMediaRows}
+                onUpload={async (file) => {
+                  const res = await api.uploadRapportFile(token, rapportId, file);
+                  setMediaFiles((prev) => ({ ...prev, [res.file.id]: res.file }));
+                  return res.file;
+                }}
+              />
+            ) : (
+              <MediaRowsView rows={mediaRows} files={mediaFiles} token={token} />
+            )
+          ) : null}
           <CalendarEventsEditor
             events={calendarEvents}
             editable={isEditable}

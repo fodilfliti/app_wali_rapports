@@ -744,7 +744,18 @@ async function listRapportVersions(rapportId) {
 async function getRapportVersion(rapportId, versionId) {
   const version = await RapportVersion.findOne({
     where: { id: versionId, rapport_id: rapportId },
-    include: [{ model: User, as: "createdByUser", attributes: ["id", "name"] }],
+    include: [
+      { model: User, as: "createdByUser", attributes: ["id", "name"] },
+      {
+        model: WaliResponse,
+        as: "waliResponses",
+        separate: true,
+        order: [["created_at", "DESC"]],
+        include: [
+          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+        ],
+      },
+    ],
   });
   if (!version) {
     const err = new Error("Not found");

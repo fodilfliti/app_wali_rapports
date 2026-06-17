@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { BackButton } from "../components/BackButton";
 import type { RapportVersionRow } from "../components/RapportVersionsList";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import { RapportVersionDetail } from "./RapportVersionViewPage";
-import { versionDetailPath, versionsListPath } from "../utils/rapportVersionsNav";
+import {
+  rapportPreviewPath,
+  versionDetailPath,
+  versionsListPath,
+} from "../utils/rapportVersionsNav";
 
 export { versionsListPath } from "../utils/rapportVersionsNav";
 
@@ -25,7 +29,7 @@ type ArchivePanelProps = {
   versions: RapportVersionRow[];
   liveCurrentVersionId?: number | null;
   wali?: boolean;
-  returnTo?: string;
+  previewPath: string;
 };
 
 export function RapportVersionsArchivePanel({
@@ -35,7 +39,7 @@ export function RapportVersionsArchivePanel({
   versions,
   liveCurrentVersionId,
   wali = false,
-  returnTo,
+  previewPath,
 }: ArchivePanelProps) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language === "fr" ? "fr" : "ar";
@@ -43,7 +47,7 @@ export function RapportVersionsArchivePanel({
     rapportStatus === "draft" || rapportStatus === "changes_requested";
 
   const viewPath = (versionId: number) =>
-    versionDetailPath(rapportId, versionId, wali, returnTo);
+    versionDetailPath(rapportId, versionId, wali);
 
   const sorted = [...versions].sort(
     (a, b) => b.version_number - a.version_number,
@@ -60,8 +64,8 @@ export function RapportVersionsArchivePanel({
           const isDraft = !v.submitted_at;
           const dateLabel = formatVersionDate(v.submitted_at, locale);
           const openEditor =
-            isCurrent && isDraft && editableRapport && returnTo && !wali;
-          const href = openEditor ? returnTo : viewPath(v.id);
+            isCurrent && isDraft && editableRapport && !wali;
+          const href = openEditor ? previewPath : viewPath(v.id);
 
           return (
             <li key={v.id}>
@@ -108,12 +112,10 @@ function RapportVersionsArchiveListPage({
   token,
   wali,
   rid,
-  returnTo,
 }: {
   token: string;
   wali: boolean;
   rid: number;
-  returnTo?: string;
 }) {
   const { t } = useTranslation();
   const snack = useSnackbar();
@@ -147,19 +149,16 @@ function RapportVersionsArchiveListPage({
     };
   }, [rid, token, wali, snack, t]);
 
-  const fallbackBack = wali
-    ? `/wali/rapports/${rid}/view`
-    : rapport
-      ? undefined
-      : "/office/rapports";
-
-  const backTarget = returnTo || fallbackBack || "/office/rapports";
+  const previewBack = useMemo(
+    () => rapportPreviewPath(rid, wali, rapport),
+    [rid, wali, rapport],
+  );
 
   return (
     <div className="page rapportVersionsPage">
       <div className="pageHeader row compact">
         <h1>{t("archivedVersions")}</h1>
-        <BackButton to={returnTo ? backTarget : undefined} fallbackTo={backTarget} replace />
+        <BackButton to={previewBack} fallbackTo={previewBack} replace />
       </div>
 
       {loading ? <p className="muted">{t("loading")}</p> : null}
@@ -177,7 +176,7 @@ function RapportVersionsArchiveListPage({
             versions={versions}
             liveCurrentVersionId={rapport?.current_version_id}
             wali={wali}
-            returnTo={returnTo}
+            previewPath={previewBack}
           />
         </div>
       ) : null}
@@ -194,39 +193,30 @@ export function RapportVersionsArchivePage({
 }) {
   const { rapportId, versionId } = useParams();
   const rid = Number(rapportId);
-  const [searchParams] = useSearchParams();
-  const returnTo = searchParams.get("returnTo") || undefined;
 
   if (versionId) {
-    return (
-      <RapportVersionDetail token={token} wali={wali} returnTo={returnTo} />
-    );
+    return <RapportVersionDetail token={token} wali={wali} />;
   }
 
   return (
-    <RapportVersionsArchiveListPage
-      token={token}
-      wali={wali}
-      rid={rid}
-      returnTo={returnTo}
-    />
+    <RapportVersionsArchiveListPage token={token} wali={wali} rid={rid} />
   );
 }
 
 export function ArchiveVersionsLink({
   rapportId,
-  returnTo,
+  wali = false,
   className = "btn btn-secondary",
 }: {
   rapportId: number;
-  returnTo: string;
+  wali?: boolean;
   className?: string;
 }) {
   const { t } = useTranslation();
   return (
     <Link
       className={className}
-      to={versionsListPath(rapportId, false, returnTo)}
+      to={versionsListPath(rapportId, wali)}
     >
       {t("archivedVersions")}
     </Link>
@@ -235,20 +225,16 @@ export function ArchiveVersionsLink({
 
 export function WaliArchiveVersionsLink({
   rapportId,
-  returnTo,
   className = "btn btn-secondary",
 }: {
   rapportId: number;
-  returnTo: string;
   className?: string;
 }) {
-  const { t } = useTranslation();
   return (
-    <Link
+    <ArchiveVersionsLink
+      rapportId={rapportId}
+      wali
       className={className}
-      to={versionsListPath(rapportId, true, returnTo)}
-    >
-      {t("archivedVersions")}
-    </Link>
+    />
   );
 }

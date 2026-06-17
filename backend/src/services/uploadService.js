@@ -122,6 +122,15 @@ async function collectFileIdsFromDataJson(dataJson) {
       for (const it of row.items || []) if (it.file_id) ids.add(Number(it.file_id));
     }
   }
+  for (const row of dataJson?.media_rows || []) {
+    for (const it of row.items || []) if (it.file_id) ids.add(Number(it.file_id));
+  }
+  const communes = dataJson?.communes || {};
+  for (const entry of Object.values(communes)) {
+    for (const row of entry?.media_rows || []) {
+      for (const it of row.items || []) if (it.file_id) ids.add(Number(it.file_id));
+    }
+  }
   for (const id of collectFileIdsFromRichHtml(dataJson?.rich_html_ar)) ids.add(id);
   for (const id of collectFileIdsFromRichHtml(dataJson?.rich_html_fr)) ids.add(id);
   return [...ids];

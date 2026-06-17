@@ -92,7 +92,7 @@ export function ServiceContentKindsHub({
             <section key={summary.content_kind} className="serviceRapportSection">
               <div className="serviceRapportSectionHeader">
                 <h2 className="serviceRapportSectionTitle">{t(`contentKind_${summary.content_kind}`)}</h2>
-                {mode !== 'wali' && Number(summary.action_count) > 0 ? (
+                {Number(summary.action_count) > 0 ? (
                   <HubCountBadge count={Number(summary.action_count)} />
                 ) : null}
               </div>
@@ -109,7 +109,7 @@ export function ServiceContentKindsHub({
                     onHideType={onHideType}
                     onRestoreType={onRestoreType}
                     badge={
-                      mode !== 'wali' && Number(rt.action_count) > 0 ? (
+                      Number(rt.action_count) > 0 ? (
                         <HubCountBadge count={Number(rt.action_count)} />
                       ) : undefined
                     }

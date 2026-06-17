@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { BackButton } from "../components/BackButton";
@@ -18,19 +18,19 @@ import {
   withCommuneNameColumn,
 } from "../utils/communeBulkTable";
 import type { TableMeta } from "../utils/tableLayout";
-import { versionsListPath } from "../utils/rapportVersionsNav";
+import { versionsListPath, rapportPreviewPath } from "../utils/rapportVersionsNav";
 import { RapportExportButtons } from "../components/ExportPdfButton";
+import { CommuneListVersionView } from "../components/CommuneListVersionView";
+import type { MediaFile } from "../utils/media";
 
 type DetailProps = {
   token: string;
   wali?: boolean;
-  returnTo?: string;
 };
 
 export function RapportVersionDetail({
   token,
   wali = false,
-  returnTo,
 }: DetailProps) {
   const { rapportId, versionId } = useParams();
   const rid = Number(rapportId);
@@ -43,9 +43,16 @@ export function RapportVersionDetail({
   const [municipalities, setMunicipalities] = useState<
     { code: string; name_ar: string; name_fr: string }[]
   >([]);
+  const [communeVersionView, setCommuneVersionView] = useState<{
+    municipalities: { code: string; name_ar: string; name_fr: string; is_changed?: boolean }[];
+    communes: Record<string, any>;
+    schema?: { columns?: any[]; layout_json?: any } | null;
+    files?: Record<number, MediaFile>;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const listBack = versionsListPath(rid, wali, returnTo);
+  const previewBack = rapportPreviewPath(rid, wali, rapport);
+  const archiveListPath = versionsListPath(rid, wali);
 
   useEffect(() => {
     if (!rid || !vid) return;
@@ -63,8 +70,62 @@ export function RapportVersionDetail({
         setRapport(rRes.rapport);
         setVersion(vRes.version);
         const kind = rRes.rapport?.rapportType?.content_kind;
+        const communeKind = rRes.rapport?.rapportType?.commune_content_kind;
         const snap = vRes.version?.data_json?.schema_snapshot;
-        if (kind === "table_grid") {
+        setCommuneVersionView(null);
+
+        if (
+          kind === "commune_list" &&
+          communeKind !== "table" &&
+          rRes.rapport?.service_id
+        ) {
+          if (wali) {
+            try {
+              const viewRes = await api.getWaliRapportView(token, rid, false, vid);
+              if (!cancelled) {
+                setCommuneVersionView({
+                  municipalities: viewRes.municipalities || [],
+                  communes: viewRes.communes || vRes.version?.data_json?.communes || {},
+                  schema: viewRes.schema,
+                  files: viewRes.files || {},
+                });
+              }
+            } catch {
+              if (!cancelled) {
+                setCommuneVersionView({
+                  municipalities: [],
+                  communes: vRes.version?.data_json?.communes || {},
+                  files: {},
+                });
+              }
+            }
+          } else {
+            try {
+              const [ws, mediaRes] = await Promise.all([
+                api.getCommuneWorkspace(token, rRes.rapport.service_id, {
+                  rapportId: rid,
+                }),
+                api.getRapportMediaFiles(token, rid).catch(() => ({ files: {} })),
+              ]);
+              if (!cancelled) {
+                setCommuneVersionView({
+                  municipalities: ws.municipalities || [],
+                  communes: vRes.version?.data_json?.communes || {},
+                  schema: ws.schema,
+                  files: mediaRes.files || {},
+                });
+              }
+            } catch {
+              if (!cancelled) {
+                setCommuneVersionView({
+                  municipalities: [],
+                  communes: vRes.version?.data_json?.communes || {},
+                  files: {},
+                });
+              }
+            }
+          }
+        } else if (kind === "table_grid") {
           if (snap && !cancelled) {
             setSchema(snap);
           } else if (rRes.rapport?.service_id) {
@@ -79,28 +140,27 @@ export function RapportVersionDetail({
           }
         } else if (
           kind === "commune_list" &&
-          rRes.rapport?.rapportType?.commune_content_kind === "table" &&
+          communeKind === "table" &&
           rRes.rapport?.service_id
         ) {
           try {
-            const ws = await api.getCommuneWorkspace(token, rRes.rapport.service_id, {
-              rapportId: rid,
-            });
-            if (!cancelled) {
-              setSchema(ws.schema);
-              setMunicipalities(ws.municipalities || []);
+            if (wali) {
+              const viewRes = await api.getWaliRapportView(token, rid, false, vid);
+              if (!cancelled) {
+                setSchema(viewRes.schema);
+                setMunicipalities(viewRes.municipalities || []);
+              }
+            } else {
+              const ws = await api.getCommuneWorkspace(token, rRes.rapport.service_id, {
+                rapportId: rid,
+              });
+              if (!cancelled) {
+                setSchema(ws.schema);
+                setMunicipalities(ws.municipalities || []);
+              }
             }
           } catch {
             /* optional schema */
-          }
-        } else if (kind === "commune_list" && rRes.rapport?.service_id) {
-          try {
-            const ws = await api.getCommuneWorkspace(token, rRes.rapport.service_id, {
-              rapportId: rid,
-            });
-            if (!cancelled) setMunicipalities(ws.municipalities || []);
-          } catch {
-            /* optional */
           }
         }
       } catch {
@@ -116,6 +176,14 @@ export function RapportVersionDetail({
 
   const kind = rapport?.rapportType?.content_kind;
   const data = version?.data_json || {};
+
+  const versionWaliResponses = useMemo(() => {
+    const onVersion = version?.waliResponses;
+    if (Array.isArray(onVersion) && onVersion.length) return onVersion;
+    return (rapport?.waliResponses || []).filter(
+      (r: { rapport_version_id?: number }) => r.rapport_version_id === vid,
+    );
+  }, [version?.waliResponses, rapport?.waliResponses, vid]);
 
   const tableContent = useMemo(() => {
     if (kind === "table_grid") {
@@ -135,7 +203,7 @@ export function RapportVersionDetail({
     if (kind === "commune_list" && rapport?.rapportType?.commune_content_kind === "table") {
       const communes = data.communes || {};
       const nameByCode = new Map(
-        municipalities.map((m) => [m.code, { name_ar: m.name_ar, name_fr: m.name_fr }]),
+        municipalities.map((m) => [String(m.code), { name_ar: m.name_ar, name_fr: m.name_fr }]),
       );
       const columns = schema?.columns || [];
       const allRows: Record<string, unknown>[] = [];
@@ -189,7 +257,7 @@ export function RapportVersionDetail({
               versionId={vid}
             />
           ) : null}
-          <BackButton to={listBack} fallbackTo={listBack} replace />
+          <BackButton to={previewBack} fallbackTo={archiveListPath} replace />
         </div>
       </div>
 
@@ -232,19 +300,17 @@ export function RapportVersionDetail({
 
       {!loading &&
       kind === "commune_list" &&
-      rapport?.rapportType?.commune_content_kind !== "table" ? (
+      rapport?.rapportType?.commune_content_kind !== "table" &&
+      communeVersionView ? (
         <div className="card rapportVersionViewCard">
-          <p className="muted">{t("communeVersionComplexHint")}</p>
-          <ul className="rapportVersionCommuneList">
-            {Object.keys(data.communes || {}).map((code) => {
-              const m = municipalities.find((x) => x.code === code);
-              const label =
-                i18n.language === "fr"
-                  ? m?.name_fr || code
-                  : m?.name_ar || code;
-              return <li key={code}>{label}</li>;
-            })}
-          </ul>
+          <CommuneListVersionView
+            token={token}
+            serviceId={rapport?.service_id}
+            municipalities={communeVersionView.municipalities}
+            communes={communeVersionView.communes}
+            schema={communeVersionView.schema}
+            files={communeVersionView.files}
+          />
         </div>
       ) : null}
 
@@ -252,8 +318,8 @@ export function RapportVersionDetail({
         <CalendarEventsView events={data.calendar_events} />
       ) : null}
 
-      {wali && rapport?.waliResponses ? (
-        <WaliResponsesSection responses={rapport.waliResponses} />
+      {!loading && versionWaliResponses.length ? (
+        <WaliResponsesSection responses={versionWaliResponses} />
       ) : null}
     </div>
   );
@@ -261,7 +327,5 @@ export function RapportVersionDetail({
 
 /** @deprecated Use RapportVersionsArchivePage with optional :versionId route param */
 export function RapportVersionViewPage(props: { token: string; wali?: boolean }) {
-  const [searchParams] = useSearchParams();
-  const returnTo = searchParams.get("returnTo") || undefined;
-  return <RapportVersionDetail {...props} returnTo={returnTo} />;
+  return <RapportVersionDetail {...props} />;
 }

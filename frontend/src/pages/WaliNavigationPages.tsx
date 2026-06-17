@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { HubTile } from '../components/HubTile'
+import { HubCountBadge } from '../components/HubCountBadge'
 import { TablePagination } from '../components/TablePagination'
 import { ServiceRapportTypesHub } from '../components/ServiceRapportTypesHub'
+import { ServiceContentKindsHub } from '../components/ServiceContentKindsHub'
 import { serviceHubIcon } from '../components/HubIcons'
 import {
   isDirectWorkspaceKind,
@@ -16,11 +18,14 @@ import {
   type RapportTypeNav,
 } from '../utils/rapportNavigation'
 import { rapportStatusLabel } from '../utils/officeRapportList'
-import { waliInboxRowClass } from '../utils/waliInboxList'
-import { ServiceContentKindsHub } from '../components/ServiceContentKindsHub'
-import { findServiceNode, folderBackPath, serviceLabel } from '../utils/serviceTree'
+import { waliInboxRowClass, waliCanRespondFromList } from '../utils/waliInboxList'
+import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
+import { WaliRespondModal } from '../components/WaliRespondModal'
+import { useSnackbar } from '../snackbar/SnackbarContext'
+import { notifyHubCountsRefresh, HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
+import { backNavigationState, currentPath } from '../utils/navigationBack'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
-import { HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
+import { findServiceNode, folderBackPath, serviceLabel } from '../utils/serviceTree'
 
 type Props = { token: string }
 
@@ -48,7 +53,7 @@ export function WaliOfficeUsersPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navOfficeUsers')}</h1>
-        <BackButton fallbackTo="/wali" />
+        <BackButton to="/wali" fallbackTo="/wali" />
       </div>
       <div className="hubGrid">
         {pagedUsers.map((u) => (
@@ -58,6 +63,11 @@ export function WaliOfficeUsersPage({ token }: Props) {
             icon="users"
             title={u.name || u.username}
             subtitle={u.job_title || undefined}
+            badge={
+              Number(u.pending_rapports_count) > 0 ? (
+                <HubCountBadge count={Number(u.pending_rapports_count)} />
+              ) : undefined
+            }
           />
         ))}
         {!users.length ? <p className="muted">{t('noResults')}</p> : null}
@@ -102,7 +112,7 @@ export function WaliUserServicesPage({ token, userId }: Props & { userId: number
     <div className="page">
       <div className="pageHeader row">
         <h1>{pageTitle}</h1>
-        <BackButton fallbackTo={backTo} />
+        <BackButton to={backTo} fallbackTo={backTo} />
       </div>
       <div className="hubGrid hubGridServices">
         {pagedItems.map((s: any) => {
@@ -114,6 +124,11 @@ export function WaliUserServicesPage({ token, userId }: Props & { userId: number
               to={to}
               icon={s.is_folder ? 'folder' : serviceHubIcon(s)}
               title={label}
+              badge={
+                Number(s.action_count) > 0 ? (
+                  <HubCountBadge count={Number(s.action_count)} />
+                ) : undefined
+              }
             />
           )
         })}
@@ -212,6 +227,10 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
   const typeId = Number(rapportTypeId)
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
+  const snack = useSnackbar()
+  const listPath = currentPath(location)
+  const [respondId, setRespondId] = useState<number | null>(null)
   const [service, setService] = useState<any>(null)
   const [rapportType, setRapportType] = useState<RapportTypeNav | null>(null)
   const [rows, setRows] = useState<any[]>([])
@@ -253,7 +272,13 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
       setListTotal(rapRes.total ?? rapRes.rapports.length)
 
       if (rt && isDirectWorkspaceKind(rt.content_kind) && listPage === 1 && rapRes.total === 1 && rapRes.rapports.length === 1) {
-        navigate(`/wali/rapports/${rapRes.rapports[0].id}/view`, { replace: true })
+        const backTo = rapportType?.content_kind
+          ? waliContentKindPath(userId, sid, rt.content_kind)
+          : `/wali/office-users/${userId}/services/${sid}`
+        navigate(`/wali/rapports/${rapRes.rapports[0].id}/view`, {
+          replace: true,
+          state: backNavigationState(backTo),
+        })
       }
     } finally {
       setLoading(false)
@@ -263,6 +288,23 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
   useEffect(() => {
     load()
   }, [load])
+
+  async function sendResponse(payload: {
+    decision: string
+    follow_up_status?: string
+    body_text?: string
+  }) {
+    if (!respondId) return
+    try {
+      await api.waliRespond(token, respondId, payload)
+      setRespondId(null)
+      notifyHubCountsRefresh()
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+      throw new Error('respond failed')
+    }
+  }
 
   const pageTitle = rapportType
     ? localizedRapportTypeName(rapportType, i18n.language)
@@ -285,6 +327,11 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
       <div className="pageHeader row">
         <h1>{pageTitle}</h1>
         <BackButton
+          to={
+            rapportType?.content_kind
+              ? waliContentKindPath(userId, sid, rapportType.content_kind)
+              : `/wali/office-users/${userId}/services/${sid}`
+          }
           fallbackTo={
             rapportType?.content_kind
               ? waliContentKindPath(userId, sid, rapportType.content_kind)
@@ -316,10 +363,25 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
                 <td className="rapportStatusCell">
                   <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
                 </td>
-                <td>
-                  <Link className="btn btn-ghost" to={`/wali/rapports/${r.id}/view`}>
-                    {t('details')}
-                  </Link>
+                <td className="actionsCell">
+                  <div className="actionsCellInner">
+                    <Link
+                      className="btn btn-ghost"
+                      to={`/wali/rapports/${r.id}/view`}
+                      state={backNavigationState(listPath)}
+                    >
+                      {t('details')}
+                    </Link>
+                    {waliCanRespondFromList(r.status) ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => setRespondId(r.id)}
+                      >
+                        {t('respondRapport')}
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -332,6 +394,10 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
         </table>
       </div>
       <TablePagination page={listPage} total={listTotal} onPageChange={setListPage} />
+
+      <RapportStatusFlowHelp variant="wali" />
+
+      <WaliRespondModal open={!!respondId} onClose={() => setRespondId(null)} onSubmit={sendResponse} />
     </div>
   )
 }

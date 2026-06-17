@@ -11,7 +11,9 @@ export function WaliInboxBell({ token }: Props) {
   const pending = counts.inbox_pending
   const countLabel = pending > 99 ? '99+' : String(pending)
   const label =
-    pending > 0 ? `${t('navInbox')} (${countLabel})` : t('navInbox')
+    pending > 0
+      ? t('waliInboxBellWithCount', { count: countLabel })
+      : t('waliInboxBellEmpty')
 
   return (
     <Link

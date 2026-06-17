@@ -425,6 +425,9 @@ function renderPdfBuffer(data, locale) {
       }
     } else {
       drawRichDocument(doc, dataJson, files, locale, fontName, boldFontName);
+      for (const row of dataJson.media_rows || []) {
+        drawMediaRow(doc, row, files, locale, fontName);
+      }
       if (kind === "fiche_lecture") {
         const waliResponse = getLatestWaliResponse(rapport.waliResponses);
         drawWaliResponseSectionPdf(doc, waliResponse, locale, fontName, boldFontName, {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams, useLocation } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { ApiError } from "../api";
@@ -8,7 +8,8 @@ import {
   RapportTitleField,
   patchRapportTitle,
 } from "../components/RapportTitleField";
-import { ArchiveVersionsLink } from "./RapportVersionsArchivePage";
+import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
+import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
 import { TableMergeToolbar, TableWorkspace } from "../components/TableGridView";
 import { CommuneBulkAddRowBar } from "../components/CommuneBulkAddRowBar";
 import { useSnackbar } from "../snackbar/SnackbarContext";
@@ -47,8 +48,6 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [versions, setVersions] = useState<any[]>([]);
-  const location = useLocation();
-  const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
   const [addRowCommuneCode, setAddRowCommuneCode] = useState("");
 
   const listPath = `/office/services/${sid}/communes${
@@ -195,7 +194,6 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const finishedRowCount = countFinishedRows(rows);
   const mergeKeys = tableMeta.merge_column_keys || [];
   const municipalities = workspace?.municipalities || [];
-  const returnTo = location.pathname + location.search;
   const rowCountsByCode = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const r of rows) {
@@ -216,10 +214,12 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
           fallback={t("bulkEntry")}
         />
         <div className="pageHeaderActions">
-          {workspace?.rapport?.id && versions.length > 0 ? (
-            <ArchiveVersionsLink
+          {workspace?.rapport?.id ? (
+            <RapportVersionHeaderActions
               rapportId={workspace.rapport.id}
-              returnTo={returnTo}
+              rapportType={workspace.rapportType}
+              versions={versions}
+              showSentVersion={!editable}
             />
           ) : null}
           {editable ? (
@@ -243,6 +243,11 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
 
       {!loading && !loadError && workspace?.schema ? (
         <>
+          <RapportOfficeStatusBanner
+            rapport={workspace.rapport}
+            editable={editable}
+          />
+
           {editable ? (
             <CommuneBulkAddRowBar
               municipalities={municipalities}

@@ -69,13 +69,14 @@ async function replaceForRapport(rapportId, events, actor) {
 function weekBounds(anchorDate) {
   const d = anchorDate ? new Date(`${anchorDate}T12:00:00`) : new Date();
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diff);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  // Week starts Saturday (common in Algeria / ar-DZ)
+  const diff = -((day + 1) % 7);
+  const saturday = new Date(d);
+  saturday.setDate(d.getDate() + diff);
+  const friday = new Date(saturday);
+  friday.setDate(saturday.getDate() + 6);
   const fmt = (x) => x.toISOString().slice(0, 10);
-  return { from: fmt(monday), to: fmt(sunday) };
+  return { from: fmt(saturday), to: fmt(friday) };
 }
 
 async function listForWaliCalendar(query) {

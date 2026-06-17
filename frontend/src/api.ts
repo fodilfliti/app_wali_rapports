@@ -486,6 +486,7 @@ export function saveCommuneData(
     rich_html_fr?: string;
     embedded_tables?: unknown[];
     calendar_events?: unknown[];
+    media_rows?: { items: { file_id: number }[] }[];
     title_ar?: string;
     title_fr?: string;
     subtitle_ar?: string;
@@ -904,6 +905,7 @@ export function saveDocument(
     rich_html_ar?: string;
     rich_html_fr?: string;
     embedded_tables?: unknown[];
+    media_rows?: { items: { file_id: number }[] }[];
   },
 ) {
   return request<{ rapport: any }>(`/office/rapports/${rapportId}/document`, {

@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 type Props = {
@@ -20,7 +20,6 @@ export function BackButton({
   replace = false,
 }: Props) {
   const navigate = useNavigate()
-  const location = useLocation()
   const { t } = useTranslation()
 
   return (
@@ -28,14 +27,7 @@ export function BackButton({
       type="button"
       className={className}
       onClick={() => {
-        const current = location.pathname + location.search
-
         if (to) {
-          if (current === to) {
-            if (window.history.length > 1) navigate(-1)
-            else navigate(fallbackTo, { replace: true })
-            return
-          }
           navigate(to, { replace })
           return
         }

@@ -11,4 +11,8 @@ export function waliInboxRowClass(r: { status?: string; is_inbox_new?: boolean }
   return parts.join(' ')
 }
 
+export function waliCanRespondFromList(status?: string) {
+  return status === 'submitted' || status === 'under_review'
+}
+
 export { rapportStatusLabel, waliResponseLabel }

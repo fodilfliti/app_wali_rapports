@@ -3,7 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
-import { HubIcon } from '../components/HubIcons'
+import {
+  BroadcastCommentBlock,
+  BroadcastFileCard,
+  BroadcastReadProgress,
+  BroadcastRecipientsPanel,
+  SharedBroadcastListCard,
+} from '../components/BroadcastSharedUi'
 import { TablePagination } from '../components/TablePagination'
 import { fileUrl } from '../utils/media'
 import { useSnackbar } from '../snackbar/SnackbarContext'
@@ -31,35 +37,27 @@ export function WaliBroadcastsPage({ token }: Props) {
         <Link className="btn btn-primary" to="/wali/shared/new">
           {t('shareFile')}
         </Link>
-        <BackButton fallbackTo="/wali" />
+        <BackButton to="/wali" fallbackTo="/wali" />
       </div>
       <div className="card sharedFilesPageCard">
         {!rows.length ? <p className="muted sharedFilesPageEmpty">{t('noResults')}</p> : null}
-        <ul className="versionList sharedFilesList">
+        <div className="sharedFilesGrid">
           {pagedRows.map((b) => {
             const title = pickBilingualText(b.title_ar, b.title_fr, i18n.language)
             const message = pickBilingualText(b.message_ar, b.message_fr, i18n.language)
             return (
-              <li key={b.id} className={b.read_at ? 'read' : 'unread'}>
-                <Link to={`/wali/shared/${b.id}`} className="sharedFileItem">
-                  <span className="sharedFileItemHeader">
-                    <HubIcon name="shared" className="sharedFileItemIcon" />
-                    <strong className="sharedFileItemTitle">{title}</strong>
-                    <span className="muted small sharedFileItemMeta">
-                      {b.stats?.read}/{b.stats?.total} {t('readCount')}
-                    </span>
-                  </span>
-                  {message ? <span className="muted small sharedFileItemBody">{message}</span> : null}
-                  {b.created_at ? (
-                    <span className="muted small sharedFileItemDate">
-                      {new Date(b.created_at).toLocaleString()}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
+              <SharedBroadcastListCard
+                key={b.id}
+                to={`/wali/shared/${b.id}`}
+                title={title}
+                message={message || undefined}
+                file={b.file}
+                createdAt={b.created_at}
+                stats={b.stats}
+              />
             )
           })}
-        </ul>
+        </div>
       </div>
       <TablePagination page={page} total={rows.length} onPageChange={setPage} />
     </div>
@@ -145,7 +143,7 @@ export function WaliBroadcastCreatePage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('shareFile')}</h1>
-        <BackButton fallbackTo="/wali/shared" />
+        <BackButton to="/wali/shared" fallbackTo="/wali/shared" />
       </div>
       <div className="card formStack">
         <label className="formField">
@@ -292,7 +290,14 @@ export function WaliBroadcastDetailPage({ token }: Props) {
     )
   }
   const fileUrlStr = b.file ? fileUrl(token, b.file) : ''
-  const recipients = b.recipients || []
+  const recipients = [...(b.recipients || [])].sort((a, c) => {
+    if (!a.read_at && c.read_at) return -1
+    if (a.read_at && !c.read_at) return 1
+    return String(a.user?.name || a.user?.username || '').localeCompare(
+      String(c.user?.name || c.user?.username || ''),
+      i18n.language,
+    )
+  })
   const comments = b.comments || []
   const pagedRecipients = paginateSlice(recipients, recipientPage, DEFAULT_PAGE_SIZE)
   const pagedComments = paginateSlice(comments, commentPage, DEFAULT_PAGE_SIZE)
@@ -306,46 +311,33 @@ export function WaliBroadcastDetailPage({ token }: Props) {
         <button type="button" className="btn btn-secondary" onClick={remind}>
           {t('remindUnread')}
         </button>
-        <BackButton fallbackTo="/wali/shared" />
+        <BackButton to="/wali/shared" fallbackTo="/wali/shared" />
       </div>
       <div className="card broadcastDetailCard">
-        <div className="broadcastDetailSection">
+        <div className="broadcastDetailSection broadcastDetailHero">
           {message ? <p className="broadcastDetailMessage">{message}</p> : null}
-          {b.file ? (
-            <a className="broadcastDetailFile" href={fileUrlStr} target="_blank" rel="noreferrer">
-              {b.file.original_name}
-            </a>
-          ) : null}
-          <p className="broadcastDetailStats muted">
-            {t('readCount')}: {b.stats?.read}/{b.stats?.total}
-          </p>
+          {b.file ? <BroadcastFileCard file={b.file} href={fileUrlStr} /> : null}
+          <BroadcastReadProgress read={b.stats?.read} total={b.stats?.total} />
         </div>
 
-        <div className="broadcastDetailSection">
-          <h3>{t('whoViewed')}</h3>
-          <ul className="broadcastDetailList">
-            {pagedRecipients.map((r: any) => (
-              <li key={r.user.id}>
-                <span>{r.user.name || r.user.username}</span>
-                <span className={r.read_at ? 'muted' : 'badge badge-submitted'}>
-                  {r.read_at ? new Date(r.read_at).toLocaleString() : t('unread')}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {!recipients.length ? <p className="muted small">{t('noResults')}</p> : null}
-          <TablePagination page={recipientPage} total={recipients.length} onPageChange={setRecipientPage} compact />
-        </div>
+        <BroadcastRecipientsPanel
+          recipients={recipients}
+          pagedRecipients={pagedRecipients}
+          recipientPage={recipientPage}
+          total={recipients.length}
+          onPageChange={setRecipientPage}
+        />
 
         {b.allow_comments ? (
           <div className="broadcastDetailSection">
             <h3>{t('comments')}</h3>
-            <ul className="broadcastDetailList broadcastCommentList">
+            <ul className="broadcastCommentList">
               {pagedComments.map((c: any) => (
-                <li key={c.id}>
-                  <strong>{c.user?.name || c.user?.username}</strong>
-                  <p>{c.body_text}</p>
-                </li>
+                <BroadcastCommentBlock
+                  key={c.id}
+                  author={c.user?.name || c.user?.username}
+                  body={c.body_text}
+                />
               ))}
             </ul>
             {!comments.length ? <p className="muted small">{t('noResults')}</p> : null}
@@ -383,36 +375,28 @@ export function OfficeSharedFilesPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navSharedFiles')}</h1>
-        <BackButton fallbackTo="/office" />
+        <BackButton to="/office" fallbackTo="/office" />
       </div>
       <div className="card sharedFilesPageCard">
         {!rows.length ? <p className="muted sharedFilesPageEmpty">{t('noResults')}</p> : null}
-        <ul className="versionList sharedFilesList">
+        <div className="sharedFilesGrid">
           {pagedRows.map((b) => {
             const title = pickBilingualText(b.title_ar, b.title_fr, i18n.language)
             const message = pickBilingualText(b.message_ar, b.message_fr, i18n.language)
             return (
-              <li key={b.id} className={b.read_at ? 'read' : 'unread'}>
-                <Link to={`/office/shared/${b.id}`} className="sharedFileItem">
-                  <span className="sharedFileItemHeader">
-                    <HubIcon name="shared" className="sharedFileItemIcon" />
-                    <strong className="sharedFileItemTitle">{title}</strong>
-                    {!b.read_at ? <span className="badge badge-submitted">{t('unread')}</span> : null}
-                  </span>
-                  {message ? <span className="muted small sharedFileItemBody">{message}</span> : null}
-                  {b.file?.original_name ? (
-                    <span className="muted small sharedFileItemFile">{b.file.original_name}</span>
-                  ) : null}
-                  {b.created_at ? (
-                    <span className="muted small sharedFileItemDate">
-                      {new Date(b.created_at).toLocaleString()}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
+              <SharedBroadcastListCard
+                key={b.id}
+                to={`/office/shared/${b.id}`}
+                title={title}
+                message={message || undefined}
+                file={b.file}
+                createdAt={b.created_at}
+                readAt={b.read_at}
+                showUnreadBadge
+              />
             )
           })}
-        </ul>
+        </div>
       </div>
       <TablePagination page={page} total={rows.length} onPageChange={setPage} />
     </div>
@@ -473,26 +457,23 @@ export function OfficeSharedFileDetailPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{title}</h1>
-        <BackButton fallbackTo="/office/shared" />
+        <BackButton to="/office/shared" fallbackTo="/office/shared" />
       </div>
       <div className="card broadcastDetailCard">
-        <div className="broadcastDetailSection">
+        <div className="broadcastDetailSection broadcastDetailHero">
           {message ? <p className="broadcastDetailMessage">{message}</p> : null}
-          {b.file ? (
-            <a className="broadcastDetailFile" href={fileUrlStr} target="_blank" rel="noreferrer">
-              {b.file.original_name}
-            </a>
-          ) : null}
+          {b.file ? <BroadcastFileCard file={b.file} href={fileUrlStr} /> : null}
         </div>
         {b.allow_comments ? (
           <div className="broadcastDetailSection">
             <h3>{t('comments')}</h3>
-            <ul className="broadcastDetailList broadcastCommentList">
+            <ul className="broadcastCommentList">
               {pagedComments.map((c: any) => (
-                <li key={c.id}>
-                  <strong>{c.user?.name || c.user?.username}</strong>
-                  <p>{c.body_text}</p>
-                </li>
+                <BroadcastCommentBlock
+                  key={c.id}
+                  author={c.user?.name || c.user?.username}
+                  body={c.body_text}
+                />
               ))}
             </ul>
             {!comments.length ? <p className="muted small">{t('noResults')}</p> : null}

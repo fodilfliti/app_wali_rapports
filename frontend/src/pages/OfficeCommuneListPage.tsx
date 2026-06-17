@@ -20,8 +20,8 @@ import {
 } from "../utils/rapportNavigation";
 import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
 import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
-import { ArchiveVersionsLink } from "./RapportVersionsArchivePage";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
+import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
 
 type Props = { token: string };
 
@@ -80,6 +80,15 @@ export function OfficeCommuneListPage({ token }: Props) {
     loadWorkspace();
   }, [loadWorkspace]);
 
+  useEffect(() => {
+    const rid = workspace?.rapport?.id;
+    if (!rid || rapportId === rid) return;
+    const next = new URLSearchParams(searchParams);
+    next.set("rapport_id", String(rid));
+    if (rapportTypeId) next.set("rapport_type_id", String(rapportTypeId));
+    navigate({ pathname: location.pathname, search: `?${next.toString()}` }, { replace: true });
+  }, [workspace?.rapport?.id, rapportId, rapportTypeId, searchParams, navigate, location.pathname]);
+
   const municipalities = useMemo(() => {
     const list = workspace?.municipalities || [];
     const q = municipalitySearch.trim().toLowerCase();
@@ -110,7 +119,6 @@ export function OfficeCommuneListPage({ token }: Props) {
     (m: any) => m.is_changed,
   ).length;
   const totalCount = workspace?.municipalities?.length || 0;
-  const returnTo = location.pathname + location.search;
 
   async function submitAll() {
     if (!workspace?.rapport?.id) return;
@@ -175,10 +183,12 @@ export function OfficeCommuneListPage({ token }: Props) {
           fallback={label}
         />
         <div className="pageHeaderActions">
-          {workspace?.rapport?.id && versions.length > 0 ? (
-            <ArchiveVersionsLink
+          {workspace?.rapport?.id ? (
+            <RapportVersionHeaderActions
               rapportId={workspace.rapport.id}
-              returnTo={returnTo}
+              rapportType={workspace.rapportType}
+              versions={versions}
+              showSentVersion={!editable}
             />
           ) : null}
           {editable ? (
@@ -256,8 +266,6 @@ export function OfficeCommuneListPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             editable={!!editable}
-            returnTo={returnTo}
-            versions={versions}
             onFinish={finishCurrentRapport}
             finishing={finishing}
           />

@@ -48,7 +48,9 @@ export function OfficeNotificationsBell({ token }: Props) {
   const unread = counts.unread_notifications
   const countLabel = unread > 99 ? '99+' : String(unread)
   const label =
-    unread > 0 ? `${t('navNotifications')} (${countLabel})` : t('navNotifications')
+    unread > 0
+      ? t('officeNotificationsBellWithCount', { count: countLabel })
+      : t('officeNotificationsBellEmpty')
 
   return (
     <Link

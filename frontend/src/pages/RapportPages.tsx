@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
@@ -28,7 +28,9 @@ import {
   waliCommentPreview,
   waliResponseLabel,
 } from '../utils/officeRapportList'
-import { waliInboxRowClass } from '../utils/waliInboxList'
+import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
+import { waliInboxRowClass, waliCanRespondFromList } from '../utils/waliInboxList'
+import { backNavigationState } from '../utils/navigationBack'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
 import { localizedName } from '../utils/schemaColumns'
 import { RapportExportButtons } from '../components/ExportPdfButton'
@@ -272,6 +274,8 @@ export function OfficeRapportsListPage({ token }: Props) {
         </table>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+
+      <RapportStatusFlowHelp variant="office" />
     </div>
   )
 }
@@ -569,6 +573,8 @@ export function OfficeServiceRapportListPage({ token }: Props) {
         </table>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+
+      <RapportStatusFlowHelp variant="office" />
     </div>
   )
 }
@@ -576,6 +582,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
 export function WaliRapportsInboxPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const inboxPath = '/wali/rapports'
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -631,18 +638,7 @@ export function WaliRapportsInboxPage({ token }: Props) {
         <button type="button" className="btn btn-secondary" onClick={load}>
           {t('refresh')}
         </button>
-        <BackButton fallbackTo="/" />
-      </div>
-
-      <div className="waliInboxLegend" aria-hidden="true">
-        <span className="waliInboxLegendItem">
-          <span className="waliInboxLegendSwatch waliInboxLegendSwatchNew" />
-          {t('waliInboxNew')}
-        </span>
-        <span className="badge badge-submitted">{t('statusSubmitted')}</span>
-        <span className="badge badge-under_review">{t('statusUnderReview')}</span>
-        <span className="badge badge-acknowledged">{t('statusAcknowledged')}</span>
-        <span className="badge badge-changes_requested">{t('statusChangesRequested')}</span>
+        <BackButton to="/wali" fallbackTo="/wali" />
       </div>
 
       <div className="card tableWrap">
@@ -687,10 +683,14 @@ export function WaliRapportsInboxPage({ token }: Props) {
                   </td>
                   <td className="actionsCell">
                     <div className="actionsCellInner">
-                      <Link className="btn btn-ghost" to={`/wali/rapports/${r.id}/view`}>
+                      <Link
+                        className="btn btn-ghost"
+                        to={`/wali/rapports/${r.id}/view`}
+                        state={backNavigationState(inboxPath)}
+                      >
                         {t('details')}
                       </Link>
-                      {r.status === 'submitted' ? (
+                      {waliCanRespondFromList(r.status) ? (
                         <button
                           type="button"
                           className="btn btn-primary"
@@ -713,6 +713,8 @@ export function WaliRapportsInboxPage({ token }: Props) {
         </table>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+
+      <RapportStatusFlowHelp variant="wali" />
 
       <WaliRespondModal open={!!respondId} onClose={() => setRespondId(null)} onSubmit={sendResponse} />
     </div>

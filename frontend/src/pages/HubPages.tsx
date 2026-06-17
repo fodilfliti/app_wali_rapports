@@ -87,6 +87,9 @@ export function OfficeHubPage({ token }: { token: string }) {
           icon="rapports"
           title={t('navRapports')}
           badge={<HubCountBadge count={counts.changes_requested_rapports} />}
+          subtitle={
+            counts.changes_requested_rapports > 0 ? t('officeHubChangesRequestedHint') : undefined
+          }
         />
 
         <HubTile
@@ -94,6 +97,7 @@ export function OfficeHubPage({ token }: { token: string }) {
           icon="services"
           title={t('navServices')}
           badge={<HubCountBadge count={counts.services_action_count} />}
+          subtitle={counts.services_action_count > 0 ? t('officeHubServicesActionHint') : undefined}
         />
 
         <HubTile
@@ -143,12 +147,14 @@ export function WaliHubPage({ token }: { token: string }) {
           icon="officeUsers"
           title={t('navOfficeUsers')}
           badge={<HubCountBadge count={counts.office_users_pending} />}
+          subtitle={counts.office_users_pending > 0 ? t('waliHubOfficeUsersBadgeHint') : undefined}
         />
 
         <HubTile
           to="/wali/rapports"
           icon="inbox"
           title={t('navInbox')}
+          badge={<HubCountBadge count={counts.inbox_pending} />}
         />
 
         <HubTile to="/wali/calendar" icon="calendar" title={t('navCalendar')} />
@@ -253,7 +259,7 @@ export function OfficeServicesPage({ token }: { token: string }) {
 
         <h1>{pageTitle}</h1>
 
-        <BackButton fallbackTo={backTo} />
+        <BackButton to={backTo} fallbackTo={backTo} />
 
       </div>
 

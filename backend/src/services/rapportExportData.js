@@ -79,8 +79,10 @@ async function loadExportData(rapportId, showHidden, versionId = null) {
       blocks: viewPart.blocks,
       rich_html_ar: dj.rich_html_ar,
       rich_html_fr: dj.rich_html_fr,
-      embedded_tables: dj.embedded_tables || []
+      embedded_tables: dj.embedded_tables || [],
+      media_rows: dj.media_rows || [],
     };
+    viewPart.media_rows = dj.media_rows || [];
   } else if (kind === "commune_list") {
     viewPart = await workspaceService.getWaliCommuneView(rapportId, versionId, false);
     if (!viewPart.schema) {

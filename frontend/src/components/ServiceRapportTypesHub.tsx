@@ -107,7 +107,7 @@ export function ServiceRapportTypesHub({
             onHideType={onHideType}
             onRestoreType={onRestoreType}
             badge={
-              mode !== 'wali' && Number(rt.action_count) > 0 ? (
+              Number(rt.action_count) > 0 ? (
                 <HubCountBadge count={Number(rt.action_count)} />
               ) : undefined
             }

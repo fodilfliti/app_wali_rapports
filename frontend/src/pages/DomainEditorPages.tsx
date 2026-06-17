@@ -50,6 +50,7 @@ import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
 import { HubTile } from "../components/HubTile";
 import { ArchiveVersionsLink, WaliArchiveVersionsLink } from "./RapportVersionsArchivePage";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
+import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
 import { ServiceRapportTypesHub } from "../components/ServiceRapportTypesHub";
 import { ServiceContentKindsHub } from "../components/ServiceContentKindsHub";
 import {
@@ -69,13 +70,14 @@ import {
   HUB_COUNTS_REFRESH_EVENT,
 } from "../utils/hubCountsRefresh";
 import { reorderRowsArray } from "../utils/tableRowReorder";
-import { markOfficeRapportOpened } from "../utils/officeRapportList";
+import type { MediaFile, MediaRow } from "../utils/media";
+import { readBackTarget } from "../utils/navigationBack";
 import {
   rowsWithCommuneNames,
   sortRowsByCommune,
   withCommuneNameColumn,
 } from "../utils/communeBulkTable";
-import type { MediaFile, MediaRow } from "../utils/media";
+import { markOfficeRapportOpened } from "../utils/officeRapportList";
 
 type Props = { token: string };
 
@@ -92,7 +94,6 @@ export function OfficeTableGridPage({ token }: Props) {
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
-  const location = useLocation();
   const [workspace, setWorkspace] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
@@ -249,12 +250,10 @@ export function OfficeTableGridPage({ token }: Props) {
 
   const columns: Column[] = workspace?.schema?.columns || [];
   const layoutJson: LayoutJson | null = workspace?.schema?.layout_json || null;
-  const editable = workspace?.editable !== false;
-  const isEditable = editable;
+  const isEditable = workspace?.editable === true;
   const mergeKeys = tableMeta.merge_column_keys || [];
   const versionRows = workspace?.versions || [];
   const finishedRowCount = countFinishedRows(rows);
-  const returnTo = location.pathname + location.search;
 
   function updateRow(idx: number, key: string, value: unknown) {
     setRows((prev) =>
@@ -324,10 +323,12 @@ export function OfficeTableGridPage({ token }: Props) {
             </button>
           </>
         ) : null}
-        {workspace?.rapport?.id && versionRows.length > 0 ? (
-          <ArchiveVersionsLink
+        {workspace?.rapport?.id ? (
+          <RapportVersionHeaderActions
             rapportId={workspace.rapport.id}
-            returnTo={returnTo}
+            rapportType={workspace.rapportType}
+            versions={versionRows}
+            showSentVersion={!isEditable}
           />
         ) : null}
         {workspace?.rapport?.id ? (
@@ -379,8 +380,6 @@ export function OfficeTableGridPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             editable={isEditable}
-            returnTo={returnTo}
-            versions={versionRows}
             onFinish={finishCurrentRapport}
             finishing={finishing}
           />
@@ -912,7 +911,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const [waliResponses, setWaliResponses] = useState<any[]>([]);
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
-  const location = useLocation();
+  const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
 
   const applyDocumentJson = useCallback((dj: any) => {
     const tables = dj?.embedded_tables || [];
@@ -924,6 +924,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     });
     setEmbeddedTables(tables);
     setCalendarEvents(dj?.calendar_events || []);
+    setMediaRows(dj?.media_rows || []);
   }, []);
 
   const loadCurrent = useCallback(() => {
@@ -943,6 +944,10 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         applyDocumentJson(dj);
       })
       .catch(() => snack.show(t("errorGeneric"), "error"));
+    api
+      .getRapportMediaFiles(token, rid)
+      .then((r) => setMediaFiles(r.files || {}))
+      .catch(() => {});
     api
       .getCalendarEvents(token, rid)
       .then((r) => setCalendarEvents(r.events || []))
@@ -966,6 +971,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       rich_html_fr: docData.rich_html_fr,
       blocks: docData.blocks,
       embedded_tables: embeddedTables,
+      media_rows: mediaRows,
     });
     await api.saveCalendarEvents(token, rid, calendarEvents);
   }
@@ -1024,7 +1030,6 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     canEdit &&
     rapport &&
     ["draft", "changes_requested"].includes(rapport.status);
-  const returnTo = location.pathname + location.search;
   const docBackPath = rapport?.service_id
     ? officeServiceHubPath(rapport.service_id)
     : "/office/services";
@@ -1057,9 +1062,12 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           fallback={t("navRapports")}
         />
         {!canEdit ? <span className="badge">{t("accessView")}</span> : null}
-        {versions.length > 0 ? (
-          <ArchiveVersionsLink rapportId={rid} returnTo={returnTo} />
-        ) : null}
+        <RapportVersionHeaderActions
+          rapportId={rid}
+          rapportType={rapport?.rapportType}
+          versions={versions}
+          showSentVersion={!editable}
+        />
         {editable ? (
           <>
             <button
@@ -1088,8 +1096,6 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       <RapportOfficeStatusBanner
         rapport={rapport}
         editable={!!editable}
-        returnTo={returnTo}
-        versions={versions}
         onFinish={finishCurrentRapport}
         finishing={finishing}
       />
@@ -1118,6 +1124,23 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           token={token}
           serviceId={rapport?.service_id}
         />
+      )}
+
+      {editable ? (
+        <MediaRowsEditor
+          rows={mediaRows}
+          files={mediaFiles}
+          token={token}
+          editable
+          onChange={setMediaRows}
+          onUpload={async (file) => {
+            const res = await api.uploadRapportFile(token, rid, file);
+            setMediaFiles((prev) => ({ ...prev, [res.file.id]: res.file }));
+            return res.file;
+          }}
+        />
+      ) : (
+        <MediaRowsView rows={mediaRows} files={mediaFiles} token={token} />
       )}
 
       {importPickOpen && rapport?.service_id && rapport?.rapport_type_id ? (
@@ -1163,6 +1186,7 @@ export function WaliRapportViewPage({
   const location = useLocation();
   const isWali = audience === "wali";
   const listBack = isWali ? "/wali/rapports" : "/admin/rapports";
+  const viewBackTarget = readBackTarget(location, listBack);
 
   const load = useCallback(async () => {
     if (!rid) return;
@@ -1231,6 +1255,7 @@ export function WaliRapportViewPage({
     blocks: view?.blocks ?? documentDataJson.blocks,
     embedded_tables: documentDataJson.embedded_tables,
   };
+  const documentMediaRows = view?.media_rows ?? documentDataJson.media_rows ?? [];
 
   const allCommuneTableRows = useMemo(() => {
     if (!isTableCommuneMode || !view?.communes) return [];
@@ -1266,15 +1291,9 @@ export function WaliRapportViewPage({
         <div className="pageHeaderActions">
           {view?.versions?.length > 0 ? (
             isWali ? (
-              <WaliArchiveVersionsLink
-                rapportId={rid}
-                returnTo={location.pathname + location.search}
-              />
+              <WaliArchiveVersionsLink rapportId={rid} />
             ) : (
-              <ArchiveVersionsLink
-                rapportId={rid}
-                returnTo={location.pathname + location.search}
-              />
+              <ArchiveVersionsLink rapportId={rid} />
             )
           ) : null}
           {isWali ? (
@@ -1301,7 +1320,7 @@ export function WaliRapportViewPage({
             wali={isWali}
             showHidden={showHidden}
           />
-          <BackButton fallbackTo={listBack} />
+          <BackButton to={viewBackTarget} fallbackTo={viewBackTarget} />
         </div>
       </div>
 
@@ -1417,6 +1436,11 @@ export function WaliRapportViewPage({
                   {(waliCommuneEntry.calendar_events || []).length ? (
                     <CalendarEventsView events={waliCommuneEntry.calendar_events} />
                   ) : null}
+                  <MediaRowsView
+                    rows={waliCommuneEntry.media_rows || []}
+                    files={view?.files || {}}
+                    token={token}
+                  />
                 </div>
               ) : (
                 <p className="muted communeEmptyHint">{t("noResults")}</p>
@@ -1432,6 +1456,15 @@ export function WaliRapportViewPage({
           serviceId={view?.rapport?.service_id}
         />
       )}
+
+      {view?.content_kind === "document_compose" ||
+      view?.content_kind === "fiche_lecture" ? (
+        <MediaRowsView
+          rows={documentMediaRows}
+          files={view?.files || {}}
+          token={token}
+        />
+      ) : null}
 
       <CalendarEventsView events={view?.calendarEvents || []} />
 

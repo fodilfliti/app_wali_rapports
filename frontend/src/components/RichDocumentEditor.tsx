@@ -7,6 +7,7 @@ import { fileUrl } from '../utils/media'
 import { getRichHtml } from '../utils/richDocument'
 import { embeddedTablesEqual, resolveEmbeddedTables } from '../utils/embeddedTableSchema'
 import { RichTextEditor } from './richText/RichTextEditor'
+import { ImageLightbox, useImageLightbox } from './ImageLightbox'
 import { SchemaTableProvider, useSchemaTables } from './richText/SchemaTableContext'
 import { SchemaTablePickModal } from './richText/SchemaTablePickModal'
 import { SchemaTableEditModal } from './richText/SchemaTableEditModal'
@@ -230,24 +231,63 @@ export function RichDocumentView({
   const tables = data?.embedded_tables || []
   const tableMap = Object.fromEntries(tables.map((t) => [t.id, t]))
   const ids = extractSchemaTableIds(html)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const lightbox = useImageLightbox()
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (target.tagName !== 'IMG') return
+      const img = target as HTMLImageElement
+      if (!img.src) return
+      e.preventDefault()
+      lightbox.open(img.src, img.alt || '')
+    }
+    el.addEventListener('click', onClick)
+    return () => el.removeEventListener('click', onClick)
+  }, [html, lightbox.open])
 
   if (!html && !ids.length) return null
 
   if (ids.length && ids.some((id) => tableMap[id])) {
     return (
-      <SchemaTableProvider initialTables={tables} readOnly>
-        <div className="richDocumentView card">
-          {token && serviceId ? (
-            <SyncLinkedSchemaTables token={token} serviceId={serviceId} initial={tables} />
-          ) : null}
-          <RichTextEditor value={html} editable={false} enableSchemaTables locale={locale} onChange={() => {}} />
-        </div>
-      </SchemaTableProvider>
+      <>
+        <SchemaTableProvider initialTables={tables} readOnly>
+          <div ref={containerRef} className="richDocumentView card richDocumentViewZoomable">
+            {token && serviceId ? (
+              <SyncLinkedSchemaTables token={token} serviceId={serviceId} initial={tables} />
+            ) : null}
+            <RichTextEditor value={html} editable={false} enableSchemaTables locale={locale} onChange={() => {}} />
+          </div>
+        </SchemaTableProvider>
+        <ImageLightbox
+          src={lightbox.state?.src || ''}
+          alt={lightbox.state?.alt}
+          open={lightbox.isOpen}
+          onClose={lightbox.close}
+        />
+      </>
     )
   }
 
   if (!html || html === '<p></p>') return null
-  return <div className="richDocumentView card" dangerouslySetInnerHTML={{ __html: html }} />
+  return (
+    <>
+      <div
+        ref={containerRef}
+        className="richDocumentView card richDocumentViewZoomable"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <ImageLightbox
+        src={lightbox.state?.src || ''}
+        alt={lightbox.state?.alt}
+        open={lightbox.isOpen}
+        onClose={lightbox.close}
+      />
+    </>
+  )
 }
 
 export function RichDocumentEditor(props: Props) {

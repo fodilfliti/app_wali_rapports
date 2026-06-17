@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ImageLightbox, useImageLightbox } from './ImageLightbox'
 import type { MediaFile, MediaRow } from '../utils/media'
 import {
   MEDIA_MAX_ATTACHMENTS,
@@ -25,10 +26,12 @@ function MediaAttachmentPreview({
   file,
   token,
   className = 'mediaCell',
+  onImageClick,
 }: {
   file: MediaFile
   token: string
   className?: string
+  onImageClick?: (src: string, alt: string) => void
 }) {
   const url = fileUrl(token, file)
 
@@ -44,7 +47,14 @@ function MediaAttachmentPreview({
   if (file.media_kind === 'image') {
     return (
       <div className={className}>
-        <img className="mediaImage" src={url} alt={file.original_name} />
+        <button
+          type="button"
+          className="mediaImageButton"
+          onClick={() => onImageClick?.(url, file.original_name)}
+          aria-label={file.original_name}
+        >
+          <img className="mediaImage mediaImageClickable" src={url} alt={file.original_name} />
+        </button>
         <span className="muted small mediaFileName">{file.original_name}</span>
       </div>
     )
@@ -62,19 +72,35 @@ function MediaAttachmentPreview({
 }
 
 export function MediaRowsView({ rows, files, token }: ViewProps) {
+  const lightbox = useImageLightbox()
   const fileIds = flattenMediaRows(rows)
   if (!fileIds.length) return null
 
   return (
-    <div className="mediaSection">
-      <div className="mediaAttachmentGrid">
-        {fileIds.map((id) => {
-          const file = files[id]
-          if (!file) return null
-          return <MediaAttachmentPreview key={id} file={file} token={token} />
-        })}
+    <>
+      <div className="mediaSection">
+        <div className="mediaAttachmentGrid">
+          {fileIds.map((id) => {
+            const file = files[id]
+            if (!file) return null
+            return (
+              <MediaAttachmentPreview
+                key={id}
+                file={file}
+                token={token}
+                onImageClick={lightbox.open}
+              />
+            )
+          })}
+        </div>
       </div>
-    </div>
+      <ImageLightbox
+        src={lightbox.state?.src || ''}
+        alt={lightbox.state?.alt}
+        open={lightbox.isOpen}
+        onClose={lightbox.close}
+      />
+    </>
   )
 }
 
@@ -95,6 +121,7 @@ export function MediaRowsEditor({
   maxAttachments = MEDIA_MAX_ATTACHMENTS,
 }: EditorProps) {
   const { t } = useTranslation()
+  const lightbox = useImageLightbox()
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileIds = flattenMediaRows(rows)
@@ -122,48 +149,61 @@ export function MediaRowsEditor({
   }
 
   return (
-    <div className="mediaSection">
-      <h3>{t('mediaAttachments')}</h3>
-      <p className="muted small mediaAttachmentsHint">
-        {t('mediaAttachmentsHint', {
-          imageMax: formatBytes(MEDIA_MAX_IMAGE_BYTES),
-          videoMax: formatBytes(MEDIA_MAX_VIDEO_BYTES),
-          fileMax: formatBytes(MEDIA_MAX_FILE_BYTES),
-          maxCount: maxAttachments,
-        })}
-      </p>
-      {error ? <p className="formErrorBlock">{error}</p> : null}
-      <div className="mediaAttachmentGrid">
-        {fileIds.map((id) => {
-          const file = files[id]
-          if (!file) return null
-          return (
-            <div key={id} className="mediaCell mediaCellEditable">
-              <MediaAttachmentPreview file={file} token={token} className="mediaCellPreview" />
-              {editable ? (
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeFile(id)}>
-                  {t('remove')}
-                </button>
-              ) : null}
-            </div>
-          )
-        })}
-        {editable && fileIds.length < maxAttachments ? (
-          <label className={`mediaCell mediaUploadSlot${uploading ? ' isUploading' : ''}`}>
-            <span>{uploading ? t('mediaUploading') : t('addMedia')}</span>
-            <input
-              type="file"
-              disabled={uploading}
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) handleAdd(f)
-                e.target.value = ''
-              }}
-            />
-          </label>
-        ) : null}
+    <>
+      <div className="mediaSection">
+        <h3>{t('mediaAttachments')}</h3>
+        <p className="muted small mediaAttachmentsHint">
+          {t('mediaAttachmentsHint', {
+            imageMax: formatBytes(MEDIA_MAX_IMAGE_BYTES),
+            videoMax: formatBytes(MEDIA_MAX_VIDEO_BYTES),
+            fileMax: formatBytes(MEDIA_MAX_FILE_BYTES),
+            maxCount: maxAttachments,
+          })}
+        </p>
+        {error ? <p className="formErrorBlock">{error}</p> : null}
+        <div className="mediaAttachmentGrid">
+          {fileIds.map((id) => {
+            const file = files[id]
+            if (!file) return null
+            return (
+              <div key={id} className="mediaCell mediaCellEditable">
+                <MediaAttachmentPreview
+                  file={file}
+                  token={token}
+                  className="mediaCellPreview"
+                  onImageClick={lightbox.open}
+                />
+                {editable ? (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeFile(id)}>
+                    {t('remove')}
+                  </button>
+                ) : null}
+              </div>
+            )
+          })}
+          {editable && fileIds.length < maxAttachments ? (
+            <label className={`mediaCell mediaUploadSlot${uploading ? ' isUploading' : ''}`}>
+              <span>{uploading ? t('mediaUploading') : t('addMedia')}</span>
+              <input
+                type="file"
+                disabled={uploading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) handleAdd(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          ) : null}
+        </div>
       </div>
-    </div>
+      <ImageLightbox
+        src={lightbox.state?.src || ''}
+        alt={lightbox.state?.alt}
+        open={lightbox.isOpen}
+        onClose={lightbox.close}
+      />
+    </>
   )
 }
 

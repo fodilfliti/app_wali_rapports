@@ -414,6 +414,9 @@ async function buildDocxChildren(data, locale) {
         );
       }
     }
+    for (const row of dj.media_rows || []) {
+      children.push(...mediaParagraphs(row, files, locale));
+    }
   }
 
   if (kind === "fiche_lecture") {
