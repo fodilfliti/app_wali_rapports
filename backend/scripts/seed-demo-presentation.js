@@ -4,12 +4,12 @@
  * Reset departments/services/rapports and seed a full presentation dataset
  * (2 real services: Hydraulique + Investissement) with all platform features.
  * Usage: npm run db:seed-demo
+ * No storage files required — demo data is DB-only (media slots stay empty).
  */
 
-const path = require("path");
-const fs = require("fs");
+require("./load-env");
+
 const crypto = require("crypto");
-require("dotenv").config({ path: path.resolve(__dirname, "..", ".env") });
 
 const bcrypt = require("bcryptjs");
 const {
@@ -27,7 +27,6 @@ const {
   Notification,
   UserServiceGrant,
   Municipality,
-  UploadedFile,
   RapportCalendarEvent,
 } = require("../src/db");
 const {
@@ -35,42 +34,8 @@ const {
   buildFicheDefaultBlocks,
   buildCommuneDocumentDefaultBlocks,
 } = require("../src/modules/rapports/documentDefaults");
-const { storageRoot } = require("../src/services/storage");
 
 const TEST_PASSWORD = process.env.TEST_USER_PASSWORD || "Test1234!";
-
-const STORAGE_FILES = [
-  {
-    rel: "uploads/6d87d28fe00d48f9883d2830befc7314.png",
-    mime: "image/png",
-    name: "hydraulique-reseau.png",
-    kind: "image",
-  },
-  {
-    rel: "uploads/6e64a845915c41889f26d6a3dd236d81.png",
-    mime: "image/png",
-    name: "barrage-photo.png",
-    kind: "image",
-  },
-  {
-    rel: "uploads/36e60a37818a482cbfd348d0120f78f4.png",
-    mime: "image/png",
-    name: "investissement-site.png",
-    kind: "image",
-  },
-  {
-    rel: "uploads/6eb760ff7595498485bf7969026e2550.mp4",
-    mime: "video/mp4",
-    name: "inspection-video.mp4",
-    kind: "video",
-  },
-  {
-    rel: "uploads/7591fd6acdec45c7a68e79d1bdd89300.pdf",
-    mime: "application/pdf",
-    name: "piece-jointe.pdf",
-    kind: "file",
-  },
-];
 
 function rowMeta(overrides = {}) {
   return {
@@ -144,29 +109,6 @@ async function ensureUser({ username, name, role, templateSlug }) {
     });
   }
   return user;
-}
-
-async function cloneStorageFileForRapport(spec, rapportId, userId) {
-  const abs = path.join(storageRoot(), spec.rel);
-  if (!fs.existsSync(abs)) {
-    console.warn(`  skip missing file: ${spec.rel}`);
-    return null;
-  }
-  const storageKey = crypto.randomUUID().replace(/-/g, "");
-  const ext = path.extname(spec.rel);
-  const newRel = path.join("uploads", `${storageKey}${ext}`).replace(/\\/g, "/");
-  fs.copyFileSync(abs, path.join(storageRoot(), newRel));
-  const stat = fs.statSync(abs);
-  return UploadedFile.create({
-    storage_key: storageKey,
-    rapport_id: rapportId,
-    uploaded_by_user_id: userId,
-    original_name: spec.name,
-    mime_type: spec.mime,
-    size_bytes: stat.size,
-    media_kind: spec.kind,
-    storage_rel_path: newRel,
-  });
 }
 
 async function createDepartment(nameAr, nameFr, sortOrder) {
@@ -252,7 +194,6 @@ async function createRapportBundle({
   versions,
   waliResponses = [],
   calendarEvents = [],
-  files = [],
 }) {
   const rapport = await Rapport.create({
     service_id: serviceId,
@@ -264,12 +205,6 @@ async function createRapportBundle({
     created_at: new Date(),
     updated_at: new Date(),
   });
-
-  const fileRows = [];
-  for (const spec of files) {
-    const row = await cloneStorageFileForRapport(spec, rapport.id, authorId);
-    if (row) fileRows.push(row);
-  }
 
   const versionRows = [];
   for (const v of versions) {
@@ -328,12 +263,7 @@ async function createRapportBundle({
     });
   }
 
-  return { rapport, versions: versionRows, files: fileRows };
-}
-
-function imgHtml(fileRow) {
-  if (!fileRow) return "";
-  return `<p><img src="/files/${fileRow.storage_rel_path}" data-file-id="${fileRow.id}" alt="" /></p>`;
+  return { rapport, versions: versionRows };
 }
 
 function communeStatusTable(id, titleAr, titleFr, rows) {
@@ -442,10 +372,7 @@ function buildHydFicheDataJson(tableId) {
     `<div data-schema-table-id="${tableId}"></div>`,
     `<p><strong>II — شبكات التوزيع</strong></p>`,
     `<p>معدل التغطية بالمياه الشروب 92% على مستوى الولاية. أعمال التوسيع مستمرة في بلديات عين نحالة والغزوات.</p>`,
-    "__IMG_1__",
-    `<p><strong>III — صور ميدانية</strong></p>`,
-    "__IMG_2__",
-    `<p><strong>IV — التوصيات</strong></p>`,
+    `<p><strong>III — التوصيات</strong></p>`,
     `<p>المصلحة توصي باعتماد برنامج الصيانة العاجل لسد بني بهدل ومتابعة تنفيذ توسيع شبكة عين نحالة.</p>`,
   ].join("");
 
@@ -457,10 +384,7 @@ function buildHydFicheDataJson(tableId) {
     `<div data-schema-table-id="${tableId}"></div>`,
     `<p><strong>II — Réseaux de distribution</strong></p>`,
     `<p>Taux de couverture AEP: 92 % à l'échelle wilaya. Extensions en cours à Ain Nehala et Ghazaouet.</p>`,
-    "__IMG_1__",
-    `<p><strong>III — Photos terrain</strong></p>`,
-    "__IMG_2__",
-    `<p><strong>IV — Recommandations</strong></p>`,
+    `<p><strong>III — Recommandations</strong></p>`,
     `<p>Maintenance urgente Beni Bahdel et suivi de l'extension du réseau Ain Nehala.</p>`,
   ].join("");
 
@@ -567,9 +491,7 @@ function buildInvFicheDataJson(tableId) {
     `<p><strong>I — مؤشرات عامة</strong></p>`,
     `<ul><li>47 مشروعاً تحت المتابعة</li><li>285 مليار دج من الاستثمارات</li><li>8 مشاريع في حالة تأخر</li><li>12 مشروعاً شبه منجز (&gt; 90%)</li></ul>`,
     `<div data-schema-table-id="${tableId}"></div>`,
-    `<p><strong>II — صورة الموقع — مجمع مغنية</strong></p>`,
-    "__IMG_1__",
-    `<p><strong>III — التوصيات</strong></p>`,
+    `<p><strong>II — التوصيات</strong></p>`,
     `<p>طلب اعتماد المذكرة وموافاة الخلية بقرار الوالي بخصوص المشاريع المتأخرة.</p>`,
   ].join("");
 
@@ -579,9 +501,7 @@ function buildInvFicheDataJson(tableId) {
     `<p><strong>I — Indicateurs généraux</strong></p>`,
     `<ul><li>47 projets suivis</li><li>285 Md DZD d'investissements</li><li>8 projets en retard</li><li>12 projets quasi achevés (&gt; 90 %)</li></ul>`,
     `<div data-schema-table-id="${tableId}"></div>`,
-    `<p><strong>II — Photo chantier — complexe Maghnia</strong></p>`,
-    "__IMG_1__",
-    `<p><strong>III — Recommandations</strong></p>`,
+    `<p><strong>II — Recommandations</strong></p>`,
     `<p>Demande d'avis favorable et retour de la cellule après décision du wali sur les projets en retard.</p>`,
   ].join("");
 
@@ -671,31 +591,6 @@ function buildInvFicheDataJson(tableId) {
       ),
     ],
   };
-}
-
-async function attachFicheMedia(versionRow, dataJson, files, slots = []) {
-  if (!versionRow || !files?.length) return;
-  const dj = { ...dataJson };
-  let richAr = dj.rich_html_ar || "";
-  let richFr = dj.rich_html_fr || "";
-  const mediaItems = [];
-  slots.forEach((fileIdx, i) => {
-    const file = files[fileIdx];
-    if (!file) return;
-    const tag = imgHtml(file);
-    const key = `__IMG_${i + 1}__`;
-    richAr = richAr.replace(key, tag);
-    richFr = richFr.replace(key, tag);
-    mediaItems.push({ file_id: file.id });
-  });
-  dj.rich_html_ar = richAr;
-  dj.rich_html_fr = richFr;
-  dj.blocks = (dj.blocks || []).map((b) =>
-    b.type === "media_row" && mediaItems.length
-      ? { ...b, items: mediaItems.slice(0, b.items?.length || mediaItems.length) }
-      : b,
-  );
-  await versionRow.update({ data_json: dj });
 }
 
 async function seedDemo() {
@@ -1131,14 +1026,13 @@ async function seedDemo() {
 
   hydTableV1.tables[0].media_rows = [{ items: [] }];
 
-  const hydBarrageBundle = await createRapportBundle({
+  await createRapportBundle({
     serviceId: svcHyd.id,
     typeId: typeHydTable.id,
     title: `حالة السدود — ${weekAnchor}`,
     ownerId: office.id,
     authorId: office.id,
     status: "changes_requested",
-    files: [STORAGE_FILES[0], STORAGE_FILES[1], STORAGE_FILES[3]],
     versions: [
       { number: 1, data_json: hydTableV1, submitted_at: twoDaysAgo },
       { number: 2, data_json: hydTableV2, submitted_at: null },
@@ -1162,17 +1056,6 @@ async function seedDemo() {
     ],
   });
 
-  if (hydBarrageBundle.files[0] && hydBarrageBundle.files[1]) {
-    const mediaItems = [
-      { file_id: hydBarrageBundle.files[0].id },
-      { file_id: hydBarrageBundle.files[1].id },
-    ];
-    hydTableV1.tables[0].media_rows = [{ items: mediaItems }];
-    hydTableV2.tables[0].media_rows = [{ items: mediaItems }];
-    await hydBarrageBundle.versions[0].update({ data_json: hydTableV1 });
-    await hydBarrageBundle.versions[1].update({ data_json: hydTableV2 });
-  }
-
   const ainNehalaBlocks = buildCommuneDocumentDefaultBlocks({
     name_ar: "عين نحالة",
     name_fr: "Ain Nehala",
@@ -1188,14 +1071,13 @@ async function seedDemo() {
     },
   );
 
-  const hydDocBundle = await createRapportBundle({
+  await createRapportBundle({
     serviceId: svcHyd.id,
     typeId: typeHydDoc.id,
     title: `توزيع المياه — عين نحالة — ${weekAnchor}`,
     ownerId: office.id,
     authorId: office.id,
     status: "submitted",
-    files: [STORAGE_FILES[0], STORAGE_FILES[3]],
     versions: [
       {
         number: 1,
@@ -1250,24 +1132,13 @@ async function seedDemo() {
     ],
   });
 
-  if (hydDocBundle.files[0]) {
-    const img = hydDocBundle.files[0];
-    const dj = { ...hydDocBundle.versions[0].data_json };
-    dj.rich_html_ar = `<p>تقرير توزيع المياه لبلدية عين نحالة.</p>${imgHtml(img)}<div data-schema-table-id="${embeddedHydTableId}"></div>`;
-    dj.blocks = dj.blocks.map((b) =>
-      b.type === "media_row" ? { ...b, items: [{ file_id: img.id }] } : b,
-    );
-    await hydDocBundle.versions[0].update({ data_json: dj });
-  }
-
-  const hydCommuneBundle = await createRapportBundle({
+  await createRapportBundle({
     serviceId: svcHyd.id,
     typeId: typeHydCommune.id,
     title: `متابعة التوزيع — بلديات (ملف مركّب) — ${weekAnchor}`,
     ownerId: office.id,
     authorId: office.id,
     status: "submitted",
-    files: [STORAGE_FILES[0], STORAGE_FILES[1]],
     versions: [
       {
         number: 1,
@@ -1371,19 +1242,6 @@ async function seedDemo() {
     ],
   });
 
-  if (hydCommuneBundle.files[0]) {
-    const img = hydCommuneBundle.files[0];
-    const dj = { ...(hydCommuneBundle.versions[0].data_json || {}) };
-    const entry = dj.communes?.["1325"];
-    if (entry) {
-      entry.rich_html_ar = `${entry.rich_html_ar || ""}${imgHtml(img)}`;
-      entry.blocks = (entry.blocks || []).concat([
-        { type: "media_row", items: [{ file_id: img.id }] },
-      ]);
-      await hydCommuneBundle.versions[0].update({ data_json: dj });
-    }
-  }
-
   await createRapportBundle({
     serviceId: svcHyd.id,
     typeId: typeHydFiche.id,
@@ -1391,7 +1249,6 @@ async function seedDemo() {
     ownerId: office.id,
     authorId: office.id,
     status: "acknowledged",
-    files: [STORAGE_FILES[0], STORAGE_FILES[1]],
     versions: [
       {
         number: 1,
@@ -1416,13 +1273,6 @@ async function seedDemo() {
         note_ar: "عرض على الوالي — السدود والتوزيع",
       },
     ],
-  }).then(async (hydFicheBundle) => {
-    await attachFicheMedia(
-      hydFicheBundle.versions[0],
-      hydFicheBundle.versions[0].data_json,
-      hydFicheBundle.files,
-      [0, 1],
-    );
   });
 
   const invTableV1 = {
@@ -1476,7 +1326,6 @@ async function seedDemo() {
     ownerId: office.id,
     authorId: office.id,
     status: "under_review",
-    files: [STORAGE_FILES[2], STORAGE_FILES[4]],
     versions: [
       { number: 1, data_json: invTableV1, submitted_at: dayAgo },
     ],
@@ -1542,7 +1391,6 @@ async function seedDemo() {
     ownerId: office.id,
     authorId: office.id,
     status: "submitted",
-    files: [STORAGE_FILES[2]],
     versions: [
       {
         number: 1,
@@ -1635,7 +1483,6 @@ async function seedDemo() {
     ownerId: office.id,
     authorId: office.id,
     status: "draft",
-    files: [STORAGE_FILES[2]],
     versions: [
       {
         number: 1,
@@ -1661,7 +1508,6 @@ async function seedDemo() {
     ownerId: office.id,
     authorId: office.id,
     status: "submitted",
-    files: [STORAGE_FILES[2], STORAGE_FILES[4]],
     versions: [
       {
         number: 1,
@@ -1677,13 +1523,6 @@ async function seedDemo() {
         note_ar: "للتوقيع — خلية ولائية 2026",
       },
     ],
-  }).then(async (invFicheBundle) => {
-    await attachFicheMedia(
-      invFicheBundle.versions[0],
-      invFicheBundle.versions[0].data_json,
-      invFicheBundle.files,
-      [0],
-    );
   });
 
   console.log("\n=== Demo presentation seed complete ===\n");
@@ -1695,10 +1534,10 @@ async function seedDemo() {
   console.log(`  [${svcHyd.id}] hydraulique — ${svcHyd.name_ar}`);
   console.log(`  [${svcInv.id}] investissement — ${svcInv.name_ar}`);
   console.log("\nHighlights:");
-  console.log("  • Table: grouped headers, formulas, colors, merge, media, versions, wali response");
-  console.log("  • Document: templates, embedded tables, images");
+  console.log("  • Table: grouped headers, formulas, colors, merge, versions, wali response");
+  console.log("  • Document: templates, embedded tables");
   console.log("  • Commune complex (rich HTML + embedded tables + calendar) + commune table");
-  console.log("  • Fiche lecture: rich text, embedded tables, photos, wali response");
+  console.log("  • Fiche lecture: rich text, embedded tables, wali response");
   console.log("\nRe-run: npm run db:seed-demo\n");
 }
 

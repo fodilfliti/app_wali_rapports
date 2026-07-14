@@ -5,8 +5,7 @@
  * Usage: npm run db:seed-test
  */
 
-const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, "..", ".env") });
+require("./load-env");
 
 const bcrypt = require("bcryptjs");
 const {

@@ -17,6 +17,7 @@ const { getLogger } = require("./logger");
 const app = express();
 const env = getEnv();
 const logger = getLogger();
+const apiBase = env.apiBasePath || "";
 
 app.set("trust proxy", Boolean(env.trustProxy));
 app.use(requestContext);
@@ -24,7 +25,12 @@ app.use(
   pinoHttp({
     logger,
     genReqId: (req) => req.requestId,
-    autoLogging: { ignore: (req) => req.url === "/health" || req.url.startsWith("/files/") }
+    autoLogging: {
+      ignore: (req) => {
+        const p = req.path || req.url || "";
+        return p === "/health" || p.endsWith("/health") || p.includes("/files/");
+      },
+    },
   })
 );
 
@@ -67,14 +73,21 @@ app.use(
 );
 app.use(express.json({ limit: "2mb" }));
 
-ensureStorageDirs();
+try {
+  ensureStorageDirs();
+} catch (err) {
+  console.error("[wali-api] storage_init_failed:", err.message);
+}
 
-app.get("/health", (req, res) => res.json({ ok: true }));
-app.use("/files", secureFilesRouter());
-app.use("/auth", authRouter);
-app.use("/admin", adminRouter);
-app.use("/office", officeRouter);
-app.use("/wali", waliRouter);
+const api = express.Router();
+api.get("/health", (req, res) => res.json({ ok: true }));
+api.use("/files", secureFilesRouter());
+api.use("/auth", authRouter);
+api.use("/admin", adminRouter);
+api.use("/office", officeRouter);
+api.use("/wali", waliRouter);
+
+app.use(apiBase, api);
 app.use(errorHandler);
 
 module.exports = { app };

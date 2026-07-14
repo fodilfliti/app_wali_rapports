@@ -1,12 +1,9 @@
-const { Sequelize } = require("sequelize");
 const sequelizeConfig = require("../../config/config");
 const { getEnv } = require("../config/env");
 
 const env = getEnv();
 const config = sequelizeConfig[env.nodeEnv];
-if (!config?.url) throw new Error("DATABASE_URL is required.");
-
-const sequelize = new Sequelize(config.url, config);
+const sequelize = sequelizeConfig.createSequelize(config);
 
 const Municipality = require("./models/Municipality")(sequelize);
 const User = require("./models/User")(sequelize);

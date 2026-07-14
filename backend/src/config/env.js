@@ -13,8 +13,16 @@ const EnvSchema = z.object({
     .optional()
     .transform((v) => (v == null ? undefined : v === "true" || v === "1")),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().optional(),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().optional()
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().optional(),
+  API_BASE_PATH: z.string().optional(),
 });
+
+function normalizeApiBasePath(value) {
+  if (!value || value === "/") return "";
+  let path = value.trim();
+  if (!path.startsWith("/")) path = `/${path}`;
+  return path.replace(/\/+$/, "");
+}
 
 function getEnv() {
   const parsed = EnvSchema.safeParse(process.env);
@@ -35,7 +43,8 @@ function getEnv() {
     logLevel: e.LOG_LEVEL || (e.NODE_ENV === "production" ? "info" : "debug"),
     trustProxy: e.TRUST_PROXY ?? e.NODE_ENV === "production",
     rateLimitWindowMs: e.RATE_LIMIT_WINDOW_MS || 60_000,
-    rateLimitMax: e.RATE_LIMIT_MAX || 300
+    rateLimitMax: e.RATE_LIMIT_MAX || 300,
+    apiBasePath: normalizeApiBasePath(e.API_BASE_PATH),
   };
 }
 

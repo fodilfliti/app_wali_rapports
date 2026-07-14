@@ -7,13 +7,13 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "db:migrate": "sequelize db:migrate",
-    "db:migrate:undo": "sequelize db:migrate:undo",
-    "db:migrate:undo:all": "sequelize db:migrate:undo:all",
+    "db:migrate": "npx sequelize-cli db:migrate",
+    "db:migrate:undo": "npx sequelize-cli db:migrate:undo",
+    "db:migrate:undo:all": "npx sequelize-cli db:migrate:undo:all",
     "db:seed-dev": "node scripts/seed-dev.js",
     "db:seed-test": "node scripts/seed-test-fixtures.js",
     "db:seed-demo": "node scripts/seed-demo-presentation.js",
-    "db:seed": "sequelize db:seed:all"
+    "db:seed": "node scripts/seed-dev.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -32,10 +32,10 @@
     "pino": "^9.7.0",
     "pino-http": "^10.5.0",
     "sequelize": "^6.37.3",
+    "sequelize-cli": "^6.6.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "pino-pretty": "^13.1.1",
-    "sequelize-cli": "^6.6.2"
+    "pino-pretty": "^13.1.1"
   }
 }
