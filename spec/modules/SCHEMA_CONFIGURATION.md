@@ -123,6 +123,7 @@ Validation: `documentTemplateCreateSchema`, `documentTemplatePatchSchema`, `appl
 
 ### UI
 
+- French content-value inputs (`name_fr`, column/choice/header `label_fr`, etc.) respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 - Admin hub → **Schémas & types** → `/admin/schemas`
 - Office editor → service hub → **Configuration** → `/office/services/:id/config` — **tabbed** UI (schemas | rapport types | document templates); one list visible at a time; document templates tab with bilingual editor, default flag, scope by type/kind
 - Office service hub (`manage` access): direct shortcuts **create schema**, **create rapport type**, **create document template** → `/office/services/:id/config?new=schema|type|template` (auto-opens the matching create modal); full **Configuration** link remains for list/edit

@@ -12,6 +12,7 @@ import {
   type DraftHeaderGroup,
 } from './schemaHeaderGroups'
 import type { LayoutJson } from './tableLayout'
+import { bilingualPairForSave } from './bilingual'
 
 export type SchemaFormState = { name_ar: string; name_fr: string }
 
@@ -53,9 +54,10 @@ export function buildSchemaSaveBody(
   draftColumns: DraftSchemaColumn[],
   draftHeaderGroups: DraftHeaderGroup[],
 ) {
+  const names = bilingualPairForSave(schemaForm.name_ar, schemaForm.name_fr)
   return {
-    name_ar: schemaForm.name_ar.trim() || schemaForm.name_fr.trim(),
-    name_fr: schemaForm.name_fr.trim() || schemaForm.name_ar.trim(),
+    name_ar: names.ar,
+    name_fr: names.fr,
     columns: buildColumnsPayload(draftColumns),
     layout_json: buildLayoutJsonFromDraft(draftColumns, draftHeaderGroups),
   }

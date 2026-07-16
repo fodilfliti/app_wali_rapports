@@ -8,6 +8,7 @@ const emptyOfficeCounts: api.OfficeHubCounts = {
   changes_requested_rapports: 0,
   unread_shared_files: 0,
   unread_instructions: 0,
+  unread_discussion: 0,
   services_action_count: 0,
 }
 
@@ -21,6 +22,7 @@ const emptyChefCounts: api.ChefHubCounts = {
   inbox_pending: 0,
   office_users_pending: 0,
   unread_discussion: 0,
+  unread_shared_files: 0,
 }
 
 export function useOfficeHubCounts(token: string) {
@@ -53,6 +55,10 @@ export function useWaliHubCounts(token: string) {
   const [counts, setCounts] = useState<api.WaliHubCounts>(emptyWaliCounts)
 
   const refresh = useCallback(() => {
+    if (!token) {
+      setCounts(emptyWaliCounts)
+      return
+    }
     api.getWaliHubCounts(token).then(setCounts).catch(() => setCounts(emptyWaliCounts))
   }, [token])
 
@@ -78,6 +84,10 @@ export function useChefHubCounts(token: string) {
   const [counts, setCounts] = useState<api.ChefHubCounts>(emptyChefCounts)
 
   const refresh = useCallback(() => {
+    if (!token) {
+      setCounts(emptyChefCounts)
+      return
+    }
     api.getChefHubCounts(token).then(setCounts).catch(() => setCounts(emptyChefCounts))
   }, [token])
 

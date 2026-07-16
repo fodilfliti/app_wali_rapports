@@ -8,15 +8,23 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "./api";
+import {
+  logoutRemote,
+  onAccessTokenChange,
+  onSessionExpired,
+  refreshSession,
+  setAccessToken,
+} from "./auth/session";
 import "./theme/tokens.css";
 import "./App.css";
 import { GuestLoginPage } from "./components/GuestLoginPage";
 import { ChangeCodeModal } from "./components/ChangeCodeModal";
+import { EditProfileModal } from "./components/EditProfileModal";
 import { TopbarProfileMenu } from "./components/TopbarProfileMenu";
-import { SnackbarProvider } from "./snackbar/SnackbarContext";
+import { SnackbarProvider, useSnackbar } from "./snackbar/SnackbarContext";
 import { AdminMunicipalitiesListPage } from "./pages/AdminMunicipalitiesListPage";
 import { AdminDairasListPage } from "./pages/AdminDairasListPage";
-import { AdminModiriyatListPage } from "./pages/AdminModiriyatListPage";
+import { AdminDirectionsListPage } from "./pages/AdminDirectionsListPage";
 import { AdminSchemasPage } from "./pages/AdminSchemasPage";
 import { AdminServicesPage } from "./pages/AdminServicesPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
@@ -50,6 +58,7 @@ import {
 } from "./pages/RapportVersionsArchivePage";
 import { OfficeServiceConfigPage } from "./pages/OfficeServiceConfigPage";
 import {
+  OfficeDiscussionBell,
   OfficeNotificationsBell,
   OfficeNotificationsPage,
 } from "./pages/OfficeNotificationsPage";
@@ -78,6 +87,8 @@ import {
   WaliInstructionDetailPage,
   WaliInstructionsPage,
 } from "./pages/InstructionPages";
+import { GuideVideosPage } from "./pages/GuideVideosPage";
+import { ENABLE_GUIDE_VIDEOS } from "./config/features";
 
 function hubPath(role: api.UserRole | undefined) {
   if (role === "ADMIN") return "/";
@@ -155,18 +166,57 @@ function WaliServiceRapportListRoute({ token }: { token: string }) {
 function AppShell() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem("token"),
-  );
-  const [me, setMe] = useState<api.SessionUser | null>(() => {
-    const raw = localStorage.getItem("me");
-    return raw ? (JSON.parse(raw) as api.SessionUser) : null;
-  });
+  const snack = useSnackbar();
+  const [token, setToken] = useState<string | null>(null);
+  const [me, setMe] = useState<api.SessionUser | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const [changeCodeOpen, setChangeCodeOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
+    localStorage.removeItem("token");
+
+    let cancelled = false;
+    refreshSession()
+      .then((res) => {
+        if (cancelled) return;
+        if (res) {
+          setToken(res.token);
+          setMe(res.user);
+          localStorage.setItem("me", JSON.stringify(res.user));
+        } else {
+          setToken(null);
+          setMe(null);
+          localStorage.removeItem("me");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSessionReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    onSessionExpired(() => {
+      setToken(null);
+      setMe(null);
+      localStorage.removeItem("me");
+      snack.show(t("sessionExpired"), "error");
+      navigate("/");
+    });
+    onAccessTokenChange((next) => setToken(next));
+    return () => {
+      onSessionExpired(null);
+      onAccessTokenChange(null);
+    };
+  }, [navigate, snack, t]);
+
+  useEffect(() => {
+    if (!token || !sessionReady) return;
     api
       .fetchMe(token)
       .then((r) => {
@@ -174,25 +224,22 @@ function AppShell() {
         localStorage.setItem("me", JSON.stringify(r.user));
       })
       .catch(() => {
-        setToken(null);
-        setMe(null);
-        localStorage.removeItem("token");
-        localStorage.removeItem("me");
+        /* 401 handled by request() → notifySessionExpired */
       });
-  }, [token]);
+  }, [token, sessionReady]);
 
   function onLoginSuccess(res: api.LoginResponse) {
+    setAccessToken(res.token);
     setToken(res.token);
     setMe(res.user);
-    localStorage.setItem("token", res.token);
     localStorage.setItem("me", JSON.stringify(res.user));
     navigate(hubPath(res.user.role));
   }
 
-  function logout() {
+  async function logout() {
+    await logoutRemote(token);
     setToken(null);
     setMe(null);
-    localStorage.removeItem("token");
     localStorage.removeItem("me");
     navigate("/");
   }
@@ -211,6 +258,10 @@ function AppShell() {
   const lang = (i18n.language === "fr" ? "fr" : "ar") as "ar" | "fr";
   const isRtl = lang === "ar";
   const home = useMemo(() => hubPath(me?.role), [me?.role]);
+
+  if (!sessionReady) {
+    return <div className="app guest" />;
+  }
 
   if (!token || !me) {
     return (
@@ -237,7 +288,10 @@ function AppShell() {
         </div>
         <div className="topbarActions">
           {me.role === "OFFICE_USER" ? (
-            <OfficeNotificationsBell token={token} />
+            <>
+              <OfficeDiscussionBell token={token} />
+              <OfficeNotificationsBell token={token} />
+            </>
           ) : null}
           {me.role === "WALI" ? <WaliInboxBell token={token} /> : null}
           {me.role === "CHEF_CABINET" ? <ChefInboxBell token={token} /> : null}
@@ -245,15 +299,33 @@ function AppShell() {
             user={me}
             lang={lang}
             onSetLang={setLang}
+            onEditProfile={() => setEditProfileOpen(true)}
             onChangeCode={() => setChangeCodeOpen(true)}
             onLogout={logout}
           />
         </div>
       </header>
+      <EditProfileModal
+        token={token}
+        open={editProfileOpen}
+        user={me}
+        onClose={() => setEditProfileOpen(false)}
+        onSaved={(user) => {
+          setMe(user);
+          localStorage.setItem("me", JSON.stringify(user));
+        }}
+      />
       <ChangeCodeModal
         token={token}
         open={changeCodeOpen}
         onClose={() => setChangeCodeOpen(false)}
+        onChanged={() => {
+          setAccessToken(null);
+          setToken(null);
+          setMe(null);
+          localStorage.removeItem("me");
+          navigate("/");
+        }}
       />
       <main className="main">
         <Routes>
@@ -270,7 +342,7 @@ function AppShell() {
               />
               <Route
                 path="/directions"
-                element={<AdminModiriyatListPage token={token} />}
+                element={<AdminDirectionsListPage token={token} />}
               />
               <Route path="/modiriyat" element={<Navigate to="/directions" replace />} />
               <Route path="/users" element={<AdminUsersPage token={token} />} />
@@ -295,6 +367,12 @@ function AppShell() {
                 element={<AdminSchemasPage token={token} />}
               />
               <Route path="/access" element={<AdminAccessPage />} />
+              {ENABLE_GUIDE_VIDEOS ? (
+                <Route
+                  path="/admin/guide"
+                  element={<GuideVideosPage token={token} listRole="admin" canManage />}
+                />
+              ) : null}
             </>
           ) : null}
           {me.role === "OFFICE_USER" || me.role === "ADMIN" ? (
@@ -372,6 +450,12 @@ function AppShell() {
                 path="/office/shared/:id"
                 element={<OfficeSharedFileDetailPage token={token} />}
               />
+              {ENABLE_GUIDE_VIDEOS ? (
+                <Route
+                  path="/office/guide"
+                  element={<GuideVideosPage token={token} listRole="office" />}
+                />
+              ) : null}
               <Route
                 path="/office/rapports/:rapportId/document"
                 element={<OfficeDocumentEditorPage token={token} />}
@@ -449,6 +533,12 @@ function AppShell() {
                 path="/wali/rapports/:rapportId/versions/:versionId?"
                 element={<RapportVersionsArchivePage token={token} wali />}
               />
+              {ENABLE_GUIDE_VIDEOS ? (
+                <Route
+                  path="/wali/guide"
+                  element={<GuideVideosPage token={token} listRole="wali" />}
+                />
+              ) : null}
             </>
           ) : null}
           {me.role === "CHEF_CABINET" || me.role === "ADMIN" ? (
@@ -466,6 +556,20 @@ function AppShell() {
                 path="/chef/instructions/:id"
                 element={<ChefInstructionDetailPage token={token} />}
               />
+              <Route
+                path="/chef/shared"
+                element={<OfficeSharedFilesPage token={token} audience="chef" />}
+              />
+              <Route
+                path="/chef/shared/:id"
+                element={<OfficeSharedFileDetailPage token={token} audience="chef" />}
+              />
+              {ENABLE_GUIDE_VIDEOS ? (
+                <Route
+                  path="/chef/guide"
+                  element={<GuideVideosPage token={token} listRole="chef" />}
+                />
+              ) : null}
               <Route
                 path="/chef/office-users"
                 element={<WaliOfficeUsersPage token={token} reviewer="chef" />}

@@ -42,7 +42,8 @@ import {
 import { useSnackbar } from '../snackbar/SnackbarContext'
 
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
-import { hasBilingualText } from '../utils/bilingual'
+import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
+import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
 import { EntityTargetKindsField } from '../components/EntityTargetKindsField'
 import { defaultEntityTargetKinds } from '../utils/entityTargets'
 import { needsLinkedTableSchema } from '../utils/rapportTypeSchema'
@@ -388,11 +389,13 @@ export function AdminSchemasPage({ token }: Props) {
     setSaving(true)
     try {
 
+      const names = bilingualPairForSave(typeForm.name_ar, typeForm.name_fr)
+
       await api.createRapportType(token, Number(selectedServiceId), {
 
-        name_ar: typeForm.name_ar.trim() || typeForm.name_fr.trim(),
+        name_ar: names.ar,
 
-        name_fr: typeForm.name_fr.trim() || typeForm.name_ar.trim(),
+        name_fr: names.fr,
 
         content_kind: typeForm.content_kind,
 
@@ -677,6 +680,7 @@ export function AdminSchemasPage({ token }: Props) {
 
             </label>
 
+            {ENABLE_FR_VALUE_INPUTS ? (
             <label>
 
               {t('municipalityNameFr')}
@@ -684,6 +688,7 @@ export function AdminSchemasPage({ token }: Props) {
               <input value={typeForm.name_fr} onChange={(e) => setTypeForm({ ...typeForm, name_fr: e.target.value })} />
 
             </label>
+            ) : null}
 
             <label>
 

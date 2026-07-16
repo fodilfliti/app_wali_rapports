@@ -44,7 +44,7 @@ flowchart TD
 | **1 — Table grid**       | `table_grid`       | One or more **tables** per service; typed columns; formulas; row visibility; cell highlights | Usually **versioned**; archive old versions for graphs      | Per-table or whole-rapport submit; feedback optional or required |
 | **2 — Document compose** | `document_compose` | **List of files**; each file = rich blocks (text, table, image) → PDF/Word                   | **Standalone** (new file per subject/date)                  | Wali reads export-like view; note on file                        |
 | **3 — Fiche lecture**    | `fiche_lecture`    | Same as type 2 but **shared** by all office users; **new file every time** (dated)           | **Standalone** (always new file + date)                     | Wali inbox grouped by date; optional note                        |
-| **4 — قائمة / Liste**    | `commune_list`     | Configurable targets: **communes** and/or **dairas** and/or **modiriyat** → per-entity table or form | Configurable: versioned whole état or standalone per period | Filters entities; sees highlighted rows; `entity_target_kinds` on type |
+| **4 — قائمة / Liste**    | `commune_list`     | Configurable targets: **communes** and/or **dairas** and/or **directions** → per-entity table or form | Configurable: versioned whole état or standalone per period | Filters entities; sees highlighted rows; `entity_target_kinds` on type |
 
 Admin configures `content_kind` when creating a service / rapport type. A **service** may contain **multiple tables** (type 1) or **multiple document instances** (types 2–3).
 
@@ -91,6 +91,10 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - **Versioned** rapport: each **Envoyer au wali** creates `rapport_versions` snapshot (full table data JSON).
 - UI: button **Versions archivées** → list `v1, v2, …` with dates; read-only open.
 - **Why archive:** graphs and year-to-date stats (e.g. total given to project Jan–Dec in one row) need historical snapshots.
+- **Read-only version open** (office / Wali / Chef): resolve snapshot content by `content_kind`:
+  - `table_grid` → `schema_snapshot` + `tables[0]` via `TableWorkspace`
+  - `document_compose` / `fiche_lecture` → `RichDocumentView` from snapshot HTML/blocks/embedded tables
+  - `commune_list` (table or complex) → resolve **`data_json.entities`** with prefixed keys (`commune:…` / `daira:…` / `direction:…`), dual-read legacy **`data_json.communes`** (bare codes). Changed badges dual-read `changed_entity_keys` and legacy `changed_commune_codes`.
 
 ### Graphs (deferred implementation, specified now)
 
@@ -103,7 +107,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 ### Table layout (view + export)
 
-- **In-app:** wide tables (`totalCols > 6`) scroll horizontally inside `TableScrollShell` (RTL shell for Arabic).
+- **In-app:** tables scroll horizontally inside `TableScrollShell` when content-aware min widths exceed the view budget (RTL shell for Arabic); see `spec/CORE.md` § Table layout policy.
 - **Export:** same column-weight and landscape rules as `spec/CORE.md` § Table layout policy — PDF RTL column order for Arabic, Word `visuallyRightToLeft`, no automatic page break by row count alone.
 
 ---
@@ -118,9 +122,11 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
   - **Embedded tables** (`embedded_tables[]`) with schema from table library or inline columns.
     - Insert options: empty from existing schema, create new schema (live column preview like admin/office), or import from another rapport.
     - Empty-from-schema and create/import all open the **fill modal** before the table is inserted into the document.
-    - Fill modal is rapport-scoped: add/remove/reorder rows allowed; **no** finish / Wali-visible meta columns and **no** active/finished/all row filters.
+    - Fill modal is rapport-scoped: `#` column, add/remove/reorder rows allowed; **no** finish / Wali-visible meta columns and **no** active/finished/all row filters.
+    - Empty-from-schema insert tab shows a live preview of the selected schema (columns list + empty grid), same pattern as import-from-rapport.
+    - Inline document view (editor / preview / reader) and PDF/DOCX export show the `#` row column on embedded tables (no Wali/finish meta).
   - **Images** inline in HTML; legacy **blocks** (`heading`, `paragraph`, `media_row`) still rendered for old data.
-- **Templates:** office defines reusable starters per service — see **`SCHEMA_CONFIGURATION.md`** (`rapport_document_templates`). Import in editor: **replace** or **append**. Office UI for document templates is gated by frontend `ENABLE_DOCUMENT_TEMPLATES` (default off); API remains available.
+- **Templates:** office defines reusable starters per service — see **`SCHEMA_CONFIGURATION.md`** (`rapport_document_templates`). Import in editor: **replace** or **append**. Office UI for document templates is gated by frontend `ENABLE_DOCUMENT_TEMPLATES` (default off); when off, service-config step-3 / templates help and tab are hidden as well; API remains available.
 
 ### Output
 
@@ -150,20 +156,22 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ## Type 4 — قائمة / Liste (`commune_list`)
 
 - Collection of data for selected **entity kinds** in the Wilaya (not communes-only).
-- **`entity_target_kinds`** on `rapport_types`: JSON array subset of `commune` | `daira` | `modiriya` (at least one). Default `["commune"]` for backward compatibility.
+- **`entity_target_kinds`** on `rapport_types`: JSON array subset of `commune` | `daira` | `direction` (at least one). Default `["commune"]` for backward compatibility.
 - **Per-rapport membership** (`data_json.included_entity_keys`): optional non-empty array of prefixed keys (`daira:1301`, …). Absent / null = **all** entities of the type’s kinds. Office can narrow or expand the set while the rapport is `draft` / `changes_requested` (hub **Choisir la liste**). Removing a key hides it from the hub without deleting stored entity data (re-adding restores content). New draft after finish **inherits** the previous finished rapport’s `included_entity_keys` when auto-created.
 - **Office view**: Hub grouped by kind (only included entities); progress counter sums filled across all kinds with kind-aware unit wording (بلدية / دائرة / مديرية / عنصر). Click one entity to edit **or** **Bulk Entry** (table mode) across selected kinds.
 - **Modes** (`commune_content_kind` on `rapport_types`):
   - **`complex`**: Rich text document per entity (like type 2). **No linked table schema** required at create time.
   - **`table`**: Grid rows per entity. **Requires linked table schema**. Same row tools as type 1.
 - **Create rapport type** (admin + office): multi-select targets; schema selector shown only for `table_grid` and `commune_list` + `table`.
-- **Storage keys** in `data_json.entities` (or migrated `communes`): prefixed `commune:1301`, `daira:1304`, `modiriya:DIR01`.
+- **Storage keys** in `data_json.entities` (or migrated `communes`): prefixed `commune:1301`, `daira:1304`, `direction:DIR01`.
 - **Bulk entry (table mode)**:
   - First column = entity display name (read-only) + kind.
   - **Drag reorder** uses **`commune` scope** generalized to **per-entity** blocks. Export `#` remains global sequential.
-- **Versioning**: On submit, compare each entity → `changed_entity_keys` (legacy `changed_commune_codes` dual-read). Snapshots in `entity_versions` / legacy `commune_versions`.
+- **Versioning**: On submit, compare each entity → `changed_entity_keys` (legacy `changed_commune_codes` dual-write/dual-read). Snapshots in `entity_versions` / legacy `commune_versions`.
+- **Read-only archive view**: same entity dual-read as above — never rely on `communes` alone when `entities` is present.
 - **Wali / Chef view**: Hub with badges **Filled** / **Changed**; filter Modifiées. **Versions archivées** modal.
-- Reference data: communes → daira; dairas and modiriyat (UI **Directions** / المديريات) managed in admin — see `ORGANIZATION.md`.
+- Reference data: communes → daira; dairas and directions (UI **Directions** / المديريات) managed in admin — see `ORGANIZATION.md`.
+- **Soft-hidden refs** (`hidden_at` on daira / commune / direction): **new** hubs, bulk editors, and `selection_catalog` / “all entities” membership use **active** rows only. Keys already in `included_entity_keys` or stored in `data_json.entities` / legacy `communes` still resolve names and remain editable/viewable on that rapport (and in archives).
 
 ### Chef Cabinet gate (cross-cutting)
 
@@ -278,12 +286,12 @@ Details: **`spec/CORE.md`** § Rapport export.
 - **New submissions:** `is_inbox_new` shows **« جديد »** badge on title; row classes `waliInboxRowNew` / `waliInboxRowPending`.
 - **Wali decision on row:** when a response exists, show compact decision badge under status (not a duplicate full note).
 - **Top bar counter:** **one** pending inbox count on `WaliInboxBell` (`inbox_pending` from hub counts API) — do not duplicate inbox badges on service hub tiles in Wali navigation.
-- **Tables:** bordered grid, sticky header, RTL column order in Arabic; horizontal scroll when wide; hidden rows collapsed with expand control.
+- **Tables:** bordered grid, sticky header, RTL column order in Arabic; horizontal scroll when content-aware min widths exceed the shell; hidden rows collapsed with expand control.
 - **Highlights:** warm/yellow/red badges on rows/cells — legend at top.
 - **Documents:** A4-width editor; export preview modal; centered titles inside content; bold section headings; sticky toolbar.
 - **Version button:** prominent **Versions archivées** on versioned types.
 - **Feedback panel:** fixed side or bottom — Wali types note; buttons **Confirmer** / **Demander modification** / **Lu sans commentaire**.
-- **Office:** notification bell; opening rapport shows Wali note thread per version.
+- **Office:** notification bell; opening rapport shows Wali note thread **per version** only (Chef + Wali). Live editors / Wali–Chef inbox view use the active reviewed version (`current_version_id`, or latest submitted when a `changes_requested` draft was forked). Archive `/versions/:id` shows only notes for that opened version — never the full history.
 
 ---
 

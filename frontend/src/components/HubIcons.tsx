@@ -20,6 +20,7 @@ export type HubIconName =
   | 'folder'
   | 'file'
   | 'create'
+  | 'guide'
 
 type IconProps = SVGProps<SVGSVGElement>
 
@@ -119,13 +120,15 @@ const icons: Record<HubIconName, (props: IconProps) => ReactElement> = {
   table: (p) => (
     <SvgBase {...p}>
       <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M3 9h18M3 15h18M9 3v18" />
+      <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
     </SvgBase>
   ),
   document: (p) => (
     <SvgBase {...p}>
-      <path d="M12 3v18M8 7h8M8 11h8M8 15h5" />
-      <rect x="4" y="3" width="16" height="18" rx="2" />
+      {/* Stacked pages — ملف مركّب */}
+      <path d="M8 4h9a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+      <path d="M6 7H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-1" />
+      <path d="M10 9h5M10 13h5M10 17h3" />
     </SvgBase>
   ),
   fiche: (p) => (
@@ -154,6 +157,11 @@ const icons: Record<HubIconName, (props: IconProps) => ReactElement> = {
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="8" x2="12" y2="16" />
       <line x1="8" y1="12" x2="16" y2="12" />
+    </SvgBase>
+  ),
+  guide: (p) => (
+    <SvgBase {...p}>
+      <polygon points="5 3 19 12 5 21 5 3" />
     </SvgBase>
   ),
 }

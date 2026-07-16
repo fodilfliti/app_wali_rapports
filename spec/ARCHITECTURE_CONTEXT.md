@@ -97,7 +97,7 @@ erDiagram
 
 Routes are partitioned by role security barriers under the prefix `/api`:
 
-- **Public**: `POST /auth/login` (signs 12h HS256 JWT tokens).
+- **Public / auth**: `POST /auth/login`, `POST /auth/refresh` (HttpOnly refresh cookie), `POST /auth/logout` — access JWT 15m HS256; refresh 7d — `spec/modules/AUTH.md`.
 - **Admin Routing (`/admin/*`)**:
   - Bound to `requireRole('ADMIN')`.
   - Admin handles municipalities (`/admin/municipalities`), users (`/admin/users`), services (`/admin/services`), schemas (`/admin/table-schemas`), and departments.
@@ -110,10 +110,12 @@ Routes are partitioned by role security barriers under the prefix `/api`:
   - Controls inbox lists, details viewing, writing responses, checking calendar inputs, and launching file broadcasts.
 
 #### Request Verification Pipeline
-1. `requireAuth`: Extracts and validates the JWT header.
+1. `requireAuth`: Extracts and validates the **access** JWT (`Authorization: Bearer`, `typ: "access"`).
 2. `attachUser`: Attaches the user object from the DB database to `req.user`.
 3. `checkBlocked`: Rejects credentials if `is_blocked === true`.
 4. `requireRole` / `requirePermission`: Verifies access scopes before executing service controllers.
+
+Refresh renewal uses the `wr_refresh` cookie on `/auth/refresh` only (hashed rows in `refresh_tokens`); see `spec/modules/AUTH.md`.
 
 ---
 

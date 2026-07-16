@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useTranslation } from 'react-i18next'
+import { contentLocale, ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import { hasBilingualText } from '../utils/bilingual'
 
 import { RichTextEditor } from './richText/RichTextEditor'
@@ -75,7 +76,7 @@ export function DocumentTemplateEditModal({ open, title, rapportTypes, initial, 
 
   const [saving, setSaving] = useState(false)
 
-  const locale = i18n.language === 'fr' ? 'fr' : 'ar'
+  const locale = contentLocale(i18n.language)
 
 
 
@@ -197,6 +198,7 @@ export function DocumentTemplateEditModal({ open, title, rapportTypes, initial, 
 
           </label>
 
+          {ENABLE_FR_VALUE_INPUTS ? (
           <label>
 
             {t('documentTemplateNameFr')}
@@ -204,6 +206,7 @@ export function DocumentTemplateEditModal({ open, title, rapportTypes, initial, 
             <input value={form.name_fr} onChange={(e) => setForm((f) => ({ ...f, name_fr: e.target.value }))} />
 
           </label>
+          ) : null}
 
           <label>
 

@@ -5,6 +5,8 @@ export type RapportTypeNav = {
   name_ar?: string
   name_fr?: string
   content_kind: string
+  /** For `commune_list`: `table` (bulk grid) or `complex` (per-entity document). */
+  commune_content_kind?: string | null
   action_count?: number
   hidden_at?: string | null
 }
@@ -27,7 +29,9 @@ export const CONTENT_KINDS_ORDER = [
 ] as const
 
 export function contentKindHubIcon(contentKind: string): HubIconName {
-  return rapportTypeHubIcon(contentKind)
+  // Section-level: قائمة keeps the map pin; per-type tiles use table/document via commune_content_kind.
+  if (contentKind === 'commune_list') return 'communes'
+  return rapportTypeHubIcon({ content_kind: contentKind })
 }
 
 export function officeContentKindPath(serviceId: number, contentKind: string) {
@@ -78,12 +82,34 @@ export function localizedRapportTypeName(rt: RapportTypeNav, locale: string) {
   return locale === 'fr' ? rt.name_fr || rt.name_ar || '' : rt.name_ar || rt.name_fr || ''
 }
 
-export function rapportTypeHubIcon(contentKind: string): HubIconName {
+/** Icon for a rapport type tile — table vs complex file (and commune list subtypes). */
+export function rapportTypeHubIcon(
+  rt: string | Pick<RapportTypeNav, 'content_kind' | 'commune_content_kind'>,
+): HubIconName {
+  const contentKind = typeof rt === 'string' ? rt : rt.content_kind
+  const communeKind = typeof rt === 'string' ? undefined : rt.commune_content_kind
+
   if (contentKind === 'table_grid') return 'table'
-  if (contentKind === 'commune_list') return 'communes'
-  if (contentKind === 'fiche_lecture') return 'fiche'
   if (contentKind === 'document_compose') return 'document'
+  if (contentKind === 'fiche_lecture') return 'fiche'
+  if (contentKind === 'commune_list') {
+    // قائمة: وضع جدول vs ملف مركّب لكل جهة
+    if (communeKind === 'table') return 'table'
+    return 'document'
+  }
   return 'rapports'
+}
+
+/** CSS modifier for hub tile icon color (table vs complex). */
+export function rapportTypeHubKindClass(
+  rt: Pick<RapportTypeNav, 'content_kind' | 'commune_content_kind'>,
+): string {
+  if (rt.content_kind === 'commune_list') {
+    return rt.commune_content_kind === 'table'
+      ? 'hubTile--kind-table_grid'
+      : 'hubTile--kind-document_compose'
+  }
+  return `hubTile--kind-${rt.content_kind}`
 }
 
 export function officeServiceHubPath(serviceId: number) {
@@ -126,6 +152,15 @@ export function officeRapportTypeWorkspacePath(
 
 export function canOfficeEditRapport(status: string) {
   return status === 'draft' || status === 'changes_requested'
+}
+
+/** Office may recall a sent rapport to draft before Wali accept/view. */
+export function canOfficeReturnToDraft(status: string) {
+  return (
+    status === 'pending_chef' ||
+    status === 'submitted' ||
+    status === 'under_review'
+  )
 }
 
 export function isAwaitingWaliResponse(status: string) {

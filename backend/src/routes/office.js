@@ -93,6 +93,7 @@ const workspaceService = require("../modules/rapports/workspaceService");
 const officeSchemaService = require("../modules/rapports/officeSchemaService");
 const calendarEventService = require("../modules/rapports/calendarEventService");
 const broadcastService = require("../modules/rapports/broadcastService");
+const guideVideoService = require("../modules/guideVideos/guideVideoService");
 const {
   saveUploadedBuffer,
   enrichDataJsonWithFiles,
@@ -635,9 +636,16 @@ officeRouter.get("/services", async (req, res, next) => {
 
 officeRouter.get("/rapports", async (req, res, next) => {
   try {
+    const discussionList =
+      req.query.unread_discussion === "1" ||
+      req.query.unread_discussion === "true" ||
+      req.query.has_discussion === "1" ||
+      req.query.has_discussion === "true";
     res.json(
       await rapportService.listRapports(req.query, {
         enrichForOfficeUserId: req.user.id,
+        discussionUserId: discussionList ? req.user.id : undefined,
+        forOfficeUserId: discussionList ? req.user.id : undefined,
       }),
     );
   } catch (e) {
@@ -771,6 +779,23 @@ officeRouter.post("/rapports/:id/submit", async (req, res, next) => {
     res.json({ rapport });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    next(e);
+  }
+});
+
+officeRouter.post("/rapports/:id/return-to-draft", async (req, res, next) => {
+  try {
+    await assertRapportAccess(req.user, req.params.id, "manage");
+    const rapport = await rapportService.returnRapportToDraft(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json({ rapport });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 404) return res.status(404).json({ error: "Not found" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
     next(e);
   }
 });
@@ -1027,6 +1052,16 @@ officeRouter.get("/instructions/:id", async (req, res, next) => {
       }),
     });
   } catch (e) {
+    next(e);
+  }
+});
+
+officeRouter.get("/guide-videos", async (req, res, next) => {
+  try {
+    res.json(await guideVideoService.listGuideVideos(req.query, req.user.role));
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 403) return res.status(403).json({ error: e.message });
     next(e);
   }
 });

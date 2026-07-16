@@ -16,7 +16,8 @@ import { fileUrl } from '../utils/media'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
-import { hasBilingualText, pickBilingualText } from '../utils/bilingual'
+import { bilingualPairForSave, hasBilingualText, pickBilingualText } from '../utils/bilingual'
+import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 
 type Props = { token: string }
 
@@ -124,11 +125,12 @@ export function WaliBroadcastCreatePage({ token }: Props) {
       return
     }
     try {
+      const titles = bilingualPairForSave(titleAr, titleFr)
       await api.createWaliBroadcast(token, file, {
         all_users: allUsers,
         recipient_user_ids: allUsers ? [] : selected,
-        title_ar: titleAr.trim() || titleFr.trim(),
-        title_fr: titleFr.trim() || titleAr.trim(),
+        title_ar: titles.ar,
+        title_fr: titles.fr,
         message_ar: message,
         message_fr: message,
         allow_comments: allowComments,
@@ -151,10 +153,12 @@ export function WaliBroadcastCreatePage({ token }: Props) {
           <span>{t('rapportTitle')} (AR)</span>
           <input value={titleAr} onChange={(e) => setTitleAr(e.target.value)} />
         </label>
-        <label className="formField">
-          <span>{t('rapportTitle')} (FR)</span>
-          <input value={titleFr} onChange={(e) => setTitleFr(e.target.value)} />
-        </label>
+        {ENABLE_FR_VALUE_INPUTS ? (
+          <label className="formField">
+            <span>{t('rapportTitle')} (FR)</span>
+            <input value={titleFr} onChange={(e) => setTitleFr(e.target.value)} />
+          </label>
+        ) : null}
         <label className="formField">
           <span>{t('shareMessage')}</span>
           <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
@@ -373,14 +377,42 @@ export function WaliBroadcastDetailPage({ token }: Props) {
   )
 }
 
-export function OfficeSharedFilesPage({ token }: Props) {
+type SharedAudience = 'office' | 'chef'
+
+type SharedFilesProps = Props & { audience?: SharedAudience }
+
+function sharedBasePath(audience: SharedAudience) {
+  return audience === 'chef' ? '/chef/shared' : '/office/shared'
+}
+
+function listBroadcasts(token: string, audience: SharedAudience) {
+  return audience === 'chef' ? api.listChefBroadcasts(token) : api.listOfficeBroadcasts(token)
+}
+
+function getBroadcast(token: string, id: number, audience: SharedAudience) {
+  return audience === 'chef' ? api.getChefBroadcast(token, id) : api.getOfficeBroadcast(token, id)
+}
+
+function markBroadcastRead(token: string, id: number, audience: SharedAudience) {
+  return audience === 'chef' ? api.markChefBroadcastRead(token, id) : api.markOfficeBroadcastRead(token, id)
+}
+
+function addBroadcastComment(token: string, id: number, body: string, audience: SharedAudience) {
+  return audience === 'chef'
+    ? api.addChefBroadcastComment(token, id, body)
+    : api.addOfficeBroadcastComment(token, id, body)
+}
+
+export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFilesProps) {
   const { t, i18n } = useTranslation()
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
+  const base = sharedBasePath(audience)
+  const hub = audience === 'chef' ? '/chef' : '/office'
 
   useEffect(() => {
-    api.listOfficeBroadcasts(token).then((r) => setRows(r.broadcasts)).catch(() => {})
-  }, [token])
+    listBroadcasts(token, audience).then((r) => setRows(r.broadcasts)).catch(() => {})
+  }, [token, audience])
 
   const pagedRows = paginateSlice(rows, page, DEFAULT_PAGE_SIZE)
 
@@ -388,7 +420,7 @@ export function OfficeSharedFilesPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navSharedFiles')}</h1>
-        <BackButton to="/office" fallbackTo="/office" />
+        <BackButton to={hub} fallbackTo={hub} />
       </div>
       <div className="card sharedFilesPageCard">
         {!rows.length ? <p className="muted sharedFilesPageEmpty">{t('noResults')}</p> : null}
@@ -399,7 +431,7 @@ export function OfficeSharedFilesPage({ token }: Props) {
             return (
               <SharedBroadcastListCard
                 key={b.id}
-                to={`/office/shared/${b.id}`}
+                to={`${base}/${b.id}`}
                 title={title}
                 message={message || undefined}
                 file={b.file}
@@ -416,7 +448,7 @@ export function OfficeSharedFilesPage({ token }: Props) {
   )
 }
 
-export function OfficeSharedFileDetailPage({ token }: Props) {
+export function OfficeSharedFileDetailPage({ token, audience = 'office' }: SharedFilesProps) {
   const { id } = useParams()
   const bid = Number(id)
   const { t, i18n } = useTranslation()
@@ -425,20 +457,21 @@ export function OfficeSharedFileDetailPage({ token }: Props) {
   const [comment, setComment] = useState('')
   const [commentPage, setCommentPage] = useState(1)
   const [postingComment, setPostingComment] = useState(false)
+  const base = sharedBasePath(audience)
 
   const load = useCallback(async () => {
     if (!bid) return
     try {
-      const res = await api.getOfficeBroadcast(token, bid)
+      const res = await getBroadcast(token, bid, audience)
       setB(res.broadcast)
       if (!res.broadcast.read_at) {
-        await api.markOfficeBroadcastRead(token, bid)
+        await markBroadcastRead(token, bid, audience)
         notifyHubCountsRefresh()
       }
     } catch {
       setB(null)
     }
-  }, [token, bid])
+  }, [token, bid, audience])
 
   useEffect(() => {
     load()
@@ -448,7 +481,7 @@ export function OfficeSharedFileDetailPage({ token }: Props) {
     if (!comment.trim() || postingComment) return
     setPostingComment(true)
     try {
-      await api.addOfficeBroadcastComment(token, bid, comment)
+      await addBroadcastComment(token, bid, comment, audience)
       setComment('')
       load()
     } catch {
@@ -475,7 +508,7 @@ export function OfficeSharedFileDetailPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{title}</h1>
-        <BackButton to="/office/shared" fallbackTo="/office/shared" />
+        <BackButton to={base} fallbackTo={base} />
       </div>
       <div className="card broadcastDetailCard">
         <div className="broadcastDetailSection broadcastDetailHero">

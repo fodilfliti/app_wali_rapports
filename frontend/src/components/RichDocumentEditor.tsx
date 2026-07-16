@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
+import { contentLocale } from '../config/features'
 import type { EmbeddedTable } from '../types/embeddedTable'
 import { pruneEmbeddedTables } from '../types/embeddedTable'
 import { fileUrl } from '../utils/media'
@@ -101,7 +102,7 @@ function RichDocumentEditorInner({
   serviceId,
 }: Props) {
   const { t, i18n } = useTranslation()
-  const locale = i18n.language === 'fr' ? 'fr' : 'ar'
+  const locale = contentLocale(i18n.language)
   const html = getRichHtml(data, locale)
   const { tables, upsertTable, updateTable, removeTable, editingId, setEditingId } = useSchemaTables()
   const [pickOpen, setPickOpen] = useState(false)

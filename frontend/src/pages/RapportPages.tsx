@@ -14,6 +14,7 @@ import { WaliRespondModal } from '../components/WaliRespondModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import {
   canOfficeEditRapport,
+  canOfficeReturnToDraft,
   isDirectWorkspaceKind,
   localizedRapportTypeName,
   officeRapportTypeWorkspacePath,
@@ -34,9 +35,11 @@ import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
 import { waliInboxRowClass, waliCanRespondFromList } from '../utils/waliInboxList'
 import { backNavigationState } from '../utils/navigationBack'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
+import { useChefHubCounts, useOfficeHubCounts, useWaliHubCounts } from '../hooks/useHubCounts'
 import { localizedName } from '../utils/schemaColumns'
 import { RapportExportButtons } from '../components/ExportPdfButton'
 import { BusyButton } from '../components/BusyButton'
+import { ReturnRapportToDraftConfirm } from '../components/ReturnRapportToDraftConfirm'
 import { PageLoading } from '../components/PageLoading'
 import { DEFAULT_PAGE_SIZE } from '../utils/pagination'
 
@@ -111,35 +114,44 @@ function OfficeRapportStatusCell({ r, t }: { r: any; t: (k: string) => string })
 }
 
 export function OfficeRapportsListPage({ token }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const snack = useSnackbar()
-  const [params] = useSearchParams()
-  const serviceId = params.get('service_id') ? Number(params.get('service_id')) : undefined
+  const [searchParams, setSearchParams] = useSearchParams()
+  const serviceId = searchParams.get('service_id') ? Number(searchParams.get('service_id')) : undefined
+  const discussionView = searchParams.get('view') === 'discussion'
+  const discussionTab = searchParams.get('tab') === 'all' ? 'all' : 'new'
+  const discussionAll = discussionView && discussionTab === 'all'
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [showHidden, setShowHidden] = useState(false)
+  const [showHidden] = useState(false)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
+  const [returningId, setReturningId] = useState<number | null>(null)
   const [importFor, setImportFor] = useState<{ rapportId: number; serviceId: number; typeId: number } | null>(
     null,
   )
+  const { counts } = useOfficeHubCounts(token)
+  const unreadDiscussion = counts.unread_discussion || 0
+  const unreadLabel = unreadDiscussion > 99 ? '99+' : String(unreadDiscussion)
 
   useEffect(() => {
     setPage(1)
-  }, [serviceId, showHidden, search])
+  }, [serviceId, showHidden, search, discussionView, discussionTab])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const rapportsRes = await api.listOfficeRapports(token, {
-        service_id: serviceId,
+        service_id: discussionView ? undefined : serviceId,
         page,
         pageSize: DEFAULT_PAGE_SIZE,
         search: search || undefined,
-        hidden_only: showHidden,
+        hidden_only: discussionView ? false : showHidden,
+        unread_discussion: discussionView && !discussionAll ? true : undefined,
+        has_discussion: discussionAll ? true : undefined,
       })
       setRows(rapportsRes.rapports)
       setTotal(rapportsRes.total ?? rapportsRes.rapports.length)
@@ -148,7 +160,7 @@ export function OfficeRapportsListPage({ token }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [token, serviceId, page, search, showHidden, snack, t])
+  }, [token, serviceId, page, search, showHidden, snack, t, discussionView, discussionAll])
 
   useEffect(() => {
     load()
@@ -157,6 +169,31 @@ export function OfficeRapportsListPage({ token }: Props) {
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
     setSearch(searchInput.trim())
+  }
+
+  function setView(next: 'list' | 'discussion') {
+    if (next === 'discussion') {
+      setSearchParams({ view: 'discussion' }, { replace: true })
+      return
+    }
+    const nextParams: Record<string, string> = {}
+    if (serviceId) nextParams.service_id = String(serviceId)
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  function setDiscussionTab(next: 'new' | 'all') {
+    setSearchParams(
+      next === 'all' ? { view: 'discussion', tab: 'all' } : { view: 'discussion' },
+      { replace: true },
+    )
+  }
+
+  function formatLastComment(iso: string | null | undefined) {
+    if (!iso) return '—'
+    return new Date(iso).toLocaleString(i18n.language === 'fr' ? 'fr-FR' : 'ar-DZ', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
   }
 
   async function finishRapport(id: number) {
@@ -194,29 +231,115 @@ export function OfficeRapportsListPage({ token }: Props) {
     }
   }
 
+  async function returnToDraft(id: number) {
+    setReturningId(id)
+    try {
+      await api.returnRapportToDraft(token, id)
+      notifyHubCountsRefresh()
+      snack.show(t('returnToDraftDone'), 'success')
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setReturningId(null)
+    }
+  }
+
   return (
     <div className="page">
       <div className="pageHeader row">
-        <h1>{t('navRapports')}</h1>
+        <h1>{discussionView ? t('navDiscussion') : t('navRapports')}</h1>
         <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
       </div>
 
-      <form className="rapportListToolbar rapportListSearchForm card" onSubmit={submitSearch}>
-        <label className="rapportListSearch">
-          <span className="fieldLabel">{t('search')}</span>
+      <section className="inboxFilterBar card" aria-label={t('inboxViewTabs')}>
+        <div className="inboxFilterBarTop">
+          <div className="inboxViewTabs inboxViewTabs--primary" role="tablist" aria-label={t('inboxViewTabs')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!discussionView}
+              className={`inboxViewTab${!discussionView ? ' active' : ''}`}
+              onClick={() => setView('list')}
+            >
+              {t('navRapports')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={discussionView}
+              className={`inboxViewTab${discussionView ? ' active' : ''}`}
+              onClick={() => setView('discussion')}
+            >
+              <span>{t('navDiscussion')}</span>
+              {unreadDiscussion > 0 ? (
+                <span
+                  className="inboxTabCount"
+                  aria-label={t('unreadDiscussionBellWithCount', { count: unreadDiscussion })}
+                >
+                  {unreadLabel}
+                </span>
+              ) : null}
+            </button>
+          </div>
+
+          {discussionView ? (
+            <div
+              className="inboxViewTabs inboxViewTabs--segment"
+              role="tablist"
+              aria-label={t('discussionSubTabs')}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!discussionAll}
+                className={`inboxViewTab${!discussionAll ? ' active' : ''}`}
+                onClick={() => setDiscussionTab('new')}
+              >
+                <span>{t('discussionTabNew')}</span>
+                {unreadDiscussion > 0 ? (
+                  <span className="inboxTabCount inboxTabCount--soft">{unreadLabel}</span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={discussionAll}
+                className={`inboxViewTab${discussionAll ? ' active' : ''}`}
+                onClick={() => setDiscussionTab('all')}
+              >
+                {t('discussionTabAll')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <p className="inboxViewHint">
+          {discussionView
+            ? discussionAll
+              ? t('discussionAllHint')
+              : t('discussionInboxHint')
+            : t('officeRapportsListHint')}
+        </p>
+
+        <form className="inboxFilterSearch" onSubmit={submitSearch}>
+          <label className="sr-only" htmlFor="office-rapport-search">
+            {t('search')}
+          </label>
           <input
+            id="office-rapport-search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t('rapportTitle')}
+            placeholder={t('searchRapportPlaceholder')}
           />
-        </label>
-        <button type="submit" className="btn btn-secondary rapportListSearchBtn">
-          {t('search')}
-        </button>
-      </form>
+          <button type="submit" className="btn btn-secondary">
+            {t('search')}
+          </button>
+        </form>
+      </section>
 
       {loading ? <PageLoading /> : null}
 
@@ -243,82 +366,149 @@ export function OfficeRapportsListPage({ token }: Props) {
         />
       ) : null}
 
-      <div className="card tableWrap">
+      <div className={`card tableWrap${discussionView ? ' discussionInboxTable' : ''}`}>
         <table>
           <thead>
             <tr>
               <th>{t('rapportTitle')}</th>
-              <th>{t('rapportStatus')}</th>
+              {discussionView ? <th>{t('lastCommentAt')}</th> : <th>{t('rapportStatus')}</th>}
               <th>{t('actions')}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr
-                key={r.id}
-                className={
-                  rapportNeedsAttention(r)
-                    ? `rapportRowAttention${r.has_unread_notification ? ' rapportRowUnread' : ''}`
-                    : undefined
-                }
-              >
-                <OfficeRapportTitleCell r={r} t={t} />
-                <OfficeRapportStatusCell r={r} t={t} />
-                <td className="actionsCell">
-                  <div className="actionsCellInner">
-                  {officeRapportWorkspacePath(r) ? (
-                    <Link
-                      className="btn btn-ghost btn-sm"
-                      to={officeRapportWorkspacePath(r)!}
-                      onClick={() => openOfficeRapport(token, r.id, setRows)}
-                    >
-                      {canOfficeEditRapport(r.status) ? t('edit') : t('details')}
-                    </Link>
-                  ) : null}
-                  {ENABLE_DOCUMENT_TEMPLATES &&
-                  isDocumentKind(r) &&
-                  canOfficeEditRapport(r.status) &&
-                  r.service_id &&
-                  r.rapport_type_id ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() =>
-                        setImportFor({
-                          rapportId: r.id,
-                          serviceId: r.service_id,
-                          typeId: r.rapport_type_id,
-                        })
-                      }
-                    >
-                      {t('documentTemplateImport')}
-                    </button>
-                  ) : null}
-                  {canOfficeEditRapport(r.status) ? (
-                    <BusyButton
-                      type="button"
-                      className="btn btn-accent btn-sm"
-                      busy={submittingId === r.id}
-                      busyLabel={t('submitting')}
-                      onClick={() => submit(r.id)}
-                    >
-                      {t('submitRapport')}
-                    </BusyButton>
-                  ) : null}
-                  <RapportRowHideActions
-                    rapport={r}
-                    canManage
-                    showHidden={showHidden}
-                    onHide={() => finishRapport(r.id)}
-                    onRestore={() => restoreRapport(r.id)}
-                  />
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const showUnreadBadge =
+                discussionView && (discussionAll ? !!r.has_unread_discussion : true)
+              const rowClass = discussionView
+                ? [
+                    showUnreadBadge ? 'discussionRow--unread' : '',
+                    !showUnreadBadge ? 'discussionRow--read' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                : rapportNeedsAttention(r)
+                  ? `rapportRowAttention${r.has_unread_notification ? ' rapportRowUnread' : ''}`
+                  : undefined
+              return (
+                <tr key={r.id} className={rowClass || undefined}>
+                  {discussionView ? (
+                    <td className="rapportTitleCell">
+                      <div className="rapportRowTitleCell">
+                        <span className="rapportRowTitle">{r.title}</span>
+                        {showUnreadBadge ? (
+                          <span className="badge badge-submitted rapportUnreadBadge">
+                            {t('unreadDiscussionBadge')}
+                          </span>
+                        ) : null}
+                      </div>
+                      {r.last_comment_at ? (
+                        <p className="discussionRowMeta muted small">
+                          {t('lastCommentAt')}: {formatLastComment(r.last_comment_at)}
+                        </p>
+                      ) : null}
+                    </td>
+                  ) : (
+                    <OfficeRapportTitleCell r={r} t={t} />
+                  )}
+                  {discussionView ? (
+                    <td className="discussionLastCommentCell">
+                      <time dateTime={r.last_comment_at || undefined}>
+                        {formatLastComment(r.last_comment_at)}
+                      </time>
+                    </td>
+                  ) : (
+                    <OfficeRapportStatusCell r={r} t={t} />
+                  )}
+                  <td className="actionsCell">
+                    <div className="actionsCellInner">
+                      {officeRapportWorkspacePath(r) ? (
+                        <Link
+                          className={`btn btn-sm ${
+                            discussionView
+                              ? 'btn-primary'
+                              : canOfficeEditRapport(r.status)
+                                ? 'btn-primary'
+                                : 'btn-secondary'
+                          }`}
+                          to={officeRapportWorkspacePath(r)!}
+                          onClick={() => openOfficeRapport(token, r.id, setRows)}
+                        >
+                          {discussionView
+                            ? t('openDiscussion')
+                            : canOfficeEditRapport(r.status)
+                              ? t('edit')
+                              : t('details')}
+                        </Link>
+                      ) : null}
+                      {!discussionView &&
+                      ENABLE_DOCUMENT_TEMPLATES &&
+                      isDocumentKind(r) &&
+                      canOfficeEditRapport(r.status) &&
+                      r.service_id &&
+                      r.rapport_type_id ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() =>
+                            setImportFor({
+                              rapportId: r.id,
+                              serviceId: r.service_id,
+                              typeId: r.rapport_type_id,
+                            })
+                          }
+                        >
+                          {t('documentTemplateImport')}
+                        </button>
+                      ) : null}
+                      {!discussionView && canOfficeEditRapport(r.status) ? (
+                        <BusyButton
+                          type="button"
+                          className="btn btn-accent btn-sm"
+                          busy={submittingId === r.id}
+                          busyLabel={t('submitting')}
+                          onClick={() => submit(r.id)}
+                        >
+                          {t('submitRapport')}
+                        </BusyButton>
+                      ) : null}
+                      {!discussionView && canOfficeReturnToDraft(r.status) ? (
+                        <ReturnRapportToDraftConfirm onConfirm={() => returnToDraft(r.id)}>
+                          {(openConfirm) => (
+                            <BusyButton
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              busy={returningId === r.id}
+                              busyLabel={t('loading')}
+                              onClick={openConfirm}
+                            >
+                              {t('returnToDraft')}
+                            </BusyButton>
+                          )}
+                        </ReturnRapportToDraftConfirm>
+                      ) : null}
+                      {!discussionView ? (
+                        <RapportRowHideActions
+                          rapport={r}
+                          canManage
+                          showHidden={showHidden}
+                          onHide={() => finishRapport(r.id)}
+                          onRestore={() => restoreRapport(r.id)}
+                        />
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
             {!loading && !rows.length ? (
               <tr>
-                <td colSpan={3}>{t('noResults')}</td>
+                <td colSpan={3} className={discussionView ? 'discussionInboxEmptyCell' : undefined}>
+                  {discussionView
+                    ? discussionAll
+                      ? t('discussionAllEmpty')
+                      : t('discussionInboxEmpty')
+                    : t('noResults')}
+                </td>
               </tr>
             ) : null}
           </tbody>
@@ -326,7 +516,7 @@ export function OfficeRapportsListPage({ token }: Props) {
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
 
-      <RapportStatusFlowHelp variant="office" />
+      {!discussionView ? <RapportStatusFlowHelp variant="office" /> : null}
     </div>
   )
 }
@@ -348,6 +538,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const [importFor, setImportFor] = useState<{ rapportId: number; typeId: number } | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
+  const [returningId, setReturningId] = useState<number | null>(null)
 
   useEffect(() => {
     setPage(1)
@@ -438,6 +629,20 @@ export function OfficeServiceRapportListPage({ token }: Props) {
       snack.show(t('errorGeneric'), 'error')
     } finally {
       setSubmittingId(null)
+    }
+  }
+
+  async function returnToDraft(id: number) {
+    setReturningId(id)
+    try {
+      await api.returnRapportToDraft(token, id)
+      notifyHubCountsRefresh()
+      snack.show(t('returnToDraftDone'), 'success')
+      load()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setReturningId(null)
     }
   }
 
@@ -582,7 +787,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                   <div className="actionsCellInner">
                   {officeRapportWorkspacePath(r) || (rapportType && officeRapportTypeWorkspacePath(sid, rapportType, r.id)) ? (
                     <Link
-                      className="btn btn-ghost btn-sm"
+                      className={`btn btn-sm ${canOfficeEditRapport(r.status) ? 'btn-primary' : 'btn-secondary'}`}
                       to={officeRapportWorkspacePath(r) || officeRapportTypeWorkspacePath(sid, rapportType!, r.id)}
                       onClick={() => openOfficeRapport(token, r.id, setRows)}
                     >
@@ -617,6 +822,21 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                       {t('submitRapport')}
                     </BusyButton>
                   ) : null}
+                  {canOfficeReturnToDraft(r.status) && canEdit ? (
+                    <ReturnRapportToDraftConfirm onConfirm={() => returnToDraft(r.id)}>
+                      {(openConfirm) => (
+                        <BusyButton
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          busy={returningId === r.id}
+                          busyLabel={t('loading')}
+                          onClick={openConfirm}
+                        >
+                          {t('returnToDraft')}
+                        </BusyButton>
+                      )}
+                    </ReturnRapportToDraftConfirm>
+                  ) : null}
                   <RapportRowHideActions
                     rapport={r}
                     canManage={canEdit}
@@ -648,8 +868,14 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
   const snack = useSnackbar()
   const [searchParams, setSearchParams] = useSearchParams()
   const discussionView = searchParams.get('view') === 'discussion'
+  const discussionTab = searchParams.get('tab') === 'all' ? 'all' : 'new'
+  const discussionAll = discussionView && discussionTab === 'all'
   const base = reviewer === 'chef' ? '/chef' : '/wali'
-  const inboxPath = discussionView ? `${base}/rapports?view=discussion` : `${base}/rapports`
+  const inboxPath = discussionView
+    ? discussionAll
+      ? `${base}/rapports?view=discussion&tab=all`
+      : `${base}/rapports?view=discussion`
+    : `${base}/rapports`
   const hubPath = base
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
@@ -658,10 +884,17 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
   const [searchInput, setSearchInput] = useState('')
   const [respondId, setRespondId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const waliCounts = useWaliHubCounts(reviewer === 'wali' ? token : '')
+  const chefCounts = useChefHubCounts(reviewer === 'chef' ? token : '')
+  const unreadDiscussion =
+    reviewer === 'chef'
+      ? chefCounts.counts.unread_discussion || 0
+      : waliCounts.counts.unread_discussion || 0
+  const unreadLabel = unreadDiscussion > 99 ? '99+' : String(unreadDiscussion)
 
   useEffect(() => {
     setPage(1)
-  }, [search, discussionView])
+  }, [search, discussionView, discussionTab])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -671,7 +904,8 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
         page,
         pageSize: DEFAULT_PAGE_SIZE,
         search: search || undefined,
-        unread_discussion: discussionView || undefined,
+        unread_discussion: discussionView && !discussionAll ? true : undefined,
+        has_discussion: discussionAll ? true : undefined,
       })
       setRows(res.rapports)
       setTotal(res.total ?? res.rapports.length)
@@ -680,7 +914,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
     } finally {
       setLoading(false)
     }
-  }, [token, page, search, snack, t, reviewer, discussionView])
+  }, [token, page, search, snack, t, reviewer, discussionView, discussionAll])
 
   useEffect(() => {
     load()
@@ -693,6 +927,13 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
 
   function setView(next: 'inbox' | 'discussion') {
     setSearchParams(next === 'discussion' ? { view: 'discussion' } : {}, { replace: true })
+  }
+
+  function setDiscussionTab(next: 'new' | 'all') {
+    setSearchParams(
+      next === 'all' ? { view: 'discussion', tab: 'all' } : { view: 'discussion' },
+      { replace: true },
+    )
   }
 
   async function sendResponse(payload: {
@@ -725,6 +966,14 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
     return localizedRapportTypeName(rt, i18n.language)
   }
 
+  function formatLastComment(iso: string | null | undefined) {
+    if (!iso) return '—'
+    return new Date(iso).toLocaleString(i18n.language === 'fr' ? 'fr-FR' : 'ar-DZ', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
+  }
+
   return (
     <div className="page">
       <div className="pageHeader row">
@@ -735,103 +984,170 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
         <BackButton to={hubPath} fallbackTo={hubPath} />
       </div>
 
-      <div className="inboxViewTabs" role="tablist" aria-label={t('inboxViewTabs')}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!discussionView}
-          className={`inboxViewTab${!discussionView ? ' active' : ''}`}
-          onClick={() => setView('inbox')}
-        >
-          {t('navInbox')}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={discussionView}
-          className={`inboxViewTab${discussionView ? ' active' : ''}`}
-          onClick={() => setView('discussion')}
-        >
-          {t('navDiscussion')}
-        </button>
-      </div>
-      <p className="muted small inboxViewHint">
-        {discussionView ? t('discussionInboxHint') : t('actionInboxHint')}
-      </p>
+      <section className="inboxFilterBar card" aria-label={t('inboxViewTabs')}>
+        <div className="inboxFilterBarTop">
+          <div className="inboxViewTabs inboxViewTabs--primary" role="tablist" aria-label={t('inboxViewTabs')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!discussionView}
+              className={`inboxViewTab${!discussionView ? ' active' : ''}`}
+              onClick={() => setView('inbox')}
+            >
+              {t('navInbox')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={discussionView}
+              className={`inboxViewTab${discussionView ? ' active' : ''}`}
+              onClick={() => setView('discussion')}
+            >
+              <span>{t('navDiscussion')}</span>
+              {unreadDiscussion > 0 ? (
+                <span className="inboxTabCount" aria-label={t('unreadDiscussionBellWithCount', { count: unreadDiscussion })}>
+                  {unreadLabel}
+                </span>
+              ) : null}
+            </button>
+          </div>
 
-      <form className="rapportListToolbar rapportListSearchForm card" onSubmit={submitSearch}>
-        <label className="rapportListSearch">
-          <span className="fieldLabel">{t('search')}</span>
+          {discussionView ? (
+            <div
+              className="inboxViewTabs inboxViewTabs--segment"
+              role="tablist"
+              aria-label={t('discussionSubTabs')}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!discussionAll}
+                className={`inboxViewTab${!discussionAll ? ' active' : ''}`}
+                onClick={() => setDiscussionTab('new')}
+              >
+                <span>{t('discussionTabNew')}</span>
+                {unreadDiscussion > 0 ? (
+                  <span className="inboxTabCount inboxTabCount--soft">{unreadLabel}</span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={discussionAll}
+                className={`inboxViewTab${discussionAll ? ' active' : ''}`}
+                onClick={() => setDiscussionTab('all')}
+              >
+                {t('discussionTabAll')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <p className="inboxViewHint">
+          {discussionView
+            ? discussionAll
+              ? t('discussionAllHint')
+              : t('discussionInboxHint')
+            : t('actionInboxHint')}
+        </p>
+
+        <form className="inboxFilterSearch" onSubmit={submitSearch}>
+          <label className="sr-only" htmlFor="inbox-rapport-search">
+            {t('search')}
+          </label>
           <input
+            id="inbox-rapport-search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t('rapportTitle')}
+            placeholder={t('searchRapportPlaceholder')}
           />
-        </label>
-        <button type="submit" className="btn btn-secondary rapportListSearchBtn">
-          {t('search')}
-        </button>
-      </form>
+          <button type="submit" className="btn btn-secondary">
+            {t('search')}
+          </button>
+        </form>
+      </section>
 
       {loading ? <PageLoading /> : null}
 
-      <div className="card tableWrap">
+      <div className={`card tableWrap${discussionView ? ' discussionInboxTable' : ''}`}>
         <table>
           <thead>
             <tr>
               <th>{t('rapportTitle')}</th>
               <th>{t('service')}</th>
               <th>{t('rapportTypes')}</th>
-              <th>{t('rapportStatus')}</th>
+              {discussionView ? <th>{t('lastCommentAt')}</th> : <th>{t('rapportStatus')}</th>}
               <th>{t('actions')}</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const chefLabel = chefResponseLabel(r, t)
-              const chefDecision = r.latest_chef_response?.decision
+              const chefLabel = reviewer === 'chef' ? chefResponseLabel(r, t) : null
+              const chefDecision = reviewer === 'chef' ? r.latest_chef_response?.decision : null
               const waliLabel = waliResponseLabel(r, t)
               const decision = r.latest_wali_response?.decision
+              const showUnreadBadge =
+                discussionView && (discussionAll ? !!r.has_unread_discussion : true)
+              const rowClass = [
+                waliInboxRowClass(r),
+                discussionView && showUnreadBadge ? 'discussionRow--unread' : '',
+                discussionView && !showUnreadBadge ? 'discussionRow--read' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')
               return (
-                <tr key={r.id} className={waliInboxRowClass(r)}>
+                <tr key={r.id} className={rowClass}>
                   <td className="rapportTitleCell">
                     <div className="rapportRowTitleCell">
                       <span className="rapportRowTitle">{r.title}</span>
                       {r.is_inbox_new ? (
                         <span className="badge badge-submitted rapportUnreadBadge">{t('waliInboxNew')}</span>
                       ) : null}
-                      {discussionView ? (
+                      {showUnreadBadge ? (
                         <span className="badge badge-submitted rapportUnreadBadge">{t('unreadDiscussionBadge')}</span>
                       ) : null}
                     </div>
+                    {discussionView && r.last_comment_at ? (
+                      <p className="discussionRowMeta muted small">
+                        {t('lastCommentAt')}: {formatLastComment(r.last_comment_at)}
+                      </p>
+                    ) : null}
                   </td>
                   <td>{serviceLabel(r)}</td>
                   <td>{typeLabel(r)}</td>
-                  <td className="rapportStatusCell">
-                    <div className="rapportStatusStack">
-                      <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
-                      {chefLabel && chefDecision ? (
-                        <p className="rapportWaliStatusNote muted small">
-                          {t('chefResponseShort')}:{' '}
-                          <span className={`badge badge-wali-${chefDecision} rapportWaliDecisionBadge`}>
-                            {chefLabel}
-                          </span>
-                        </p>
-                      ) : null}
-                      {waliLabel && decision ? (
-                        <p className="rapportWaliStatusNote muted small">
-                          {t('waliResponseShort')}:{' '}
-                          <span className={`badge badge-wali-${decision} rapportWaliDecisionBadge`}>
-                            {waliLabel}
-                          </span>
-                        </p>
-                      ) : null}
-                    </div>
-                  </td>
+                  {discussionView ? (
+                    <td className="discussionLastCommentCell">
+                      <time dateTime={r.last_comment_at || undefined}>
+                        {formatLastComment(r.last_comment_at)}
+                      </time>
+                    </td>
+                  ) : (
+                    <td className="rapportStatusCell">
+                      <div className="rapportStatusStack">
+                        <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+                        {chefLabel && chefDecision ? (
+                          <p className="rapportWaliStatusNote muted small">
+                            {t('chefResponseShort')}:{' '}
+                            <span className={`badge badge-wali-${chefDecision} rapportWaliDecisionBadge`}>
+                              {chefLabel}
+                            </span>
+                          </p>
+                        ) : null}
+                        {waliLabel && decision ? (
+                          <p className="rapportWaliStatusNote muted small">
+                            {t('waliResponseShort')}:{' '}
+                            <span className={`badge badge-wali-${decision} rapportWaliDecisionBadge`}>
+                              {waliLabel}
+                            </span>
+                          </p>
+                        ) : null}
+                      </div>
+                    </td>
+                  )}
                   <td className="actionsCell">
                     <div className="actionsCellInner">
                       <Link
-                        className="btn btn-ghost"
+                        className={`btn btn-sm ${discussionView ? 'btn-primary' : 'btn-secondary'}`}
                         to={`${base}/rapports/${r.id}/view`}
                         state={backNavigationState(inboxPath)}
                       >
@@ -843,7 +1159,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
                         : waliCanRespondFromList(r.status)) ? (
                         <button
                           type="button"
-                          className="btn btn-primary"
+                          className="btn btn-accent btn-sm"
                           onClick={() => setRespondId(r.id)}
                         >
                           {t('respondRapport')}
@@ -856,7 +1172,13 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
             })}
             {!loading && !rows.length ? (
               <tr>
-                <td colSpan={5}>{discussionView ? t('discussionInboxEmpty') : t('noResults')}</td>
+                <td colSpan={5} className="discussionInboxEmptyCell">
+                  {discussionView
+                    ? discussionAll
+                      ? t('discussionAllEmpty')
+                      : t('discussionInboxEmpty')
+                    : t('noResults')}
+                </td>
               </tr>
             ) : null}
           </tbody>
@@ -884,7 +1206,7 @@ export function AdminRapportsListPage({ token }: Props) {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [showHidden, setShowHidden] = useState(false)
+  const [showHidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
@@ -987,13 +1309,13 @@ export function AdminRapportsListPage({ token }: Props) {
                 <td>{rapportStatusLabel(r.status, t)}</td>
                 <td className="actionsCell">
                   <div className="actionsCellInner">
-                    <Link className="btn btn-ghost btn-sm" to={`/admin/rapports/${r.id}/view`}>
+                    <Link className="btn btn-secondary btn-sm" to={`/admin/rapports/${r.id}/view`}>
                       {t('details')}
                     </Link>
-                    <RapportExportButtons token={token} rapportId={r.id} />
+                    <RapportExportButtons token={token} rapportId={r.id} size="sm" />
                     <button
                       type="button"
-                      className="btn btn-ghost btn-sm btn-danger-text"
+                      className="btn btn-danger btn-sm"
                       onClick={() => setDeleteTarget(r)}
                     >
                       {t('deleteRapportAdmin')}

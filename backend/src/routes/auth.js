@@ -1,10 +1,20 @@
 const express = require("express");
-const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const { User } = require("../db");
 const { audit } = require("../services/audit");
 const { enrichSessionUser } = require("../modules/access/userProfileService");
+const {
+  issueSession,
+  rotateRefresh,
+  logoutSession,
+  revokeAllForUser,
+  clearRefreshCookie,
+} = require("../modules/auth/refreshTokenService");
+const { requireAuth, attachUser, checkBlocked } = require("../middleware/auth");
+const { validateBody } = require("../middleware/validateBody");
+const { changeCodeSchema, profilePatchSchema } = require("../validation/schemas/auth");
 const { getEnv } = require("../config/env");
 
 const authRouter = express.Router();
@@ -15,8 +25,38 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many login attempts" },
-  skipSuccessfulRequests: true
+  skipSuccessfulRequests: true,
 });
+
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many refresh attempts" },
+});
+
+/** Best-effort attach of req.user from Bearer access JWT (logout may be cookie-only). */
+function tryAttachAccessUser(req, _res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
+  if (!token) return next();
+  try {
+    const payload = jwt.verify(token, getEnv().jwtSecret, { algorithms: ["HS256"] });
+    if (payload?.sub && (!payload.typ || payload.typ === "access")) {
+      req.auth = payload;
+      return User.findByPk(payload.sub)
+        .then((user) => {
+          if (user) req.user = user;
+          next();
+        })
+        .catch(() => next());
+    }
+  } catch {
+    /* ignore — cookie logout still works */
+  }
+  return next();
+}
 
 authRouter.post("/login", loginLimiter, async (req, res, next) => {
   try {
@@ -31,19 +71,34 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
 
     if (!user || !ok || blocked) return res.status(401).json({ error: "Invalid credentials" });
 
-    const token = jwt.sign({ sub: String(user.id), role: user.role }, getEnv().jwtSecret, {
-      expiresIn: "12h",
-      algorithm: "HS256"
-    });
-
-    const sessionUser = await enrichSessionUser(user);
+    const { token, user: sessionUser } = await issueSession(user, req, res);
     res.json({ token, user: sessionUser });
   } catch (e) {
     next(e);
   }
 });
 
-const { requireAuth, attachUser, checkBlocked } = require("../middleware/auth");
+authRouter.post("/refresh", refreshLimiter, async (req, res, next) => {
+  try {
+    const result = await rotateRefresh(req, res);
+    res.json(result);
+  } catch (e) {
+    if (e.status === 401) {
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: e.message || "Invalid token" });
+    }
+    next(e);
+  }
+});
+
+authRouter.post("/logout", tryAttachAccessUser, async (req, res, next) => {
+  try {
+    const result = await logoutSession(req, res);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
 
 authRouter.get("/me", requireAuth, attachUser, checkBlocked, async (req, res, next) => {
   try {
@@ -54,8 +109,33 @@ authRouter.get("/me", requireAuth, attachUser, checkBlocked, async (req, res, ne
   }
 });
 
-const { validateBody } = require("../middleware/validateBody");
-const { changeCodeSchema } = require("../validation/schemas/auth");
+authRouter.patch(
+  "/me",
+  requireAuth,
+  attachUser,
+  checkBlocked,
+  validateBody(profilePatchSchema),
+  async (req, res, next) => {
+    try {
+      const { name, job_title } = req.validatedBody;
+      const patch = { name };
+      if (job_title !== undefined) {
+        patch.job_title = job_title === null || job_title === "" ? null : job_title;
+      }
+      await req.user.update(patch);
+      await audit(
+        req.user.id,
+        "USER_SELF_UPDATE",
+        { user_id: req.user.id, fields: Object.keys(patch) },
+        { req },
+      );
+      const sessionUser = await enrichSessionUser(req.user);
+      res.json({ user: sessionUser });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 authRouter.post(
   "/change-password",
@@ -77,6 +157,8 @@ authRouter.post(
 
       const password_hash = await bcrypt.hash(String(new_code).trim(), 10);
       await userWithSecret.update({ password_hash });
+      await revokeAllForUser(req.user.id);
+      clearRefreshCookie(res);
       await audit(req.user.id, "SELF_PASSWORD_CHANGE", { user_id: req.user.id }, { req });
       res.json({ success: true });
     } catch (e) {

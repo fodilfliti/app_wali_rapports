@@ -41,8 +41,8 @@ module.exports = {
       created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal("NOW()") }
     });
 
-    // --- modiriyat ---
-    await queryInterface.createTable("modiriyat", {
+    // --- directions ---
+    await queryInterface.createTable("directions", {
       id: { type: Sequelize.BIGINT, primaryKey: true, autoIncrement: true, allowNull: false },
       code: { type: Sequelize.STRING(50), allowNull: false, unique: true },
       name_ar: { type: Sequelize.STRING(255), allowNull: false },
@@ -269,7 +269,7 @@ module.exports = {
     await queryInterface.dropTable("wali_instructions");
     await queryInterface.dropTable("chef_responses");
     await queryInterface.removeColumn("municipalities", "daira_id");
-    await queryInterface.dropTable("modiriyat");
+    await queryInterface.dropTable("directions");
     await queryInterface.dropTable("dairas");
     await queryInterface.removeColumn("rapport_types", "entity_target_kinds");
     await queryInterface.removeColumn("rapports", "chef_gate");

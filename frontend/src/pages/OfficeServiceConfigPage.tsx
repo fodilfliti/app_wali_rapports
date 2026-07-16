@@ -7,7 +7,7 @@ import { BackButton } from "../components/BackButton";
 import { BusyButton } from "../components/BusyButton";
 import { TableSchemaEditorModal } from "../components/TableSchemaEditorModal";
 import { DocumentTemplatesSection } from "../components/DocumentTemplatesSection";
-import { ENABLE_DOCUMENT_TEMPLATES } from "../config/features";
+import { ENABLE_DOCUMENT_TEMPLATES, ENABLE_FR_VALUE_INPUTS } from "../config/features";
 import { ExpandableHelp } from "../components/ExpandableHelp";
 import { TablePagination } from "../components/TablePagination";
 import {
@@ -27,7 +27,7 @@ import {
   type DraftHeaderGroup,
 } from "../utils/schemaHeaderGroups";
 import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
-import { hasBilingualText } from "../utils/bilingual";
+import { bilingualPairForSave, hasBilingualText } from "../utils/bilingual";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import { EntityTargetKindsField } from "../components/EntityTargetKindsField";
 import { defaultEntityTargetKinds } from "../utils/entityTargets";
@@ -197,9 +197,10 @@ export function OfficeServiceConfigPage({ token }: Props) {
     }
     setSaving(true);
     try {
+      const names = bilingualPairForSave(typeForm.name_ar, typeForm.name_fr);
       await api.createOfficeServiceRapportType(token, sid, {
-        name_ar: typeForm.name_ar.trim() || typeForm.name_fr.trim(),
-        name_fr: typeForm.name_fr.trim() || typeForm.name_ar.trim(),
+        name_ar: names.ar,
+        name_fr: names.fr,
         content_kind: typeForm.content_kind,
         versioning_mode: typeForm.versioning_mode,
         commune_content_kind:
@@ -293,7 +294,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       <ol className="schemasPageSteps muted small">
         <li>{t("serviceConfigStep1")}</li>
         <li>{t("serviceConfigStep2")}</li>
-        <li>{t("serviceConfigStep3")}</li>
+        {ENABLE_DOCUMENT_TEMPLATES ? <li>{t("serviceConfigStep3")}</li> : null}
       </ol>
 
       <div className="schemasPanelTabs" role="tablist" aria-label={t("serviceConfig")}>
@@ -340,7 +341,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
             <h2>{t("tableSchemas")}</h2>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-accent"
               onClick={openSchemaModal}
             >
               {t("createSchema")}
@@ -560,15 +561,17 @@ export function OfficeServiceConfigPage({ token }: Props) {
                 }
               />
             </label>
-            <label>
-              {t("municipalityNameFr")}
-              <input
-                value={typeForm.name_fr}
-                onChange={(e) =>
-                  setTypeForm({ ...typeForm, name_fr: e.target.value })
-                }
-              />
-            </label>
+            {ENABLE_FR_VALUE_INPUTS ? (
+              <label>
+                {t("municipalityNameFr")}
+                <input
+                  value={typeForm.name_fr}
+                  onChange={(e) =>
+                    setTypeForm({ ...typeForm, name_fr: e.target.value })
+                  }
+                />
+              </label>
+            ) : null}
             <label>
               {t("contentKind")}
               <select

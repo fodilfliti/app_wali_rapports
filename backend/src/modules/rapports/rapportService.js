@@ -12,6 +12,7 @@ const {
   User,
   WaliBroadcast,
   RapportView,
+  RapportComment,
 } = require("../../db");
 const { audit } = require("../../services/audit");
 const { loadSchemaBySlug } = require("./tableGridService");
@@ -72,6 +73,171 @@ async function unreadDiscussionRapportIds(userId) {
   return rows.map((r) => Number(r.rapport_id)).filter(Boolean);
 }
 
+/** Statuses visible in Wali discussion / inbox lists (never pending_chef / draft). */
+const WALI_INBOX_STATUSES = [
+  "submitted",
+  "under_review",
+  "changes_requested",
+  "acknowledged",
+];
+
+/**
+ * Rapports that have ≥1 comment, ordered by latest comment time DESC.
+ * Returns { ids, lastCommentById, total } after visibility + optional search filters.
+ */
+async function officeDiscussionScopeIds(userId) {
+  if (!userId) return new Set();
+  const [ownedRows, commentRows] = await Promise.all([
+    Rapport.findAll({
+      where: {
+        [Op.or]: [
+          { owner_office_user_id: userId },
+          { created_by_user_id: userId },
+        ],
+      },
+      attributes: ["id"],
+      raw: true,
+    }),
+    RapportComment.findAll({
+      where: { author_user_id: userId },
+      attributes: ["rapport_id"],
+      group: ["rapport_id"],
+      raw: true,
+    }),
+  ]);
+  const ids = new Set();
+  for (const row of ownedRows) {
+    const id = Number(row.id);
+    if (id) ids.add(id);
+  }
+  for (const row of commentRows) {
+    const id = Number(row.rapport_id);
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+async function discussedRapportsOrdered(query, opts = {}) {
+  const commentRows = await RapportComment.findAll({
+    attributes: [
+      "rapport_id",
+      [sequelize.fn("MAX", sequelize.col("RapportComment.created_at")), "last_comment_at"],
+    ],
+    group: ["rapport_id"],
+    raw: true,
+  });
+  if (!commentRows.length) {
+    return { ids: [], lastCommentById: new Map(), total: 0 };
+  }
+
+  const lastCommentById = new Map();
+  for (const row of commentRows) {
+    const id = Number(row.rapport_id);
+    if (!id) continue;
+    lastCommentById.set(id, row.last_comment_at);
+  }
+  let candidateIds = [...lastCommentById.keys()];
+
+  if (opts.forOfficeUserId) {
+    const scope = await officeDiscussionScopeIds(opts.forOfficeUserId);
+    candidateIds = candidateIds.filter((id) => scope.has(id));
+    if (!candidateIds.length) {
+      return { ids: [], lastCommentById: new Map(), total: 0 };
+    }
+  }
+
+  const where = {
+    id: { [Op.in]: candidateIds },
+    hidden_at: null,
+  };
+  if (opts.inboxOnly) {
+    where.status = { [Op.in]: WALI_INBOX_STATUSES };
+  } else {
+    where.status = { [Op.ne]: "draft" };
+  }
+  if (query.status) where.status = query.status;
+  if (query.service_id) where.service_id = query.service_id;
+  if (query.rapport_type_id) where.rapport_type_id = query.rapport_type_id;
+  if (query.search) {
+    where.title = { [Op.iLike]: `%${String(query.search).trim()}%` };
+  }
+
+  const visible = await Rapport.findAll({
+    where,
+    attributes: ["id"],
+    raw: true,
+  });
+  const visibleIds = new Set(visible.map((r) => Number(r.id)));
+
+  const sorted = [...lastCommentById.entries()]
+    .filter(([id]) => visibleIds.has(id))
+    .sort((a, b) => {
+      const ta = a[1] ? new Date(a[1]).getTime() : 0;
+      const tb = b[1] ? new Date(b[1]).getTime() : 0;
+      return tb - ta;
+    });
+
+  return {
+    ids: sorted.map(([id]) => id),
+    lastCommentById,
+    total: sorted.length,
+  };
+}
+
+async function lastCommentAtByRapportIds(rapportIds) {
+  const map = new Map();
+  if (!rapportIds?.length) return map;
+  const rows = await RapportComment.findAll({
+    where: { rapport_id: { [Op.in]: rapportIds } },
+    attributes: [
+      "rapport_id",
+      [sequelize.fn("MAX", sequelize.col("RapportComment.created_at")), "last_comment_at"],
+    ],
+    group: ["rapport_id"],
+    raw: true,
+  });
+  for (const row of rows) {
+    map.set(Number(row.rapport_id), row.last_comment_at);
+  }
+  return map;
+}
+
+async function unreadDiscussionSetForUser(userId, rapportIds) {
+  const set = new Set();
+  if (!userId || !rapportIds?.length) return set;
+  const rows = await Notification.findAll({
+    where: {
+      user_id: userId,
+      message_key: "rapportComment",
+      read_at: null,
+      rapport_id: { [Op.in]: rapportIds },
+    },
+    attributes: ["rapport_id"],
+    group: ["rapport_id"],
+    raw: true,
+  });
+  for (const row of rows) set.add(Number(row.rapport_id));
+  return set;
+}
+
+async function attachDiscussionListMeta(rapports, userId, lastCommentById) {
+  if (!rapports?.length) return rapports;
+  const ids = rapports.map((r) => Number(r.id)).filter(Boolean);
+  let commentMap = lastCommentById;
+  if (!commentMap || !(commentMap instanceof Map)) {
+    commentMap = await lastCommentAtByRapportIds(ids);
+  }
+  const unreadSet = await unreadDiscussionSetForUser(userId, ids);
+  return rapports.map((r) => {
+    const rid = Number(r.id);
+    return {
+      ...r,
+      last_comment_at: commentMap.get(rid) || null,
+      has_unread_discussion: unreadSet.has(rid),
+    };
+  });
+}
+
 async function listRapports(query, opts = {}) {
   const { page, pageSize, offset, limit } = parsePagination(query);
   const where = {};
@@ -87,10 +253,39 @@ async function listRapports(query, opts = {}) {
 
   const discussionOnly =
     query.unread_discussion === "1" || query.unread_discussion === "true";
-  if (discussionOnly) {
-    const ids = await unreadDiscussionRapportIds(
-      opts.enrichForWaliUserId || opts.discussionUserId || null,
-    );
+  const hasDiscussion =
+    query.has_discussion === "1" || query.has_discussion === "true";
+  const discussionUserId =
+    opts.enrichForWaliUserId ||
+    opts.discussionUserId ||
+    opts.enrichForOfficeUserId ||
+    null;
+
+  let orderByLastComment = false;
+  let lastCommentById = null;
+  let forcedTotal = null;
+
+  if (hasDiscussion && !discussionOnly) {
+    const discussed = await discussedRapportsOrdered(query, opts);
+    if (!discussed.ids.length) {
+      return { rapports: [], total: 0, page, pageSize };
+    }
+    const pageIds = discussed.ids.slice(offset, offset + limit);
+    if (!pageIds.length) {
+      return { rapports: [], total: discussed.total, page, pageSize };
+    }
+    where.id = { [Op.in]: pageIds };
+    where.hidden_at = null;
+    orderByLastComment = true;
+    lastCommentById = discussed.lastCommentById;
+    forcedTotal = discussed.total;
+    // Visibility already applied in discussedRapportsOrdered; avoid double-filtering status
+    // unless caller passed an explicit status.
+    if (!query.status && opts.inboxOnly) {
+      where.status = { [Op.in]: WALI_INBOX_STATUSES };
+    }
+  } else if (discussionOnly) {
+    const ids = await unreadDiscussionRapportIds(discussionUserId);
     if (!ids.length) {
       return { rapports: [], total: 0, page, pageSize };
     }
@@ -99,23 +294,13 @@ async function listRapports(query, opts = {}) {
     // Discussion can span statuses; Wali still never sees pending_chef
     if (opts.inboxOnly) {
       where.status = {
-        [Op.in]: [
-          "submitted",
-          "under_review",
-          "changes_requested",
-          "acknowledged",
-        ],
+        [Op.in]: WALI_INBOX_STATUSES,
       };
     }
   } else if (opts.inboxOnly) {
     // Wali inbox / badges: never include pending_chef (Chef has not accepted yet)
     where.status = {
-      [Op.in]: [
-        "submitted",
-        "under_review",
-        "changes_requested",
-        "acknowledged",
-      ],
+      [Op.in]: WALI_INBOX_STATUSES,
     };
     where.hidden_at = null;
   }
@@ -182,13 +367,18 @@ async function listRapports(query, opts = {}) {
     });
   }
 
-  const { rows, count } = await Rapport.findAndCountAll({
+  // When ordering by last comment, we already sliced ids for this page — no offset/limit here.
+  const findOpts = {
     where,
     order: [["updated_at", "DESC"]],
-    offset,
-    limit,
     include: includes,
-  });
+  };
+  if (!orderByLastComment) {
+    findOpts.offset = offset;
+    findOpts.limit = limit;
+  }
+
+  const { rows, count } = await Rapport.findAndCountAll(findOpts);
 
   let rapports = rows;
   if (importable) {
@@ -249,6 +439,16 @@ async function listRapports(query, opts = {}) {
     rapports = rows.map((r) => (r.toJSON ? r.toJSON() : r));
   }
 
+  if (orderByLastComment && lastCommentById && Array.isArray(where.id?.[Op.in])) {
+    const orderIndex = new Map(
+      where.id[Op.in].map((id, i) => [Number(id), i]),
+    );
+    rapports.sort(
+      (a, b) =>
+        (orderIndex.get(Number(a.id)) ?? 0) - (orderIndex.get(Number(b.id)) ?? 0),
+    );
+  }
+
   if (opts.enrichForOfficeUserId) {
     rapports = await enrichOfficeRapportList(
       rapports,
@@ -260,9 +460,26 @@ async function listRapports(query, opts = {}) {
     rapports = await enrichWaliRapportList(rapports, opts.enrichForWaliUserId);
   }
 
+  if (discussionOnly || hasDiscussion) {
+    if (!lastCommentById) {
+      lastCommentById = await lastCommentAtByRapportIds(
+        rapports.map((r) => Number(r.id)),
+      );
+    }
+    rapports = await attachDiscussionListMeta(
+      rapports,
+      discussionUserId,
+      lastCommentById,
+    );
+  }
+
   return {
     rapports,
-    total: importable ? rapports.length : count,
+    total: importable
+      ? rapports.length
+      : forcedTotal != null
+        ? forcedTotal
+        : count,
     page,
     pageSize,
   };
@@ -636,6 +853,10 @@ async function submitRapport(id, actor, req) {
   }
 
   if (rapport.rapportType?.content_kind === "commune_list" && versionId) {
+    const {
+      getEntitiesMap,
+      parseEntityKey,
+    } = require("./entityKeys");
     const version = await RapportVersion.findByPk(versionId);
     const prevVersion = await RapportVersion.findOne({
       where: {
@@ -646,30 +867,50 @@ async function submitRapport(id, actor, req) {
       order: [["version_number", "DESC"]],
     });
 
-    const currentCommunes = version.data_json?.communes || {};
-    const prevCommunes = prevVersion?.data_json?.communes || {};
-    const prevCommuneVersions = prevVersion?.commune_versions || {};
+    const currentEntities = getEntitiesMap(version.data_json || {});
+    const prevEntities = getEntitiesMap(prevVersion?.data_json || {});
+    const prevEntityVersions = {
+      ...(prevVersion?.entity_versions || {}),
+      ...(prevVersion?.commune_versions || {}),
+    };
 
+    const changedEntityKeys = [];
     const changedCodes = [];
-    const nextCommuneVersions = { ...prevCommuneVersions };
+    const nextEntityVersions = { ...prevEntityVersions };
+    const nextCommuneVersions = { ...(prevVersion?.commune_versions || {}) };
 
-    const allCodes = new Set([
-      ...Object.keys(currentCommunes),
-      ...Object.keys(prevCommunes),
+    const allKeys = new Set([
+      ...Object.keys(currentEntities),
+      ...Object.keys(prevEntities),
     ]);
 
-    for (const code of allCodes) {
-      const curr = JSON.stringify(currentCommunes[code]);
-      const prev = JSON.stringify(prevCommunes[code]);
+    for (const key of allKeys) {
+      const curr = JSON.stringify(currentEntities[key] ?? null);
+      const prev = JSON.stringify(prevEntities[key] ?? null);
+      if (curr === prev) continue;
 
-      if (curr !== prev) {
-        changedCodes.push(code);
-        nextCommuneVersions[code] = versionId;
+      changedEntityKeys.push(key);
+      nextEntityVersions[key] = versionId;
+
+      const parsed = parseEntityKey(key);
+      if (parsed?.kind === "commune") {
+        changedCodes.push(parsed.code);
+        nextCommuneVersions[parsed.code] = versionId;
+      }
+    }
+
+    // Dual-write legacy bare codes into changed_commune_codes when only entities changed
+    if (!changedCodes.length && changedEntityKeys.length) {
+      for (const key of changedEntityKeys) {
+        const parsed = parseEntityKey(key);
+        if (parsed) changedCodes.push(parsed.code);
       }
     }
 
     await RapportVersion.update(
       {
+        changed_entity_keys: changedEntityKeys,
+        entity_versions: nextEntityVersions,
         changed_commune_codes: changedCodes,
         commune_versions: nextCommuneVersions,
       },
@@ -715,6 +956,74 @@ async function submitRapport(id, actor, req) {
     actor.id,
     needsChef ? "RAPPORT_SUBMIT_PENDING_CHEF" : "RAPPORT_SUBMIT",
     { rapport_id: rapport.id, version_id: versionId, chef_gate: chefGate },
+    { req },
+  );
+  return getRapportDetail(rapport.id);
+}
+
+/** Office recall: undo send on the current version (no fork). */
+async function returnRapportToDraft(id, actor, req) {
+  const rapport = await Rapport.findByPk(id, {
+    include: [{ model: RapportType, as: "rapportType" }],
+  });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const allowed = ["pending_chef", "submitted", "under_review"];
+  if (!allowed.includes(rapport.status)) {
+    const err = new Error("Cannot return to draft");
+    err.status = 409;
+    throw err;
+  }
+
+  if (!rapport.current_version_id) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+
+  const lockingResponse = await WaliResponse.findOne({
+    where: {
+      rapport_id: rapport.id,
+      rapport_version_id: rapport.current_version_id,
+      decision: { [Op.in]: ["accepted", "viewed"] },
+    },
+  });
+  if (lockingResponse) {
+    const err = new Error("Cannot return to draft: wali accepted");
+    err.status = 409;
+    throw err;
+  }
+
+  const current = await RapportVersion.findByPk(rapport.current_version_id);
+  if (!current) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+
+  const previousStatus = rapport.status;
+  if (current.submitted_at) {
+    await RapportVersion.update(
+      { submitted_at: null },
+      { where: { id: current.id } },
+    );
+  }
+
+  const now = new Date();
+  await rapport.update({ status: "draft", updated_at: now });
+
+  await audit(
+    actor.id,
+    "RAPPORT_RETURN_TO_DRAFT",
+    {
+      rapport_id: rapport.id,
+      version_id: current.id,
+      previous_status: previousStatus,
+    },
     { req },
   );
   return getRapportDetail(rapport.id);
@@ -965,6 +1274,15 @@ async function getRapportVersion(rapportId, versionId) {
           { model: User, as: "createdByUser", attributes: ["id", "name"] },
         ],
       },
+      {
+        model: ChefResponse,
+        as: "chefResponses",
+        separate: true,
+        order: [["created_at", "DESC"]],
+        include: [
+          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+        ],
+      },
     ],
   });
   if (!version) {
@@ -1141,6 +1459,7 @@ module.exports = {
   createRapport,
   updateRapportDraft,
   submitRapport,
+  returnRapportToDraft,
   markUnderReview,
   waliRespond,
   chefRespond,

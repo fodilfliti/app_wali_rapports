@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import { BusyButton } from './BusyButton'
 import { SchemaColumnsEditor, type DraftSchemaColumn } from './SchemaColumnsEditor'
 import type { DraftHeaderGroup } from '../utils/schemaHeaderGroups'
@@ -48,7 +49,7 @@ export function TableSchemaEditorModal({
         <section className="schemaTableNameSection">
           <h3 className="schemaSectionTitle">{t('schemaTableNameSection')}</h3>
           <p className="muted schemaTableNameHint">{t('schemaTableNameHint')}</p>
-          <div className="schemaMetaGrid">
+          <div className={`schemaMetaGrid${ENABLE_FR_VALUE_INPUTS ? '' : ' schemaMetaGrid--arOnly'}`}>
             <label>
               <span className="fieldLabel">{t('schemaTableNameAr')}</span>
               <input
@@ -57,14 +58,16 @@ export function TableSchemaEditorModal({
                 placeholder={t('schemaTableNameArPh')}
               />
             </label>
-            <label>
-              <span className="fieldLabel">{t('schemaTableNameFr')}</span>
-              <input
-                value={schemaForm.name_fr}
-                onChange={(e) => onSchemaFormChange({ ...schemaForm, name_fr: e.target.value })}
-                placeholder={t('schemaTableNameFrPh')}
-              />
-            </label>
+            {ENABLE_FR_VALUE_INPUTS ? (
+              <label>
+                <span className="fieldLabel">{t('schemaTableNameFr')}</span>
+                <input
+                  value={schemaForm.name_fr}
+                  onChange={(e) => onSchemaFormChange({ ...schemaForm, name_fr: e.target.value })}
+                  placeholder={t('schemaTableNameFrPh')}
+                />
+              </label>
+            ) : null}
           </div>
         </section>
         <SchemaColumnsEditor

@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const pinoHttp = require("pino-http");
 const { secureFilesRouter } = require("./middleware/secureFiles");
@@ -26,12 +27,33 @@ app.use(
   pinoHttp({
     logger,
     genReqId: (req) => req.requestId,
+    customProps: (req) => ({
+      requestId: req.requestId,
+      userId: req.user?.id,
+    }),
     autoLogging: {
       ignore: (req) => {
         const p = req.path || req.url || "";
         return p === "/health" || p.endsWith("/health") || p.includes("/files/");
       },
     },
+    customLogLevel: (_req, res, err) => {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    serializers: {
+      req: (req) => ({
+        id: req.id,
+        method: req.method,
+        url: req.url,
+      }),
+      res: (res) => ({
+        statusCode: res.statusCode,
+      }),
+    },
+    customSuccessMessage: (req, res) => `${req.method} ${req.url} → ${res.statusCode}`,
+    customErrorMessage: (req, res) => `${req.method} ${req.url} → ${res.statusCode}`,
   })
 );
 
@@ -59,7 +81,7 @@ app.use(
       if (corsOrigin?.includes(origin)) return callback(null, true);
       return callback(null, false);
     },
-    credentials: Boolean(corsOrigin && corsOrigin.length),
+    credentials: true,
     exposedHeaders: ["Content-Disposition"]
   })
 );
@@ -73,11 +95,12 @@ app.use(
   })
 );
 app.use(express.json({ limit: "2mb" }));
+app.use(cookieParser());
 
 try {
   ensureStorageDirs();
 } catch (err) {
-  console.error("[wali-api] storage_init_failed:", err.message);
+  logger.error({ err }, "storage_init_failed");
 }
 
 const api = express.Router();

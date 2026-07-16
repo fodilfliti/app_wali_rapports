@@ -11,9 +11,11 @@ type Props = {
   token: string
   open: boolean
   onClose: () => void
+  /** Called after successful password change (sessions revoked — typically force re-login). */
+  onChanged?: () => void
 }
 
-export function ChangeCodeModal({ token, open, onClose }: Props) {
+export function ChangeCodeModal({ token, open, onClose, onChanged }: Props) {
   const { t } = useTranslation()
   const snack = useSnackbar()
   const form = useZodForm(changeCodeSchema)
@@ -32,8 +34,10 @@ export function ChangeCodeModal({ token, open, onClose }: Props) {
   }
 
   function close() {
+    const wasSuccess = success
     reset()
     onClose()
+    if (wasSuccess) onChanged?.()
   }
 
   async function save() {

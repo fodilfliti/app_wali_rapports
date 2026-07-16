@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import { contentLocale } from '../config/features'
+import { pickBilingualText } from '../utils/bilingual'
 
 export type CalendarEvent = {
   id?: number
@@ -21,6 +23,7 @@ function emptyEvent(): CalendarEvent {
 
 export function CalendarEventsEditor({ events, editable, onChange }: Props) {
   const { t, i18n } = useTranslation()
+  const editLocale = contentLocale(i18n.language)
 
   function update(i: number, patch: Partial<CalendarEvent>) {
     onChange(events.map((e, idx) => (idx === i ? { ...e, ...patch } : e)))
@@ -54,10 +57,10 @@ export function CalendarEventsEditor({ events, editable, onChange }: Props) {
           <label>
             {t('rapportTitle')}
             <input
-              value={i18n.language === 'fr' ? e.title_fr : e.title_ar}
+              value={editLocale === 'fr' ? e.title_fr : e.title_ar}
               disabled={!editable}
               onChange={(ev) =>
-                update(i, i18n.language === 'fr' ? { title_fr: ev.target.value } : { title_ar: ev.target.value })
+                update(i, editLocale === 'fr' ? { title_fr: ev.target.value } : { title_ar: ev.target.value })
               }
             />
           </label>
@@ -65,10 +68,10 @@ export function CalendarEventsEditor({ events, editable, onChange }: Props) {
             {t('eventNote')}
             <textarea
               rows={2}
-              value={i18n.language === 'fr' ? e.note_fr || '' : e.note_ar || ''}
+              value={editLocale === 'fr' ? e.note_fr || '' : e.note_ar || ''}
               disabled={!editable}
               onChange={(ev) =>
-                update(i, i18n.language === 'fr' ? { note_fr: ev.target.value } : { note_ar: ev.target.value })
+                update(i, editLocale === 'fr' ? { note_fr: ev.target.value } : { note_ar: ev.target.value })
               }
             />
           </label>
@@ -97,7 +100,7 @@ export function CalendarEventsView({ events }: { events: CalendarEvent[] }) {
       <ul className="calendarEventList">
         {events.map((e) => (
           <li key={e.id ?? `${e.event_date}-${e.title_ar}`}>
-            <strong>{e.event_date}</strong> — {i18n.language === 'fr' ? e.title_fr || e.title_ar : e.title_ar || e.title_fr}
+            <strong>{e.event_date}</strong> — {pickBilingualText(e.title_ar, e.title_fr, i18n.language)}
           </li>
         ))}
       </ul>

@@ -7,10 +7,11 @@ import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
 import { TablePagination } from '../components/TablePagination'
 import { useSnackbar } from '../snackbar/SnackbarContext'
-import { hasBilingualText, pickBilingualText } from '../utils/bilingual'
+import { hasBilingualText, bilingualPairForSave, pickBilingualText } from '../utils/bilingual'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
 import { useOfficeHubCounts } from '../hooks/useHubCounts'
+import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 
 type Props = { token: string }
 
@@ -280,7 +281,10 @@ export function WaliInstructionCreatePage({ token }: Props) {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    api.listWaliShareUsers(token).then((r) => setUsers(r.users)).catch(() => {})
+    api
+      .listWaliShareUsers(token)
+      .then((r) => setUsers((r.users || []).filter((u: any) => u.role !== 'CHEF_CABINET')))
+      .catch(() => {})
   }, [token])
 
   const filteredUsers = users.filter((u) => {
@@ -315,9 +319,10 @@ export function WaliInstructionCreatePage({ token }: Props) {
     }
     setSaving(true)
     try {
+      const titles = bilingualPairForSave(titleAr, titleFr)
       await api.createWaliInstruction(token, files, {
-        title_ar: titleAr.trim() || titleFr.trim(),
-        title_fr: titleFr.trim() || titleAr.trim(),
+        title_ar: titles.ar,
+        title_fr: titles.fr,
         body_ar: bodyAr.trim() || null,
         body_fr: bodyFr.trim() || null,
         all_office: allUsers,
@@ -343,18 +348,22 @@ export function WaliInstructionCreatePage({ token }: Props) {
           <span>{t('rapportTitle')} (AR)</span>
           <input value={titleAr} dir="rtl" onChange={(e) => setTitleAr(e.target.value)} />
         </label>
-        <label className="formField">
-          <span>{t('rapportTitle')} (FR)</span>
-          <input value={titleFr} onChange={(e) => setTitleFr(e.target.value)} />
-        </label>
+        {ENABLE_FR_VALUE_INPUTS ? (
+          <label className="formField">
+            <span>{t('rapportTitle')} (FR)</span>
+            <input value={titleFr} onChange={(e) => setTitleFr(e.target.value)} />
+          </label>
+        ) : null}
         <label className="formField">
           <span>{t('instructionBody')} (AR)</span>
           <textarea value={bodyAr} dir="rtl" rows={5} onChange={(e) => setBodyAr(e.target.value)} />
         </label>
-        <label className="formField">
-          <span>{t('instructionBody')} (FR)</span>
-          <textarea value={bodyFr} rows={5} onChange={(e) => setBodyFr(e.target.value)} />
-        </label>
+        {ENABLE_FR_VALUE_INPUTS ? (
+          <label className="formField">
+            <span>{t('instructionBody')} (FR)</span>
+            <textarea value={bodyFr} rows={5} onChange={(e) => setBodyFr(e.target.value)} />
+          </label>
+        ) : null}
         <label className="formField">
           <span>{t('instructionAttachments')}</span>
           <input

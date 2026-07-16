@@ -47,8 +47,14 @@ Opening rapport / comments marks unread discussion notifications for that `rappo
 | `POST` | `/office/rapports/:id/comments` | Office |
 | `GET`/`POST` | `/chef/rapports/:id/comments` | Chef |
 | `GET`/`POST` | `/wali/rapports/:id/comments` | Wali (+ visibility gate) |
+| `GET` | `/wali/rapports?unread_discussion=1` | Wali discussion New |
+| `GET` | `/wali/rapports?has_discussion=1` | Wali discussion All (by latest comment) |
+| `GET` | `/chef/rapports?unread_discussion=1` | Chef discussion New |
+| `GET` | `/chef/rapports?has_discussion=1` | Chef discussion All |
+| `GET` | `/office/rapports?unread_discussion=1` | Office discussion New |
+| `GET` | `/office/rapports?has_discussion=1` | Office discussion All (by latest comment; scoped) |
 
-Pagination: `page`, `pageSize` (default 20, max 100). Order: `created_at ASC` within page (page 1 = oldest, or reverse-pagination for “load older” — implementation: list newest page last in UI chronologically).
+Comment thread pagination: `page`, `pageSize` (default 20, max 100). Order: `created_at ASC` within page (page 1 = oldest, or reverse-pagination for “load older” — implementation: list newest page last in UI chronologically). Discussion list rows include `last_comment_at` and `has_unread_discussion`.
 
 ### UI/UX
 
@@ -56,7 +62,29 @@ Pagination: `page`, `pageSize` (default 20, max 100). Order: `created_at ASC` wi
 - Below Chef/Wali decision remarks
 - Thread + composer; role-colored rows using teal/gold tokens
 - Office notifications list: show `rapportComment` with link to rapport
-- Chef/Wali hub: `unread_discussion` badge = **distinct rapports** with unread `rapportComment` (not raw notification row count). For Wali, exclude `pending_chef` / draft so the badge matches inbox visibility.
+- Office / Chef / Wali hub: `unread_discussion` badge = **distinct rapports** with unread `rapportComment` (not raw notification row count). For Wali, exclude `pending_chef` / draft so the badge matches inbox visibility.
+
+#### Discussion inbox (office / Chef / Wali)
+
+| Role | URL | Notes |
+| ---- | --- | ----- |
+| Office | `/office/rapports?view=discussion` | Hub tile **المناقشة** + optional header bell; same New / All sub-tabs |
+| Chef | `/chef/rapports?view=discussion` | Hub tile + header bell |
+| Wali | `/wali/rapports?view=discussion` | Hub tile + header bell |
+
+Sub-tabs (default = New so hub/bell still land on unread):
+
+| Tab | URL | List API | Meaning |
+| --- | --- | --- | --- |
+| **New** (جديد / Nouveaux) | `?view=discussion` | `unread_discussion=1` | Rapports with unread `rapportComment` for the current user |
+| **All** (كل المناقشات / Toutes) | `?view=discussion&tab=all` | `has_discussion=1` | Rapports with ≥1 comment, **ordered by latest comment `created_at` DESC** |
+
+- Wali visibility on both tabs: exclude `pending_chef` / draft / hidden (same as inbox).
+- Chef All/New may include `pending_chef`.
+- **Office All:** only rapports the user **owns** (`owner_office_user_id` / `created_by_user_id`) **or** has already posted on (participant). Not a wilaya-wide discussion dump.
+- List rows expose `last_comment_at` and `has_unread_discussion` (badge only when unread).
+- Purpose of All: reopen past threads without searching by rapport title.
+- Office list page keeps the normal rapports inbox when `view` is absent; discussion tabs switch the list API filters above.
 
 ### Audit
 

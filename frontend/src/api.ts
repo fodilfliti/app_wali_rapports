@@ -1,4 +1,10 @@
 import { getApiBase } from "./utils/apiBase";
+import {
+  getAccessToken,
+  notifySessionExpired,
+  refreshSession,
+  setAccessToken,
+} from "./auth/session";
 
 const API_BASE = getApiBase();
 
@@ -7,8 +13,8 @@ export function apiFileUrl(filePath: string, token: string) {
   const path = filePath.startsWith("http")
     ? filePath
     : filePath.startsWith("/")
-      ? filePath
-      : `/${filePath}`;
+    ? filePath
+    : `/${filePath}`;
   if (path.startsWith("http")) return path;
   const sep = path.includes("?") ? "&" : "?";
   return `${API_BASE}${path}${sep}access_token=${encodeURIComponent(token)}`;
@@ -31,19 +37,47 @@ export class ApiError extends Error {
   }
 }
 
+function isAuthPath(path: string) {
+  return (
+    path.startsWith("/auth/login") ||
+    path.startsWith("/auth/refresh") ||
+    path.startsWith("/auth/logout")
+  );
+}
+
 async function request<T>(
   path: string,
-  opts: RequestInit & { token?: string | null } = {},
+  opts: RequestInit & { token?: string | null; _retried?: boolean } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     ...(opts.headers as Record<string, string>),
   };
   if (opts.body && !(opts.body instanceof FormData))
     headers["Content-Type"] = "application/json";
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+  const token =
+    opts.token === null ? null : getAccessToken() || opts.token || null;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const { token: _t, _retried, ...fetchOpts } = opts;
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...fetchOpts,
+    headers,
+    credentials: "include",
+  });
   const data = await res.json().catch(() => ({}));
+
+  if (res.status === 401 && !_retried && !isAuthPath(path) && opts.token !== null) {
+    const refreshed = await refreshSession();
+    if (refreshed?.token) {
+      return request<T>(path, {
+        ...opts,
+        token: refreshed.token,
+        _retried: true,
+      });
+    }
+    notifySessionExpired();
+  }
 
   if (!res.ok) {
     throw new ApiError(
@@ -73,11 +107,26 @@ export function login(username: string, password: string) {
   return request<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
+    token: null,
+  }).then((res) => {
+    setAccessToken(res.token);
+    return res;
   });
 }
 
 export function fetchMe(token: string) {
   return request<{ user: SessionUser }>("/auth/me", { token });
+}
+
+export function patchMyProfile(
+  token: string,
+  body: { name: string; job_title?: string | null },
+) {
+  return request<{ user: SessionUser }>("/auth/me", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
 }
 
 export function changePassword(
@@ -93,11 +142,12 @@ export function changePassword(
 
 export function listMunicipalities(
   token: string,
-  params: { page?: number; q?: string },
+  params: { page?: number; q?: string; hidden_only?: boolean } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.q) q.set("q", params.q);
+  if (params.hidden_only) q.set("hidden_only", "1");
   return request<{
     municipalities: any[];
     total: number;
@@ -129,14 +179,29 @@ export function patchMunicipality(
   });
 }
 
+export function hideMunicipality(token: string, id: number) {
+  return request<{ municipality: any }>(`/admin/municipalities/${id}/hide`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function restoreMunicipality(token: string, id: number) {
+  return request<{ municipality: any }>(`/admin/municipalities/${id}/restore`, {
+    method: "POST",
+    token,
+  });
+}
+
 export function listDairas(
   token: string,
-  params: { page?: number; q?: string; pageSize?: number } = {},
+  params: { page?: number; q?: string; pageSize?: number; hidden_only?: boolean } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
   if (params.q) q.set("q", params.q);
+  if (params.hidden_only) q.set("hidden_only", "1");
   return request<{ dairas: any[]; total: number; page: number; pageSize: number }>(
     `/admin/dairas?${q}`,
     { token },
@@ -166,40 +231,69 @@ export function patchDaira(
   });
 }
 
-export function listModiriyat(
+export function hideDaira(token: string, id: number) {
+  return request<{ daira: any }>(`/admin/dairas/${id}/hide`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function restoreDaira(token: string, id: number) {
+  return request<{ daira: any }>(`/admin/dairas/${id}/restore`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function listDirections(
   token: string,
-  params: { page?: number; q?: string; pageSize?: number } = {},
+  params: { page?: number; q?: string; pageSize?: number; hidden_only?: boolean } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
   if (params.q) q.set("q", params.q);
-  return request<{ modiriyat: any[]; total: number; page: number; pageSize: number }>(
-    `/admin/modiriyat?${q}`,
+  if (params.hidden_only) q.set("hidden_only", "1");
+  return request<{ directions: any[]; total: number; page: number; pageSize: number }>(
+    `/admin/directions?${q}`,
     { token },
   );
 }
 
-export function createModiriya(
+export function createDirection(
   token: string,
   body: { name_ar: string; name_fr: string; code?: string },
 ) {
-  return request<{ modiriya: any }>("/admin/modiriyat", {
+  return request<{ direction: any }>("/admin/directions", {
     method: "POST",
     token,
     body: JSON.stringify(body),
   });
 }
 
-export function patchModiriya(
+export function patchDirection(
   token: string,
   id: number,
   body: Partial<{ name_ar: string; name_fr: string; code: string }>,
 ) {
-  return request<{ modiriya: any }>(`/admin/modiriyat/${id}`, {
+  return request<{ direction: any }>(`/admin/directions/${id}`, {
     method: "PATCH",
     token,
     body: JSON.stringify(body),
+  });
+}
+
+export function hideDirection(token: string, id: number) {
+  return request<{ direction: any }>(`/admin/directions/${id}/hide`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function restoreDirection(token: string, id: number) {
+  return request<{ direction: any }>(`/admin/directions/${id}/restore`, {
+    method: "POST",
+    token,
   });
 }
 
@@ -274,6 +368,8 @@ export function listOfficeRapports(
     importable?: boolean;
     include_hidden?: boolean;
     hidden_only?: boolean;
+    unread_discussion?: boolean;
+    has_discussion?: boolean;
   },
 ) {
   const q = new URLSearchParams();
@@ -288,6 +384,8 @@ export function listOfficeRapports(
   if (params.importable) q.set("importable", "1");
   if (params.include_hidden) q.set("include_hidden", "1");
   if (params.hidden_only) q.set("hidden_only", "1");
+  if (params.unread_discussion) q.set("unread_discussion", "1");
+  if (params.has_discussion) q.set("has_discussion", "1");
   return request<{
     rapports: any[];
     total: number;
@@ -337,6 +435,7 @@ export function listWaliRapports(
     rapport_type_id?: number;
     search?: string;
     unread_discussion?: boolean;
+    has_discussion?: boolean;
   },
 ) {
   const q = new URLSearchParams();
@@ -347,6 +446,7 @@ export function listWaliRapports(
     q.set("rapport_type_id", String(params.rapport_type_id));
   if (params.search?.trim()) q.set("search", params.search.trim());
   if (params.unread_discussion) q.set("unread_discussion", "1");
+  if (params.has_discussion) q.set("has_discussion", "1");
   return request<{
     rapports: any[];
     total: number;
@@ -364,6 +464,7 @@ export function listChefRapports(
     rapport_type_id?: number;
     search?: string;
     unread_discussion?: boolean;
+    has_discussion?: boolean;
   } = {},
 ) {
   const q = new URLSearchParams();
@@ -374,6 +475,7 @@ export function listChefRapports(
     q.set("rapport_type_id", String(params.rapport_type_id));
   if (params.search?.trim()) q.set("search", params.search.trim());
   if (params.unread_discussion) q.set("unread_discussion", "1");
+  if (params.has_discussion) q.set("has_discussion", "1");
   return request<{
     rapports: any[];
     total: number;
@@ -411,6 +513,13 @@ export function patchOfficeRapport(
 
 export function submitRapport(token: string, id: number) {
   return request<{ rapport: any }>(`/office/rapports/${id}/submit`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function returnRapportToDraft(token: string, id: number) {
+  return request<{ rapport: any }>(`/office/rapports/${id}/return-to-draft`, {
     method: "POST",
     token,
   });
@@ -486,6 +595,7 @@ export type OfficeHubCounts = {
   changes_requested_rapports: number;
   unread_shared_files: number;
   unread_instructions: number;
+  unread_discussion: number;
   services_action_count: number;
 };
 
@@ -499,6 +609,7 @@ export type ChefHubCounts = {
   inbox_pending: number;
   office_users_pending: number;
   unread_discussion: number;
+  unread_shared_files: number;
 };
 
 export function getOfficeHubCounts(token: string) {
@@ -1373,6 +1484,33 @@ export function addOfficeBroadcastComment(
   });
 }
 
+export function listChefBroadcasts(token: string) {
+  return request<{ broadcasts: any[] }>("/chef/broadcasts", { token });
+}
+
+export function getChefBroadcast(token: string, id: number) {
+  return request<{ broadcast: any }>(`/chef/broadcasts/${id}`, { token });
+}
+
+export function markChefBroadcastRead(token: string, id: number) {
+  return request<{ broadcast: any }>(`/chef/broadcasts/${id}/read`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function addChefBroadcastComment(
+  token: string,
+  id: number,
+  body_text: string,
+) {
+  return request<{ broadcast: any }>(`/chef/broadcasts/${id}/comments`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ body_text }),
+  });
+}
+
 export function listWaliInstructions(
   token: string,
   params: { page?: number; pageSize?: number } = {},
@@ -1484,8 +1622,16 @@ async function fetchRapportExport(
       : `/office/rapports/${rapportId}/export.${kind}`;
   const res = await fetch(`${API_BASE}${base}?${q}`, {
     headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      const refreshed = await refreshSession();
+      if (refreshed?.token) {
+        return fetchRapportExport(refreshed.token, rapportId, kind, opts);
+      }
+      notifySessionExpired();
+    }
     const data = await res.json().catch(() => ({}));
     throw new ApiError(
       res.status,
@@ -1653,6 +1799,85 @@ export function createWaliRapportComment(
     method: "POST",
     token,
     body: JSON.stringify({ body_text }),
+  });
+}
+
+export type GuideVideoAudience =
+  | "general"
+  | "ADMIN"
+  | "OFFICE_USER"
+  | "CHEF_CABINET"
+  | "WALI";
+
+export type GuideVideoListRole = "admin" | "office" | "wali" | "chef";
+
+function guideVideosBase(role: GuideVideoListRole) {
+  if (role === "admin") return "/admin/guide-videos";
+  if (role === "office") return "/office/guide-videos";
+  if (role === "chef") return "/chef/guide-videos";
+  return "/wali/guide-videos";
+}
+
+export function listGuideVideos(
+  token: string,
+  role: GuideVideoListRole,
+  params?: { page?: number; pageSize?: number; audience?: string },
+) {
+  const q = new URLSearchParams();
+  if (params?.page) q.set("page", String(params.page));
+  if (params?.pageSize) q.set("pageSize", String(params.pageSize));
+  if (params?.audience) q.set("audience", params.audience);
+  const qs = q.toString();
+  return request<{
+    videos: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }>(`${guideVideosBase(role)}${qs ? `?${qs}` : ""}`, { token });
+}
+
+export function createGuideVideo(
+  token: string,
+  file: File,
+  body: Record<string, unknown>,
+) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("payload", JSON.stringify(body));
+  return request<{ video: any }>("/admin/guide-videos", {
+    method: "POST",
+    token,
+    body: fd,
+  });
+}
+
+export function patchGuideVideo(
+  token: string,
+  id: number,
+  body: Record<string, unknown>,
+  file?: File | null,
+) {
+  if (file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("payload", JSON.stringify(body));
+    return request<{ video: any }>(`/admin/guide-videos/${id}`, {
+      method: "PATCH",
+      token,
+      body: fd,
+    });
+  }
+  return request<{ video: any }>(`/admin/guide-videos/${id}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteGuideVideo(token: string, id: number) {
+  return request<{ ok: boolean }>(`/admin/guide-videos/${id}`, {
+    method: "DELETE",
+    token,
   });
 }
 

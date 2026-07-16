@@ -186,12 +186,14 @@ async function getOfficeHubCounts(userId) {
     changes_requested_rapports,
     unread_shared_files,
     unread_instructions,
+    unread_discussion,
     serviceCounts,
   ] = await Promise.all([
     countUnreadNotifications(userId),
     countOfficeChangesRequested(userId),
     countUnreadSharedFiles(userId),
     countUnreadInstructions(userId),
+    countUnreadDiscussion(userId),
     getOfficeServiceActionCounts(userId),
   ]);
   const services_action_count = Object.values(serviceCounts.byService).filter((c) => c > 0).length;
@@ -200,6 +202,7 @@ async function getOfficeHubCounts(userId) {
     changes_requested_rapports,
     unread_shared_files,
     unread_instructions,
+    unread_discussion,
     services_action_count,
   };
 }
@@ -275,12 +278,14 @@ async function getWaliHubCounts(userId) {
 }
 
 async function getChefHubCounts(userId) {
-  const [inbox_pending, office_users_pending, unread_discussion] = await Promise.all([
-    countChefInboxPending(),
-    countChefOfficeUsersWithPending(),
-    countUnreadDiscussion(userId),
-  ]);
-  return { inbox_pending, office_users_pending, unread_discussion };
+  const [inbox_pending, office_users_pending, unread_discussion, unread_shared_files] =
+    await Promise.all([
+      countChefInboxPending(),
+      countChefOfficeUsersWithPending(),
+      countUnreadDiscussion(userId),
+      countUnreadSharedFiles(userId),
+    ]);
+  return { inbox_pending, office_users_pending, unread_discussion, unread_shared_files };
 }
 
 async function getOfficeServiceActionCounts(userId) {

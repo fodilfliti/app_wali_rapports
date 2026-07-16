@@ -13,7 +13,7 @@ export type SelectionCatalogItem = {
 type Catalog = {
   municipalities?: SelectionCatalogItem[]
   dairas?: SelectionCatalogItem[]
-  modiriyat?: SelectionCatalogItem[]
+  directions?: SelectionCatalogItem[]
 }
 
 type Props = {
@@ -30,7 +30,7 @@ export function EntityInclusionModal({ catalog, initialKeys, onSave, onClose }: 
     return [
       ...(catalog.municipalities || []),
       ...(catalog.dairas || []),
-      ...(catalog.modiriyat || []),
+      ...(catalog.directions || []),
     ]
   }, [catalog])
 
@@ -65,9 +65,9 @@ export function EntityInclusionModal({ catalog, initialKeys, onSave, onClose }: 
       items: filtered.filter((i) => i.kind === 'daira'),
     },
     {
-      kind: 'modiriya',
-      titleKey: 'entitySectionModiriyat',
-      items: filtered.filter((i) => i.kind === 'modiriya'),
+      kind: 'direction',
+      titleKey: 'entitySectionDirections',
+      items: filtered.filter((i) => i.kind === 'direction'),
     },
   ].filter((g) => g.items.length > 0)
 

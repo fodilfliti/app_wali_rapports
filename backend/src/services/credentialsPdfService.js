@@ -26,11 +26,11 @@ function registerBodyFont(doc) {
   return "Helvetica";
 }
 
-function roleLabels(role) {
-  if (role === "ADMIN") return { ar: "مدير", fr: "Administrateur" };
-  if (role === "WALI") return { ar: "والي", fr: "Wali" };
-  if (role === "CHEF_CABINET") return { ar: "رئيس الديوان", fr: "Chef de cabinet" };
-  return { ar: "مكتب", fr: "Bureau" };
+function roleLabelFr(role) {
+  if (role === "ADMIN") return "Administrateur";
+  if (role === "WALI") return "Wali";
+  if (role === "CHEF_CABINET") return "Chef de cabinet";
+  return "Bureau";
 }
 
 function writePdfToFile(buildDoc, outPath) {
@@ -49,38 +49,35 @@ async function generateCredentialsPdf({ username, name, role, jobTitle, code8 })
   const safeUser = String(username || "user").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
   const fileName = `credentials_${safeUser}_${Date.now()}.pdf`;
   const abs = path.join(storageRoot(), "pdf", fileName);
-  const labels = roleLabels(role);
+  const roleFr = roleLabelFr(role);
 
   await writePdfToFile((doc) => {
     const font = registerBodyFont(doc);
     doc.font(font);
 
-    doc.fontSize(18).text("Wilaya Rapports — User Credentials", { align: "left" });
-    doc.moveDown(0.35);
-    doc.fontSize(13).text("تقارير الولاية — بيانات الدخول", { align: "right" });
+    doc.fontSize(18).text("Wilaya Rapports — Identifiants", { align: "left" });
     doc.moveDown(1.2);
 
-    doc.fontSize(12).text(`Name / Nom: ${name || "—"}`, { align: "left" });
+    doc.fontSize(12).text(`Nom: ${name || "—"}`, { align: "left" });
     doc.moveDown(0.4);
     if (jobTitle) {
-      doc.fontSize(12).text(`Job title / Fonction: ${jobTitle}`, { align: "left" });
+      doc.fontSize(12).text(`Fonction: ${jobTitle}`, { align: "left" });
       doc.moveDown(0.4);
     }
-    doc.fontSize(12).text(`Username / Identifiant: ${username}`, { align: "left" });
+    doc.fontSize(12).text(`Identifiant: ${username}`, { align: "left" });
     doc.moveDown(0.4);
-    doc.fontSize(12).text(`Role / Type: ${labels.fr} — ${labels.ar}`, { align: "left" });
+    doc.fontSize(12).text(`Type de compte: ${roleFr}`, { align: "left" });
     doc.moveDown(1);
 
-    doc.fontSize(16).fillColor("#0d4f4f").text(`8-digit code / الرمز (8 أرقام): ${code8}`, { align: "left" });
+    doc.fontSize(16).fillColor("#0d4f4f").text(`Code à 8 chiffres: ${code8}`, { align: "left" });
     doc.fillColor("#000000");
     doc.moveDown(2);
 
     doc.fontSize(10).fillColor("#5a7070");
-    doc.text(
-      "Confidential — treat this code as a password. / سري — يُعامل هذا الرمز ككلمة مرور.",
-      { align: "left" }
-    );
-    doc.text("The user should change it after first login if required by policy.", { align: "left" });
+    doc.text("Confidentiel — traitez ce code comme un mot de passe.", { align: "left" });
+    doc.text("L'utilisateur doit le changer après la première connexion si la politique l'exige.", {
+      align: "left"
+    });
   }, abs);
 
   return {

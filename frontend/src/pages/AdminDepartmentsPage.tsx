@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { ApiError } from '../api'
+import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import { AdminOrgTabs } from '../components/AdminOrgTabs'
 import { BackButton } from '../components/BackButton'
 import { TablePagination } from '../components/TablePagination'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
-import { hasBilingualText } from '../utils/bilingual'
+import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
 
 type Props = { token: string }
 
@@ -56,15 +57,16 @@ export function AdminDepartmentsPage({ token }: Props) {
       return
     }
     try {
+      const names = bilingualPairForSave(deptForm.name_ar, deptForm.name_fr)
       if (editingDepartmentId) {
         await api.patchAdminDepartment(token, editingDepartmentId, {
-          name_ar: deptForm.name_ar.trim() || deptForm.name_fr.trim(),
-          name_fr: deptForm.name_fr.trim() || deptForm.name_ar.trim(),
+          name_ar: names.ar,
+          name_fr: names.fr,
         })
       } else {
         await api.createAdminDepartment(token, {
-          name_ar: deptForm.name_ar.trim() || deptForm.name_fr.trim(),
-          name_fr: deptForm.name_fr.trim() || deptForm.name_ar.trim(),
+          name_ar: names.ar,
+          name_fr: names.fr,
         })
       }
       setDeptModalOpen(false)
@@ -115,7 +117,7 @@ export function AdminDepartmentsPage({ token }: Props) {
           <thead>
             <tr>
               <th>{t('municipalityNameAr')}</th>
-              <th>{t('municipalityNameFr')}</th>
+              {ENABLE_FR_VALUE_INPUTS ? <th>{t('municipalityNameFr')}</th> : null}
               <th>{t('actions')}</th>
             </tr>
           </thead>
@@ -124,14 +126,14 @@ export function AdminDepartmentsPage({ token }: Props) {
               pagedDepartments.map((d) => (
                 <tr key={d.id}>
                   <td>{d.name_ar}</td>
-                  <td>{d.name_fr}</td>
+                  {ENABLE_FR_VALUE_INPUTS ? <td>{d.name_fr}</td> : null}
                   <td>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditDepartment(d)}>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => openEditDepartment(d)}>
                       {t('edit')}
                     </button>{' '}
                     <button
                       type="button"
-                      className="btn btn-ghost btn-sm btn-danger-text"
+                      className="btn btn-danger btn-sm"
                       onClick={() => setDeleteTarget(d)}
                     >
                       {t('deleteDepartment')}
@@ -141,7 +143,7 @@ export function AdminDepartmentsPage({ token }: Props) {
               ))
             ) : (
               <tr>
-                <td colSpan={3} className="schemasEmptyRow muted">
+                <td colSpan={ENABLE_FR_VALUE_INPUTS ? 3 : 2} className="schemasEmptyRow muted">
                   {t('departmentsEmpty')}
                 </td>
               </tr>
@@ -162,13 +164,15 @@ export function AdminDepartmentsPage({ token }: Props) {
                 onChange={(e) => setDeptForm({ ...deptForm, name_ar: e.target.value })}
               />
             </label>
-            <label>
-              <span className="fieldLabel">{t('municipalityNameFr')}</span>
-              <input
-                value={deptForm.name_fr}
-                onChange={(e) => setDeptForm({ ...deptForm, name_fr: e.target.value })}
-              />
-            </label>
+            {ENABLE_FR_VALUE_INPUTS ? (
+              <label>
+                <span className="fieldLabel">{t('municipalityNameFr')}</span>
+                <input
+                  value={deptForm.name_fr}
+                  onChange={(e) => setDeptForm({ ...deptForm, name_fr: e.target.value })}
+                />
+              </label>
+            ) : null}
             <div className="modalActions">
               <button type="button" className="btn btn-primary" onClick={saveDepartment}>
                 {t('save')}

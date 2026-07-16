@@ -1,6 +1,11 @@
 const { z } = require("zod");
 const { V } = require("../errorKeys");
-const { bilingualNameShape, refineBilingualNames, hasBilingualText } = require("../bilingual");
+const {
+  bilingualNameShape,
+  refineBilingualNames,
+  refineBilingualPair,
+  hasBilingualText
+} = require("../bilingual");
 
 const USERNAME_RE = /^[A-Za-z0-9_]+$/;
 
@@ -61,13 +66,13 @@ const dairaPatchSchema = z
     }
   });
 
-const modiriyaCreateSchema = refineBilingualNames(
+const directionCreateSchema = refineBilingualNames(
   z.object({
     ...bilingualNameShape(255),
     code: z.string().trim().max(50, V.maxLength).optional()
   })
 );
-const modiriyaPatchSchema = dairaPatchSchema;
+const directionPatchSchema = dairaPatchSchema;
 
 const userCreateSchema = z.object({
   username: z
@@ -130,13 +135,50 @@ const includedEntitiesSchema = z.object({
   keys: z.union([z.array(z.string().trim().min(1).max(64)).max(500), z.null()]),
 });
 
+const guideAudienceEnum = z.enum(["general", "ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"], {
+  errorMap: () => ({ message: V.required })
+});
+
+const guideVideoCreateSchema = refineBilingualPair(
+  z.object({
+    title_ar: z.string().trim().max(200, V.maxLength).optional().default(""),
+    title_fr: z.string().trim().max(200, V.maxLength).optional().default(""),
+    description_ar: z.string().trim().max(5000, V.maxLength).nullable().optional(),
+    description_fr: z.string().trim().max(5000, V.maxLength).nullable().optional(),
+    audience: guideAudienceEnum,
+    is_new: z.boolean().optional().default(false),
+    sort_order: z.number().int().min(0).max(99999).optional().default(0)
+  }),
+  "title_ar",
+  "title_fr"
+);
+
+const guideVideoPatchSchema = z
+  .object({
+    title_ar: z.string().trim().max(200, V.maxLength).optional(),
+    title_fr: z.string().trim().max(200, V.maxLength).optional(),
+    description_ar: z.string().trim().max(5000, V.maxLength).nullable().optional(),
+    description_fr: z.string().trim().max(5000, V.maxLength).nullable().optional(),
+    audience: guideAudienceEnum.optional(),
+    is_new: z.boolean().optional(),
+    sort_order: z.number().int().min(0).max(99999).optional()
+  })
+  .superRefine((data, ctx) => {
+    if (data.title_ar !== undefined || data.title_fr !== undefined) {
+      if (!hasBilingualText(data.title_ar, data.title_fr)) {
+        ctx.addIssue({ code: "custom", message: V.bilingualLabelRequired, path: ["title_ar"] });
+        ctx.addIssue({ code: "custom", message: V.bilingualLabelRequired, path: ["title_fr"] });
+      }
+    }
+  });
+
 module.exports = {
   municipalityCreateSchema,
   municipalityPatchSchema,
   dairaCreateSchema,
   dairaPatchSchema,
-  modiriyaCreateSchema,
-  modiriyaPatchSchema,
+  directionCreateSchema,
+  directionPatchSchema,
   userCreateSchema,
   userPatchSchema,
   rapportCreateSchema,
@@ -144,4 +186,6 @@ module.exports = {
   waliRespondSchema,
   rapportCommentSchema,
   includedEntitiesSchema,
+  guideVideoCreateSchema,
+  guideVideoPatchSchema,
 };

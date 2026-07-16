@@ -6,6 +6,7 @@ type Props = {
   user: SessionUser
   lang: 'ar' | 'fr'
   onSetLang: (lang: 'ar' | 'fr') => void
+  onEditProfile: () => void
   onChangeCode: () => void
   onLogout: () => void
 }
@@ -31,7 +32,14 @@ function SettingsIcon() {
   )
 }
 
-export function TopbarProfileMenu({ user, lang, onSetLang, onChangeCode, onLogout }: Props) {
+export function TopbarProfileMenu({
+  user,
+  lang,
+  onSetLang,
+  onEditProfile,
+  onChangeCode,
+  onLogout,
+}: Props) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -71,6 +79,17 @@ export function TopbarProfileMenu({ user, lang, onSetLang, onChangeCode, onLogou
             <div className="topbarProfileName">{displayName}</div>
             {user.job_title ? <div className="topbarProfileMeta">{user.job_title}</div> : null}
           </div>
+          <button
+            type="button"
+            className="topbarProfileItem"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onEditProfile()
+            }}
+          >
+            {t('editProfile')}
+          </button>
           <button
             type="button"
             className="topbarProfileItem"

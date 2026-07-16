@@ -44,8 +44,8 @@ const orgNameSchema = z
 
 export const dairaFormSchema = orgNameSchema
 
-/** Modiriya UI no longer collects code; server/frontend auto-assigns on create. */
-export const modiriyaFormSchema = z
+/** Direction UI no longer collects code; server/frontend auto-assigns on create. */
+export const directionFormSchema = z
   .object({
     name_ar: z.string().trim().max(255, V.maxLength),
     name_fr: z.string().trim().max(255, V.maxLength),
@@ -80,6 +80,24 @@ export const rapportCreateSchema = z.object({
   rapport_type_id: z.number().int().positive(),
   title: z.string().trim().min(1, V.rapportTitleRequired).max(500, V.maxLength),
 })
+
+export const guideVideoFormSchema = z
+  .object({
+    title_ar: z.string().trim().max(200, V.maxLength),
+    title_fr: z.string().trim().max(200, V.maxLength),
+    description_ar: z.string().trim().max(5000, V.maxLength).optional(),
+    description_fr: z.string().trim().max(5000, V.maxLength).optional(),
+    audience: z.enum(['general', 'ADMIN', 'OFFICE_USER', 'CHEF_CABINET', 'WALI'], {
+      message: V.required,
+    }),
+    is_new: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!hasBilingualText(data.title_ar, data.title_fr)) {
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['title_ar'] })
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['title_fr'] })
+    }
+  })
 
 export const waliRespondSchema = z.object({
   decision: z.enum(['accepted', 'changes_requested', 'viewed'], { message: V.waliDecisionInvalid }),

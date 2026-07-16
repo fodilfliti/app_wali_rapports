@@ -16,6 +16,7 @@ const rapportViewService = require("../modules/rapports/rapportViewService");
 const broadcastService = require("../modules/rapports/broadcastService");
 const hubCountsService = require("../modules/rapports/hubCountsService");
 const commentService = require("../modules/rapports/commentService");
+const guideVideoService = require("../modules/guideVideos/guideVideoService");
 const { generateRapportPdf } = require("../services/rapportPdfService");
 const { generateRapportDocx } = require("../services/rapportDocxService");
 const { generateRapportExcel } = require("../services/rapportExcelService");
@@ -529,5 +530,15 @@ waliRouter.post(
     }
   },
 );
+
+waliRouter.get("/guide-videos", async (req, res, next) => {
+  try {
+    res.json(await guideVideoService.listGuideVideos(req.query, req.user.role));
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 403) return res.status(403).json({ error: e.message });
+    next(e);
+  }
+});
 
 module.exports = { waliRouter };

@@ -9,6 +9,9 @@ function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: "Missing token" });
   try {
     const payload = jwt.verify(token, getEnv().jwtSecret, { algorithms: ["HS256"] });
+    if (payload.typ && payload.typ !== "access") {
+      return res.status(401).json({ error: "Invalid token" });
+    }
     req.auth = payload;
     return next();
   } catch {

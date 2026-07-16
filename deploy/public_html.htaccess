@@ -1,0 +1,13 @@
+# SPA fallback example (first version) — REFERENCE ONLY.
+# Do NOT upload this over public_html/.htaccess on cPanel.
+# Production .htaccess is customized on the server and must stay there.
+# Packaging (scripts/package-deploy.ps1) never includes this file.
+#
+# <IfModule mod_rewrite.c>
+#   RewriteEngine On
+#   RewriteBase /
+#   RewriteRule ^api(/|$) - [L]
+#   RewriteCond %{REQUEST_FILENAME} !-f
+#   RewriteCond %{REQUEST_FILENAME} !-d
+#   RewriteRule ^ index.html [L]
+# </IfModule>

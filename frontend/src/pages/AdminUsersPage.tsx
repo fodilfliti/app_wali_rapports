@@ -187,13 +187,17 @@ export function AdminUsersPage({ token }: Props) {
                 <td>{r.is_blocked ? t('block') : '—'}</td>
                 <td className="actionsCell">
                   <div className="actionsCellInner">
-                    <button type="button" className="btn btn-ghost" onClick={() => openEdit(r)}>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => openEdit(r)}>
                       {t('edit')}
                     </button>
-                    <button type="button" className="btn btn-ghost" onClick={() => toggleBlock(r.id)}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${r.is_blocked ? 'btn-secondary' : 'btn-danger'}`}
+                      onClick={() => toggleBlock(r.id)}
+                    >
                       {r.is_blocked ? t('unblock') : t('block')}
                     </button>
-                    <button type="button" className="btn btn-ghost" onClick={() => resetPwd(r.id)}>
+                    <button type="button" className="btn btn-accent btn-sm" onClick={() => resetPwd(r.id)}>
                       {t('resetPassword')}
                     </button>
                   </div>

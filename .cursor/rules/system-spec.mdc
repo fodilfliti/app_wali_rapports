@@ -25,11 +25,11 @@ Never expose raw enum names in UI. Communes are **reference data only** (no comm
 
 ## Implementation must match spec
 
-- **Auth:** JWT + `checkBlocked`; blocked users rejected immediately.
+- **Auth:** short-lived access JWT + refresh cookie (`spec/modules/AUTH.md`) + `checkBlocked`; blocked users rejected immediately.
 - **Audit:** critical actions → `AuditLogs` with stable `action_type`.
 - **API lists:** pagination (`page`, `pageSize`, max 100), stable sort order.
 - **UI:** RTL-first; Arabic default, French optional — **no English** UI copy.
-- **Actions row:** primary actions first; **`BackButton` last**.
+- **Actions row:** primary actions first; **`BackButton` last**; **same button size** within the row (never mix `btn-sm` / default / `btn-lg`) — `spec/CORE.md` § Button sizing.
 - **Validation:** Zod client + server on all create/edit forms.
 
 ## Code layout

@@ -1,5 +1,5 @@
 import { buildColumnsPayload, type DraftSchemaColumn } from './schemaColumns'
-import { hasBilingualText } from './bilingual'
+import { bilingualPairForSave, hasBilingualText } from './bilingual'
 import type { LayoutJson } from './tableLayout'
 
 export type DraftHeaderGroup = {
@@ -35,11 +35,14 @@ export function buildLayoutJsonFromDraft(
 
   const header_groups = (groups || [])
     .filter((g) => hasBilingualText(g.label_ar, g.label_fr) && g.column_uids.length >= 1)
-    .map((g) => ({
-      label_ar: g.label_ar.trim() || g.label_fr.trim(),
-      label_fr: g.label_fr.trim() || g.label_ar.trim(),
-      column_keys: g.column_uids.map((uid) => uidToKey.get(uid)).filter((k): k is string => Boolean(k)),
-    }))
+    .map((g) => {
+      const labels = bilingualPairForSave(g.label_ar, g.label_fr)
+      return {
+        label_ar: labels.ar,
+        label_fr: labels.fr,
+        column_keys: g.column_uids.map((uid) => uidToKey.get(uid)).filter((k): k is string => Boolean(k)),
+      }
+    })
     .filter((g) => g.column_keys.length >= 1)
 
   return header_groups.length ? { header_groups } : null

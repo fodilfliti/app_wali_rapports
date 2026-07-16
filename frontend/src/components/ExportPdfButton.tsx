@@ -17,6 +17,8 @@ type Props = {
   versionId?: number
   /** Save draft before preview so export matches the editor */
   onPreparePreview?: () => Promise<void>
+  /** Match sibling list actions (`btn-sm`). Default: standard `.btn`. */
+  size?: 'sm'
 }
 
 export function RapportExportButtons({
@@ -27,6 +29,7 @@ export function RapportExportButtons({
   showHidden = false,
   versionId,
   onPreparePreview,
+  size,
 }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
@@ -39,6 +42,7 @@ export function RapportExportButtons({
   })
   const [busy, setBusy] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const triggerClass = `btn btn-secondary exportMenuBtn${size === 'sm' ? ' btn-sm' : ''}`
 
   const opts = { locale: i18n.language, wali, chef, showHidden, versionId, ...excelOpts }
 
@@ -121,7 +125,7 @@ export function RapportExportButtons({
       <div className="exportMenuWrap" ref={wrapRef}>
         <BusyButton
           type="button"
-          className="btn btn-secondary exportMenuBtn"
+          className={triggerClass}
           busy={busy}
           onClick={() => setOpen((v) => !v)}
         >

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   computeTableLayoutPolicy,
@@ -35,21 +35,24 @@ export function TableScrollShell({
       rows,
       metaColCount,
       embedded,
+      locale,
     })
 
   const shellClass = `${tableScrollShellClass(policy)}${className ? ` ${className}` : ''}`.trim()
+
+  const style: CSSProperties | undefined =
+    policy.estimatedMinWidthPx > 0
+      ? ({ ['--table-min-width' as string]: `${policy.estimatedMinWidthPx}px` } as CSSProperties)
+      : undefined
 
   return (
     <div
       className={shellClass}
       dir={locale === 'ar' ? 'rtl' : 'ltr'}
-      style={
-        policy.viewNeedsHorizontalScroll
-          ? ({ ['--table-min-width' as string]: `${policy.estimatedMinWidthPx}px` } as React.CSSProperties)
-          : undefined
-      }
+      style={style}
       data-table-cols={policy.totalCols}
       data-table-orient={policy.orientation}
+      data-table-min-w={policy.estimatedMinWidthPx}
     >
       {children}
     </div>

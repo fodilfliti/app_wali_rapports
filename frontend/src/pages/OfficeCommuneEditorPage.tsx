@@ -20,6 +20,7 @@ import { useSnackbar } from "../snackbar/SnackbarContext";
 import type { EmbeddedTable } from "../types/embeddedTable";
 import { mergeRichHtmlIntoData } from "../utils/richDocument";
 import { markOfficeRapportOpened } from "../utils/officeRapportList";
+import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
 import type { MediaFile, MediaRow } from "../utils/media";
 import { MediaRowsEditor, MediaRowsView } from "../components/MediaBlocks";
 import { countFinishedRows, type TableRowFilterMode } from "../utils/tableRowMeta";
@@ -66,6 +67,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const [tableMeta, setTableMeta] = useState<TableMeta>({});
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
   const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
+  const [returningToDraft, setReturningToDraft] = useState(false);
 
   const listPath = `/office/services/${sid}/communes${
     rapportTypeId || rapportIdParam
@@ -213,6 +215,21 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const finishedRowCount = countFinishedRows(rows);
   const mergeKeys = tableMeta.merge_column_keys || [];
 
+  async function returnCurrentToDraft() {
+    if (!rapportId) return;
+    setReturningToDraft(true);
+    try {
+      await api.returnRapportToDraft(token, rapportId);
+      notifyHubCountsRefresh();
+      snack.show(t("returnToDraftDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setReturningToDraft(false);
+    }
+  }
+
   return (
     <div className="page communeEditorPage">
       <div className="pageHeader row compact communeEditorHeader">
@@ -268,6 +285,9 @@ export function OfficeCommuneEditorPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace?.rapport}
             editable={isEditable}
+            canManage={workspace?.accessLevel === "manage"}
+            onReturnToDraft={returnCurrentToDraft}
+            returning={returningToDraft}
           />
 
           {workspace?.rapportType?.commune_content_kind === "table" ? (

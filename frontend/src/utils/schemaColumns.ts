@@ -1,5 +1,5 @@
 import { excelColumnLetter, remapFormulaToExcelLetters } from './formulaEngine'
-import { hasBilingualText, pickBilingualText } from './bilingual'
+import { bilingualPairForSave, hasBilingualText, pickBilingualText } from './bilingual'
 
 export type SchemaColumnType = 'text' | 'number' | 'date' | 'choice' | 'commune_ref' | 'formula'
 
@@ -196,11 +196,12 @@ export function buildColumnsPayload(cols: DraftSchemaColumn[]): SchemaColumnPayl
   const withKeys = ensureDraftColumnKeys(cols)
   const payloads: SchemaColumnPayload[] = withKeys.map((c) => {
     const key = c.key!
+    const labels = bilingualPairForSave(c.label_ar, c.label_fr)
     const payload: SchemaColumnPayload = {
       key,
       type: c.type,
-      label_ar: c.label_ar.trim() || c.label_fr.trim(),
-      label_fr: c.label_fr.trim() || c.label_ar.trim(),
+      label_ar: labels.ar,
+      label_fr: labels.fr,
     }
     if ((c.type === 'number' || c.type === 'formula') && c.format) payload.format = c.format
     if ((c.type === 'number' || c.type === 'formula') && c.footer_aggregate) {
@@ -211,11 +212,14 @@ export function buildColumnsPayload(cols: DraftSchemaColumn[]): SchemaColumnPayl
       const used = new Set<string>()
       const choices = (c.choices || [])
         .filter((ch) => hasBilingualText(ch.label_ar, ch.label_fr))
-        .map((ch, ci) => ({
-          value: choiceValueFromLabels(ch.label_fr, ch.label_ar, ci, used),
-          label_ar: ch.label_ar.trim() || ch.label_fr.trim(),
-          label_fr: ch.label_fr.trim() || ch.label_ar.trim(),
-        }))
+        .map((ch, ci) => {
+          const chLabels = bilingualPairForSave(ch.label_ar, ch.label_fr)
+          return {
+            value: choiceValueFromLabels(ch.label_fr, ch.label_ar, ci, used),
+            label_ar: chLabels.ar,
+            label_fr: chLabels.fr,
+          }
+        })
       if (choices.length) payload.choices = choices
     }
     if (c.merge_vertical_suggested) payload.merge_vertical_suggested = true

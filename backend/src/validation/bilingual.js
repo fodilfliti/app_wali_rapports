@@ -56,6 +56,7 @@ module.exports = {
   bilingualLabelShape,
   bilingualNameShape,
   addBilingualPairIssues,
+  refineBilingualPair,
   refineBilingualNames,
   refineBilingualLabels
 };

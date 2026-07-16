@@ -51,6 +51,11 @@ Desktop.ini
 .idea/
 *.iml
 
+# --- Deploy packages (local build zips) ---
+/deploy-out/
+**/backend.rar
+**/frontend.rar
+
 # --- Misc ---
 **/*.pid
 **/*.seed

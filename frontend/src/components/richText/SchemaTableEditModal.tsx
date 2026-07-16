@@ -64,7 +64,8 @@ export function SchemaTableEditModal({ table, onSave, onClose }: Props) {
           layoutJson={table.layout_json}
           tableMeta={tableMeta}
           editable
-          showRowMeta={false}
+          showRowMeta
+          showAdminMeta={false}
           showRowFilters={false}
           onUpdateRow={updateRow}
           onUpdateCellColor={updateCellColor}

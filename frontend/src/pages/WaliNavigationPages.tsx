@@ -380,7 +380,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
                 <td className="actionsCell">
                   <div className="actionsCellInner">
                     <Link
-                      className="btn btn-ghost"
+                      className="btn btn-secondary btn-sm"
                       to={reviewerRapportViewPath(reviewer, r.id)}
                       state={backNavigationState(listPath)}
                     >
@@ -389,7 +389,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
                     {canRespondFromList(reviewer, r.status) ? (
                       <button
                         type="button"
-                        className="btn btn-primary btn-sm"
+                        className="btn btn-accent btn-sm"
                         onClick={() => setRespondId(r.id)}
                       >
                         {t('respondRapport')}

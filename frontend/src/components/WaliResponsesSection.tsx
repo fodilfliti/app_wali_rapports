@@ -11,6 +11,7 @@ export type ReviewResponseRow = {
   follow_up_status?: string | null
   body_text?: string | null
   created_at?: string
+  rapport_version_id?: number | string | null
 }
 
 type Props = {

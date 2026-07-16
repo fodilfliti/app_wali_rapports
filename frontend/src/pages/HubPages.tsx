@@ -24,6 +24,8 @@ import { HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
 
 import { PageLoading } from '../components/PageLoading'
 
+import { ENABLE_GUIDE_VIDEOS } from '../config/features'
+
 import * as api from '../api'
 
 
@@ -48,7 +50,7 @@ export function AdminHubPage() {
 
         <HubTile to="/dairas" icon="folder" title={t('navDairas')} />
 
-        <HubTile to="/directions" icon="services" title={t('navModiriyat')} />
+        <HubTile to="/directions" icon="services" title={t('navDirections')} />
 
         <HubTile to="/users" icon="users" title={t('navUsers')} />
 
@@ -57,6 +59,10 @@ export function AdminHubPage() {
         <HubTile to="/admin/services" icon="services" title={t('navServices')} />
 
         <HubTile to="/admin/schemas" icon="schemas" title={t('navSchemas')} />
+
+        {ENABLE_GUIDE_VIDEOS ? (
+          <HubTile to="/admin/guide" icon="guide" title={t('navGuideVideos')} />
+        ) : null}
 
       </div>
 
@@ -87,6 +93,14 @@ export function OfficeHubPage({ token }: { token: string }) {
       <div className="hubGrid">
 
         <HubTile
+          to="/office/services"
+          icon="services"
+          title={t('navServices')}
+          badge={<HubCountBadge count={counts.services_action_count} />}
+          subtitle={counts.services_action_count > 0 ? t('officeHubServicesActionHint') : undefined}
+        />
+
+        <HubTile
           to="/office/rapports"
           icon="rapports"
           title={t('navRapports')}
@@ -97,11 +111,11 @@ export function OfficeHubPage({ token }: { token: string }) {
         />
 
         <HubTile
-          to="/office/services"
-          icon="services"
-          title={t('navServices')}
-          badge={<HubCountBadge count={counts.services_action_count} />}
-          subtitle={counts.services_action_count > 0 ? t('officeHubServicesActionHint') : undefined}
+          to="/office/rapports?view=discussion"
+          icon="notifications"
+          title={t('navDiscussion')}
+          badge={<HubCountBadge count={counts.unread_discussion || 0} />}
+          subtitle={t('discussionInboxHintShort')}
         />
 
         <HubTile
@@ -124,6 +138,10 @@ export function OfficeHubPage({ token }: { token: string }) {
           title={t('navWaliInstructions')}
           badge={<HubCountBadge count={counts.unread_instructions} />}
         />
+
+        {ENABLE_GUIDE_VIDEOS ? (
+          <HubTile to="/office/guide" icon="guide" title={t('navGuideVideos')} />
+        ) : null}
 
       </div>
 
@@ -183,6 +201,10 @@ export function WaliHubPage({ token }: { token: string }) {
 
         <HubTile to="/wali/instructions" icon="document" title={t('navWaliInstructions')} />
 
+        {ENABLE_GUIDE_VIDEOS ? (
+          <HubTile to="/wali/guide" icon="guide" title={t('navGuideVideos')} />
+        ) : null}
+
       </div>
 
     </div>
@@ -238,6 +260,17 @@ export function ChefHubPage({ token }: { token: string }) {
         <HubTile to="/chef/calendar" icon="calendar" title={t('navCalendar')} />
 
         <HubTile to="/chef/instructions" icon="document" title={t('navWaliInstructions')} />
+
+        <HubTile
+          to="/chef/shared"
+          icon="shared"
+          title={t('navSharedFiles')}
+          badge={<HubCountBadge count={counts.unread_shared_files || 0} />}
+        />
+
+        {ENABLE_GUIDE_VIDEOS ? (
+          <HubTile to="/chef/guide" icon="guide" title={t('navGuideVideos')} />
+        ) : null}
 
       </div>
 

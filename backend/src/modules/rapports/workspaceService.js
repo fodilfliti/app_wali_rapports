@@ -37,6 +37,75 @@ const { buildCommuneDocumentDefaultBlocks } = require("./documentDefaults");
 
 const DOCUMENT_KINDS = new Set(["document_compose", "fiche_lecture"]);
 
+/**
+ * Collect entity codes referenced by this rapport (inclusion + stored content).
+ * Used so soft-hidden refs still appear on existing rapports.
+ */
+function referencedCodesByKind(dataJson, includedEntityKeys) {
+  const {
+    parseEntityKey,
+    getEntitiesMap,
+  } = require("./entityKeys");
+  const out = { commune: new Set(), daira: new Set(), direction: new Set() };
+  const entities = getEntitiesMap(dataJson || {});
+  for (const key of Object.keys(entities)) {
+    const parsed = parseEntityKey(key);
+    if (parsed && out[parsed.kind]) out[parsed.kind].add(parsed.code);
+  }
+  const communes =
+    dataJson?.communes && typeof dataJson.communes === "object"
+      ? dataJson.communes
+      : {};
+  for (const code of Object.keys(communes)) {
+    out.commune.add(String(code));
+  }
+  if (Array.isArray(includedEntityKeys)) {
+    for (const key of includedEntityKeys) {
+      const parsed = parseEntityKey(key);
+      if (parsed && out[parsed.kind]) out[parsed.kind].add(parsed.code);
+    }
+  }
+  return out;
+}
+
+function orgRefWhere(referencedCodes) {
+  const codes = [...(referencedCodes || [])].filter(Boolean);
+  if (!codes.length) return { hidden_at: null };
+  return {
+    [Op.or]: [{ hidden_at: null }, { code: { [Op.in]: codes } }],
+  };
+}
+
+async function loadOrgRefsForWorkspace(targetKinds, dataJson, includedEntityKeys) {
+  const { Daira, Direction } = require("../../db");
+  const refs = referencedCodesByKind(dataJson, includedEntityKeys);
+  const [municipalities, dairas, directions] = await Promise.all([
+    targetKinds.includes("commune")
+      ? Municipality.findAll({
+          where: orgRefWhere(refs.commune),
+          order: [["code", "ASC"]],
+        })
+      : Promise.resolve([]),
+    targetKinds.includes("daira")
+      ? Daira.findAll({
+          where: orgRefWhere(refs.daira),
+          order: [["code", "ASC"]],
+        })
+      : Promise.resolve([]),
+    targetKinds.includes("direction")
+      ? Direction.findAll({
+          where: orgRefWhere(refs.direction),
+          order: [["code", "ASC"]],
+        })
+      : Promise.resolve([]),
+  ]);
+  return { municipalities, dairas, directions };
+}
+
+function isOrgRowActive(row) {
+  return row && row.hidden_at == null;
+}
+
 function normalizeMediaRows(rows) {
   const ids = [];
   for (const row of rows || []) {
@@ -249,6 +318,7 @@ async function getServiceContentHub(serviceId, user, options = {}) {
     name_ar: t.name_ar,
     name_fr: t.name_fr,
     content_kind: t.content_kind,
+    commune_content_kind: t.commune_content_kind || null,
     versioning_mode: t.versioning_mode,
     hidden_at: t.hidden_at,
     action_count: Number(byType[`${sid}:${Number(t.id)}`]) || 0,
@@ -971,22 +1041,16 @@ async function getCommuneListWorkspace(
   const targetKinds = normalizeTargetKinds(
     rapportType.entity_target_kinds || ["commune"],
   );
-  const { Daira, Modiriya } = require("../../db");
-
-  const municipalities = targetKinds.includes("commune")
-    ? await Municipality.findAll({ order: [["code", "ASC"]] })
-    : [];
-  const dairas = targetKinds.includes("daira")
-    ? await Daira.findAll({ order: [["code", "ASC"]] })
-    : [];
-  const modiriyat = targetKinds.includes("modiriya")
-    ? await Modiriya.findAll({ order: [["code", "ASC"]] })
-    : [];
 
   const dataJson = ensureEntitiesMap(rapport?.currentVersion?.data_json || {});
   const entitiesData = getEntitiesMap(dataJson);
   const communesData = dataJson.communes || {};
   const includedEntityKeys = getIncludedEntityKeys(dataJson);
+  const { municipalities, dairas, directions } = await loadOrgRefsForWorkspace(
+    targetKinds,
+    dataJson,
+    includedEntityKeys,
+  );
   const baselineCommunes = getBaselineCommunes(rapport);
 
   function summarizeEntity(entry, baseline, cols) {
@@ -1022,10 +1086,10 @@ async function getCommuneListWorkspace(
     };
   });
 
-  const modiriyaSummariesAll = modiriyat.map((d) => {
-    const key = entityKey("modiriya", d.code);
+  const directionSummariesAll = directions.map((d) => {
+    const key = entityKey("direction", d.code);
     return {
-      kind: "modiriya",
+      kind: "direction",
       entity_key: key,
       code: d.code,
       name_ar: d.name_ar,
@@ -1042,8 +1106,8 @@ async function getCommuneListWorkspace(
     dairaSummariesAll,
     includedEntityKeys,
   );
-  const modiriyaSummaries = filterSummariesByInclusion(
-    modiriyaSummariesAll,
+  const directionSummaries = filterSummariesByInclusion(
+    directionSummariesAll,
     includedEntityKeys,
   );
 
@@ -1052,14 +1116,16 @@ async function getCommuneListWorkspace(
     rapport &&
     ["draft", "changes_requested"].includes(rapport.status);
 
-  function catalogItems(summaries) {
-    return summaries.map((s) => ({
-      entity_key: s.entity_key,
-      kind: s.kind,
-      code: s.code,
-      name_ar: s.name_ar,
-      name_fr: s.name_fr,
-    }));
+  function catalogItems(rows, kind) {
+    return rows
+      .filter(isOrgRowActive)
+      .map((row) => ({
+        entity_key: entityKey(kind, row.code),
+        kind,
+        code: row.code,
+        name_ar: row.name_ar,
+        name_fr: row.name_fr,
+      }));
   }
 
   return {
@@ -1090,17 +1156,17 @@ async function getCommuneListWorkspace(
     rapport,
     municipalities: municipalitySummaries,
     dairas: dairaSummaries,
-    modiriyat: modiriyaSummaries,
-    entities: [...municipalitySummaries, ...dairaSummaries, ...modiriyaSummaries],
+    directions: directionSummaries,
+    entities: [...municipalitySummaries, ...dairaSummaries, ...directionSummaries],
     entitiesData,
     communesData,
     targetKinds,
     included_entity_keys: includedEntityKeys,
     selection_catalog: editable
       ? {
-          municipalities: catalogItems(municipalitySummariesAll),
-          dairas: catalogItems(dairaSummariesAll),
-          modiriyat: catalogItems(modiriyaSummariesAll),
+          municipalities: catalogItems(municipalities, "commune"),
+          dairas: catalogItems(dairas, "daira"),
+          directions: catalogItems(directions, "direction"),
         }
       : null,
     accessLevel,
@@ -1207,7 +1273,7 @@ async function saveBulkCommuneData(rapportId, payload, actor, req) {
 
 async function resolveEntityRef(entityKeyOrCode) {
   const { parseEntityKey, entityKey } = require("./entityKeys");
-  const { Daira, Modiriya } = require("../../db");
+  const { Daira, Direction } = require("../../db");
   const parsed = parseEntityKey(entityKeyOrCode);
   if (!parsed) {
     const err = new Error("Not found");
@@ -1247,18 +1313,18 @@ async function resolveEntityRef(entityKeyOrCode) {
       municipality: null,
     };
   }
-  const modiriya = await Modiriya.findOne({ where: { code: parsed.code } });
-  if (!modiriya) {
+  const direction = await Direction.findOne({ where: { code: parsed.code } });
+  if (!direction) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
   return {
-    kind: "modiriya",
+    kind: "direction",
     entity_key: key,
-    code: modiriya.code,
-    name_ar: modiriya.name_ar,
-    name_fr: modiriya.name_fr,
+    code: direction.code,
+    name_ar: direction.name_ar,
+    name_fr: direction.name_fr,
     municipality: null,
   };
 }
@@ -1438,6 +1504,16 @@ async function saveCommuneData(
 }
 
 async function getWaliCommuneView(rapportId, versionId = null, markReview = true) {
+  const {
+    normalizeTargetKinds,
+    entityKey,
+    ensureEntitiesMap,
+    getEntitiesMap,
+    getIncludedEntityKeys,
+    filterSummariesByInclusion,
+  } = require("./entityKeys");
+  const { Daira, Direction } = require("../../db");
+
   const rapport = await rapportService.getRapportDetail(rapportId, versionId);
   if (markReview) await rapportService.markUnderReview(rapportId, null);
   const schemaRow =
@@ -1445,25 +1521,112 @@ async function getWaliCommuneView(rapportId, versionId = null, markReview = true
       ? await resolveTableSchema(rapport.rapportType, rapport.service_id)
       : null;
   const currentVersion = rapport.currentVersion;
-  const communes = currentVersion?.data_json?.communes || {};
-  const changedCodes = currentVersion?.changed_commune_codes || [];
+  const dataJson = ensureEntitiesMap(currentVersion?.data_json || {});
+  const entitiesData = getEntitiesMap(dataJson);
+  const communesLegacy =
+    dataJson.communes && typeof dataJson.communes === "object"
+      ? dataJson.communes
+      : {};
+
+  // Dual-read changed keys (new entity keys + legacy bare commune codes)
+  const changedEntityKeys = Array.isArray(currentVersion?.changed_entity_keys)
+    ? currentVersion.changed_entity_keys
+    : [];
+  const changedCodes = Array.isArray(currentVersion?.changed_commune_codes)
+    ? currentVersion.changed_commune_codes
+    : [];
+  const changedSet = new Set([
+    ...changedEntityKeys,
+    ...changedCodes.map((c) =>
+      typeof c === "string" && c.includes(":") ? c : entityKey("commune", String(c)),
+    ),
+    ...changedCodes.map((c) => String(c)),
+  ]);
+
   const baselineCommunes = getBaselineCommunes(rapport);
   const schemaColumns = schemaRow?.columns_json || [];
-  const municipalities = await Municipality.findAll({
-    order: [["code", "ASC"]],
+  const targetKinds = normalizeTargetKinds(
+    rapport.rapportType?.entity_target_kinds || ["commune"],
+  );
+  const includedEntityKeys = getIncludedEntityKeys(dataJson);
+
+  const { municipalities, dairas, directions } = await loadOrgRefsForWorkspace(
+    targetKinds,
+    dataJson,
+    includedEntityKeys,
+  );
+
+  function isChanged(key, bareCode) {
+    if (changedSet.size) {
+      return (
+        changedSet.has(key) ||
+        changedSet.has(bareCode) ||
+        changedSet.has(String(bareCode))
+      );
+    }
+    return summarizeMunicipality(
+      entitiesData[key] || communesLegacy[bareCode],
+      baselineCommunes[bareCode] || baselineCommunes[key],
+      schemaColumns,
+    ).is_changed;
+  }
+
+  const municipalitySummariesAll = municipalities.map((m) => {
+    const key = entityKey("commune", m.code);
+    return {
+      kind: "commune",
+      entity_key: key,
+      code: m.code,
+      name_ar: m.name_ar,
+      name_fr: m.name_fr,
+      is_changed: isChanged(key, m.code),
+    };
   });
-  const municipalitySummaries = municipalities.map((m) => ({
-    code: m.code,
-    name_ar: m.name_ar,
-    name_fr: m.name_fr,
-    is_changed: changedCodes.length
-      ? changedCodes.includes(m.code)
-      : summarizeMunicipality(
-          communes[m.code],
-          baselineCommunes[m.code],
-          schemaColumns,
-        ).is_changed,
-  }));
+  const dairaSummariesAll = dairas.map((d) => {
+    const key = entityKey("daira", d.code);
+    return {
+      kind: "daira",
+      entity_key: key,
+      code: d.code,
+      name_ar: d.name_ar,
+      name_fr: d.name_fr,
+      is_changed: isChanged(key, d.code),
+    };
+  });
+  const directionSummariesAll = directions.map((d) => {
+    const key = entityKey("direction", d.code);
+    return {
+      kind: "direction",
+      entity_key: key,
+      code: d.code,
+      name_ar: d.name_ar,
+      name_fr: d.name_fr,
+      is_changed: isChanged(key, d.code),
+    };
+  });
+
+  const municipalitySummaries = filterSummariesByInclusion(
+    municipalitySummariesAll,
+    includedEntityKeys,
+  );
+  const dairaSummaries = filterSummariesByInclusion(
+    dairaSummariesAll,
+    includedEntityKeys,
+  );
+  const directionSummaries = filterSummariesByInclusion(
+    directionSummariesAll,
+    includedEntityKeys,
+  );
+
+  // Legacy communes map keyed by bare code (commune entries only) for older UI
+  const communes = { ...communesLegacy };
+  for (const [key, val] of Object.entries(entitiesData)) {
+    if (key.startsWith("commune:")) {
+      const code = key.slice("commune:".length);
+      if (!(code in communes)) communes[code] = val;
+    }
+  }
+
   const versions = await rapportService.listRapportVersions(rapportId);
   return {
     rapport,
@@ -1474,6 +1637,14 @@ async function getWaliCommuneView(rapportId, versionId = null, markReview = true
         }
       : null,
     municipalities: municipalitySummaries,
+    dairas: dairaSummaries,
+    directions: directionSummaries,
+    entities: [
+      ...municipalitySummaries,
+      ...dairaSummaries,
+      ...directionSummaries,
+    ],
+    entitiesData,
     communes,
     versions,
     waliResponses: rapport.waliResponses || [],
@@ -1533,12 +1704,16 @@ async function saveIncludedEntities(rapportId, keys, actor, req) {
     entityKey,
     parseEntityKey,
     ensureEntitiesMap,
+    getEntitiesMap,
+    getIncludedEntityKeys,
   } = require("./entityKeys");
-  const { Daira, Modiriya } = require("../../db");
+  const { Daira, Direction } = require("../../db");
   const targetKinds = normalizeTargetKinds(
     rapport.rapportType.entity_target_kinds || ["commune"],
   );
   const dataJson = ensureEntitiesMap(rapport.currentVersion?.data_json || {});
+  const entitiesMap = getEntitiesMap(dataJson);
+  const prevIncluded = getIncludedEntityKeys(dataJson);
 
   let included_entity_keys = null;
   if (keys != null) {
@@ -1556,27 +1731,27 @@ async function saveIncludedEntities(rapportId, keys, actor, req) {
         throw err;
       }
       const key = entityKey(parsed.kind, parsed.code);
+      let row = null;
       if (parsed.kind === "commune") {
-        const m = await Municipality.findOne({ where: { code: parsed.code } });
-        if (!m) {
-          const err = new Error("Not found");
-          err.status = 404;
-          throw err;
-        }
+        row = await Municipality.findOne({ where: { code: parsed.code } });
       } else if (parsed.kind === "daira") {
-        const d = await Daira.findOne({ where: { code: parsed.code } });
-        if (!d) {
-          const err = new Error("Not found");
-          err.status = 404;
-          throw err;
-        }
+        row = await Daira.findOne({ where: { code: parsed.code } });
       } else {
-        const d = await Modiriya.findOne({ where: { code: parsed.code } });
-        if (!d) {
-          const err = new Error("Not found");
-          err.status = 404;
-          throw err;
-        }
+        row = await Direction.findOne({ where: { code: parsed.code } });
+      }
+      if (!row) {
+        const err = new Error("Not found");
+        err.status = 404;
+        throw err;
+      }
+      const alreadyAllowed =
+        (prevIncluded && prevIncluded.includes(key)) ||
+        entitiesMap[key] != null ||
+        (parsed.kind === "commune" && dataJson.communes?.[parsed.code] != null);
+      if (row.hidden_at && !alreadyAllowed) {
+        const err = new Error("hiddenEntityNotSelectable");
+        err.status = 400;
+        throw err;
       }
       validated.push(key);
     }

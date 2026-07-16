@@ -8,6 +8,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 
 - **Core (shared standards + app shell + export + validation)**: `spec/CORE.md`
 - **System Architecture Context (directories + models + flows)**: `spec/ARCHITECTURE_CONTEXT.md`
+- **Deploy (DZSecurity cPanel / File Manager / Node.js App)**: `DEPLOY.md`
 - **Modules**:
   - **Organization (communes reference + user accounts)**: `spec/modules/ORGANIZATION.md`
   - **Access profiles (domain permissions)**: `spec/modules/ACCESS_PROFILES.md`
@@ -20,19 +21,21 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
   - **Chef Cabinet (رئيس الديوان — first validator)**: `spec/modules/CHEF_CABINET.md`
   - **Wali instructions (تعليمات السيد الوالي)**: `spec/modules/WALI_INSTRUCTIONS.md`
   - **Rapport discussion (مناقشة التقرير)**: `spec/modules/RAPPORT_DISCUSSION.md`
+  - **Guide videos (فيديوهات الدليل)**: `spec/modules/GUIDE_VIDEOS.md`
+  - **Authentication & sessions (access JWT + refresh cookie)**: `spec/modules/AUTH.md`
 
 ### Cross-cutting updates (initial)
 
 - **Four account types:** `ADMIN` (compte admin), `OFFICE_USER` (compte bureau), `WALI` (compte wali), `CHEF_CABINET` (رئيس الديوان) — never show raw enums in UI.
-- **Communes / dairas / modiriyat (Directions):** reference rows only; no login accounts for these. Communes belong to a daira; modiriyat are independent. UI path for modiriyat: `/directions` (labels المديريات / Directions). Service « départements / قطاعات » are hidden in admin UI.
-- **Route prefixes:** `/admin/*`, `/office/*`, `/wali/*`, `/chef/*` + `POST /auth/login`.
+- **Communes / dairas / directions (Directions):** reference rows only; no login accounts for these. Communes belong to a daira; directions are independent. UI path: `/directions` (labels المديريات / Directions). Service « départements / قطاعات » are hidden in admin UI.
+- **Route prefixes:** `/admin/*`, `/office/*`, `/wali/*`, `/chef/*` + `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`.
 - **Form validation:** mandatory Zod client + server on all create/edit flows — `spec/CORE.md`.
 - **Distinct UI theme:** teal/gold tokens in `frontend/src/theme/tokens.css` (not app_wilaya green).
-- **Rapport architecture (4 content kinds):** Wali navigates office user → service/sub-service tree; types جدول / ملف مركّب / مذكرة استخلاصية / **قائمة** (`commune_list` with configurable commune / daira / modiriya targets) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
+- **Rapport architecture (4 content kinds):** Wali navigates office user → service/sub-service tree; types جدول / ملف مركّب / مذكرة استخلاصية / **قائمة** (`commune_list` with configurable commune / daira / direction targets) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
 - **Version archive + Wali notifications:** old versions for graphs/history; office notified on Wali note — `RAPPORT_SERVICE_TYPES.md`, `RAPPORTS.md`.
 - **Chef gate:** first submit goes to رئيس الديوان; after Wali demands changes, resubmit skips Chef (info notif only) — `CHEF_CABINET.md`.
 - **Wali instructions:** title + body + files to all/selected office users; Chef read-only — `WALI_INSTRUCTIONS.md`.
-- **Rapport discussion:** non-live comment thread after first Envoyer (office / Chef / Wali) — `RAPPORT_DISCUSSION.md`.
+- **Rapport discussion:** non-live comment thread after first Envoyer (office / Chef / Wali); **discussion inbox** (New / All) on office, Chef, and Wali hubs — `RAPPORT_DISCUSSION.md`.
 
 ### Cross-cutting updates (2026-06)
 
@@ -58,13 +61,25 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 
 ### Cross-cutting updates (2026-06-07)
 
-- **Unified table layout policy** (view scroll, PDF/Word column widths, page breaks, landscape threshold) — `spec/CORE.md` § Table layout policy.
+- **Unified table layout policy** (content-aware view min widths + scroll, PDF/Word column widths, page breaks, landscape threshold) — `spec/CORE.md` § Table layout policy.
 - **PDF Arabic tables (RTL):** right-to-left column order, right-aligned cells, Tahoma with `liga`/`calt` (no `rtla`) — `spec/CORE.md`.
 - **Word Arabic tables:** `FIXED` layout, weighted column widths, `visuallyRightToLeft` — `spec/CORE.md`.
 - **PDF pagination fix:** no blank intermediate pages; tables that fit on the current portrait page stay there — `spec/CORE.md`.
 - **Wali fiche export block:** bordered « رد الوالي » section after fiche body (PDF + Word) — `spec/CORE.md`, `spec/modules/RAPPORT_SERVICE_TYPES.md`.
 - **Wali inbox UI:** status row colors, legend, « جديد » badge, service/type columns; **single inbox counter** in top bar (`WaliInboxBell`) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
 - **Demo presentation seed:** `npm run db:seed-demo` — Hydraulique + Investissement with rich fiches, embedded tables, storage media — `spec/ARCHITECTURE_CONTEXT.md` § Demo data.
+
+### Cross-cutting updates (2026-07)
+
+- **Hide French content-value inputs (frontend flag):** `ENABLE_FR_VALUE_INPUTS` in `frontend/src/config/features.ts` — when `false`, hide `*_fr` form inputs across all accounts but keep UI language FR toggle, bilingual storage, and empty-FR→AR display fallback; do not overwrite `*_fr` on save — `spec/CORE.md` § Bilingual content fields.
+- **Chef as broadcast recipient:** `CHEF_CABINET` included in Wali share picker and “all” sends; Chef inbox `/chef/shared` — `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`, `CHEF_CABINET.md`.
+- **Office return to draft:** Éditeur may recall a sent rapport (`pending_chef` | `submitted` | `under_review`) to `draft` (same current version; blocked after Wali accept/view) — `spec/modules/RAPPORTS.md`.
+- **Guide videos:** Admin uploads guide videos (général + per role); Admin-audience videos hidden from others; `ENABLE_GUIDE_VIDEOS` flag — `spec/modules/GUIDE_VIDEOS.md`.
+- **User credentials PDF:** On user create / password reset, generated handout is **French only** (not bilingual) — `spec/modules/ORGANIZATION.md`.
+- **Button sizing:** Action-row buttons must share one height/size class (`btn` / `btn-sm` / `btn-lg`); no mixed padding in the same row — `spec/CORE.md` § Button sizing & action rows.
+- **Readable backend logs:** pino short access lines + level by status; 5xx stack / 4xx warn; `LOG_LEVEL=info` day-to-day — `spec/CORE.md` § App / console logging.
+- **Refresh sessions:** 15m access JWT + 7d HttpOnly refresh cookie (rotation, reuse detection, revoke on logout/block/password) — `spec/modules/AUTH.md`.
+- **Org ref soft-hide:** admin hide/restore for dairas (cascade communes), communes, directions via `hidden_at` — no hard delete; new entity catalogs exclude hidden — `ORGANIZATION.md`, `RAPPORT_SERVICE_TYPES.md`.
 
 ### What to do when adding a new feature
 

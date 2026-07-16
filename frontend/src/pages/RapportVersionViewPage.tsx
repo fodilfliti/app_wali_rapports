@@ -20,14 +20,89 @@ import {
 import type { TableMeta } from "../utils/tableLayout";
 import { versionsListPath } from "../utils/rapportVersionsNav";
 import { RapportExportButtons } from "../components/ExportPdfButton";
-import { CommuneListVersionView } from "../components/CommuneListVersionView";
+import {
+  CommuneListVersionView,
+  type VersionEntityMeta,
+} from "../components/CommuneListVersionView";
 import type { MediaFile } from "../utils/media";
+import {
+  ensureEntitiesMap,
+  entityKey,
+  getEntitiesMap,
+  getEntityEntry,
+  parseEntityKey,
+} from "../utils/entityKeys";
+import type { EntityTargetKind } from "../utils/entityTargets";
+import { filterResponsesByVersionId } from "../utils/reviewResponses";
 
 type DetailProps = {
   token: string;
   wali?: boolean;
   chef?: boolean;
 };
+
+type EntityCatalogItem = VersionEntityMeta & {
+  entity_key: string;
+  kind: EntityTargetKind | string;
+};
+
+function catalogFromWorkspace(ws: any): EntityCatalogItem[] {
+  const list: any[] = ws?.entities?.length
+    ? ws.entities
+    : [
+        ...(ws?.municipalities || []),
+        ...(ws?.dairas || []),
+        ...(ws?.directions || []),
+      ];
+  return list.map((m: any) => {
+    const kind = (m.kind as EntityTargetKind) || "commune";
+    const code = String(m.code);
+    const key = m.entity_key || entityKey(kind, code);
+    return {
+      entity_key: key,
+      kind,
+      code,
+      name_ar: m.name_ar,
+      name_fr: m.name_fr,
+      is_changed: m.is_changed,
+    };
+  });
+}
+
+function catalogFromViewRes(viewRes: any): EntityCatalogItem[] {
+  if (viewRes?.entities?.length) return catalogFromWorkspace(viewRes);
+  return (viewRes?.municipalities || []).map((m: any) => {
+    const kind = (m.kind as EntityTargetKind) || "commune";
+    const code = String(m.code);
+    const key = m.entity_key || entityKey(kind, code);
+    return {
+      entity_key: key,
+      kind,
+      code,
+      name_ar: m.name_ar,
+      name_fr: m.name_fr,
+      is_changed: m.is_changed,
+    };
+  });
+}
+
+function snapshotEntityMaps(dataJson: any) {
+  const normalized = ensureEntitiesMap(dataJson || {});
+  return {
+    entitiesData: (normalized.entities || {}) as Record<string, any>,
+    communes: (normalized.communes || {}) as Record<string, any>,
+  };
+}
+
+function documentHasContent(data: any) {
+  if (!data) return false;
+  if (data.rich_html_ar || data.rich_html_fr) return true;
+  if (Array.isArray(data.blocks) && data.blocks.length) return true;
+  if (Array.isArray(data.embedded_tables) && data.embedded_tables.length) {
+    return true;
+  }
+  return false;
+}
 
 export function RapportVersionDetail({
   token,
@@ -42,11 +117,10 @@ export function RapportVersionDetail({
   const [rapport, setRapport] = useState<any>(null);
   const [version, setVersion] = useState<any>(null);
   const [schema, setSchema] = useState<any>(null);
-  const [municipalities, setMunicipalities] = useState<
-    { code: string; name_ar: string; name_fr: string }[]
-  >([]);
+  const [entityCatalog, setEntityCatalog] = useState<EntityCatalogItem[]>([]);
   const [communeVersionView, setCommuneVersionView] = useState<{
-    municipalities: { code: string; name_ar: string; name_fr: string; is_changed?: boolean }[];
+    entities: EntityCatalogItem[];
+    entitiesData: Record<string, any>;
     communes: Record<string, any>;
     schema?: { columns?: any[]; layout_json?: any } | null;
     files?: Record<number, MediaFile>;
@@ -79,7 +153,9 @@ export function RapportVersionDetail({
         const kind = rRes.rapport?.rapportType?.content_kind;
         const communeKind = rRes.rapport?.rapportType?.commune_content_kind;
         const snap = vRes.version?.data_json?.schema_snapshot;
+        const maps = snapshotEntityMaps(vRes.version?.data_json);
         setCommuneVersionView(null);
+        setEntityCatalog([]);
 
         if (
           kind === "commune_list" &&
@@ -92,9 +168,25 @@ export function RapportVersionDetail({
                 ? await api.getChefRapportView(token, rid, false, vid)
                 : await api.getWaliRapportView(token, rid, false, vid);
               if (!cancelled) {
+                const viewMaps = snapshotEntityMaps({
+                  entities:
+                    viewRes.entitiesData ||
+                    viewRes.entities_map ||
+                    undefined,
+                  communes: viewRes.communes,
+                });
+                const entitiesData =
+                  Object.keys(maps.entitiesData).length > 0
+                    ? maps.entitiesData
+                    : viewMaps.entitiesData;
+                const communes =
+                  Object.keys(maps.communes).length > 0
+                    ? maps.communes
+                    : viewMaps.communes;
                 setCommuneVersionView({
-                  municipalities: viewRes.municipalities || [],
-                  communes: viewRes.communes || vRes.version?.data_json?.communes || {},
+                  entities: catalogFromViewRes(viewRes),
+                  entitiesData,
+                  communes,
                   schema: viewRes.schema,
                   files: viewRes.files || {},
                 });
@@ -102,8 +194,9 @@ export function RapportVersionDetail({
             } catch {
               if (!cancelled) {
                 setCommuneVersionView({
-                  municipalities: [],
-                  communes: vRes.version?.data_json?.communes || {},
+                  entities: [],
+                  entitiesData: maps.entitiesData,
+                  communes: maps.communes,
                   files: {},
                 });
               }
@@ -118,8 +211,9 @@ export function RapportVersionDetail({
               ]);
               if (!cancelled) {
                 setCommuneVersionView({
-                  municipalities: ws.municipalities || [],
-                  communes: vRes.version?.data_json?.communes || {},
+                  entities: catalogFromWorkspace(ws),
+                  entitiesData: maps.entitiesData,
+                  communes: maps.communes,
                   schema: ws.schema,
                   files: mediaRes.files || {},
                 });
@@ -127,8 +221,9 @@ export function RapportVersionDetail({
             } catch {
               if (!cancelled) {
                 setCommuneVersionView({
-                  municipalities: [],
-                  communes: vRes.version?.data_json?.communes || {},
+                  entities: [],
+                  entitiesData: maps.entitiesData,
+                  communes: maps.communes,
                   files: {},
                 });
               }
@@ -159,7 +254,7 @@ export function RapportVersionDetail({
                 : await api.getWaliRapportView(token, rid, false, vid);
               if (!cancelled) {
                 setSchema(viewRes.schema);
-                setMunicipalities(viewRes.municipalities || []);
+                setEntityCatalog(catalogFromViewRes(viewRes));
               }
             } else {
               const ws = await api.getCommuneWorkspace(token, rRes.rapport.service_id, {
@@ -167,7 +262,7 @@ export function RapportVersionDetail({
               });
               if (!cancelled) {
                 setSchema(ws.schema);
-                setMunicipalities(ws.municipalities || []);
+                setEntityCatalog(catalogFromWorkspace(ws));
               }
             }
           } catch {
@@ -188,14 +283,33 @@ export function RapportVersionDetail({
   const kind = rapport?.rapportType?.content_kind;
   const data = version?.data_json || {};
 
-  const versionWaliResponses = useMemo(() => {
-    const onVersion = version?.waliResponses;
-    if (Array.isArray(onVersion) && onVersion.length) return onVersion;
-    return (rapport?.waliResponses || []).filter(
-      (r: { rapport_version_id?: number }) => r.rapport_version_id === vid,
-    );
-  }, [version?.waliResponses, rapport?.waliResponses, vid]);
+  const versionWaliResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        [
+          ...(version?.waliResponses || []),
+          ...(rapport?.waliResponses || []),
+        ].filter(
+          (r, i, arr) => arr.findIndex((x) => Number(x.id) === Number(r.id)) === i,
+        ),
+        vid,
+      ),
+    [version?.waliResponses, rapport?.waliResponses, vid],
+  );
 
+  const versionChefResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        [
+          ...(version?.chefResponses || []),
+          ...(rapport?.chefResponses || []),
+        ].filter(
+          (r, i, arr) => arr.findIndex((x) => Number(x.id) === Number(r.id)) === i,
+        ),
+        vid,
+      ),
+    [version?.chefResponses, rapport?.chefResponses, vid],
+  );
   const tableContent = useMemo(() => {
     if (kind === "table_grid") {
       const table = data.tables?.[0] || {};
@@ -211,29 +325,78 @@ export function RapportVersionDetail({
       };
       return { columns, layoutJson, tableMeta, rows: table.rows || [] };
     }
-    if (kind === "commune_list" && rapport?.rapportType?.commune_content_kind === "table") {
-      const communes = data.communes || {};
-      const nameByCode = new Map(
-        municipalities.map((m) => [String(m.code), { name_ar: m.name_ar, name_fr: m.name_fr }]),
-      );
+    if (
+      kind === "commune_list" &&
+      rapport?.rapportType?.commune_content_kind === "table"
+    ) {
+      const entitiesMap = getEntitiesMap(data);
+      const communesLegacy =
+        data.communes && typeof data.communes === "object" ? data.communes : {};
       const columns = schema?.columns || [];
       const allRows: Record<string, unknown>[] = [];
-      for (const [code, entry] of Object.entries(communes) as [string, any][]) {
-        const names = nameByCode.get(code);
-        const nameAr = names?.name_ar || entry?.name_ar || code;
-        const nameFr = names?.name_fr || entry?.name_fr || code;
+
+      const catalog =
+        entityCatalog.length > 0
+          ? entityCatalog
+          : Object.keys(entitiesMap).map((key) => {
+              const parsed = parseEntityKey(key);
+              return {
+                entity_key: key,
+                kind: parsed?.kind || "commune",
+                code: parsed?.code || key,
+                name_ar: parsed?.code || key,
+                name_fr: parsed?.code || key,
+              };
+            });
+
+      const seen = new Set<string>();
+      for (const m of catalog) {
+        const key = m.entity_key || entityKey((m.kind as EntityTargetKind) || "commune", m.code);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const entry = getEntityEntry(entitiesMap, communesLegacy, key) as
+          | any
+          | undefined;
+        if (!entry) continue;
+        const nameAr = m.name_ar || entry?.name_ar || m.code;
+        const nameFr = m.name_fr || entry?.name_fr || m.code;
         const communeRows = entry?.rows?.length
           ? entry.rows
-          : [buildEmptyCommuneRow({ code, name_ar: nameAr, name_fr: nameFr })];
+          : [buildEmptyCommuneRow({ code: m.code, name_ar: nameAr, name_fr: nameFr })];
         for (const r of communeRows) {
           allRows.push({
             ...r,
-            municipality_code: code,
+            municipality_code: m.code,
             _municipality_name_ar: nameAr,
             _municipality_name_fr: nameFr,
+            _entity_key: key,
+            _entity_kind: m.kind,
           });
         }
       }
+
+      // Include orphan keys present only in snapshot
+      for (const key of Object.keys(entitiesMap)) {
+        if (seen.has(key)) continue;
+        const parsed = parseEntityKey(key);
+        if (!parsed) continue;
+        const entry = entitiesMap[key] as any;
+        if (!entry?.rows?.length) continue;
+        seen.add(key);
+        const nameAr = entry?.name_ar || parsed.code;
+        const nameFr = entry?.name_fr || parsed.code;
+        for (const r of entry.rows) {
+          allRows.push({
+            ...r,
+            municipality_code: parsed.code,
+            _municipality_name_ar: nameAr,
+            _municipality_name_fr: nameFr,
+            _entity_key: key,
+            _entity_kind: parsed.kind,
+          });
+        }
+      }
+
       return {
         columns: withCommuneNameColumn(columns),
         layoutJson: schema?.layout_json || null,
@@ -242,7 +405,11 @@ export function RapportVersionDetail({
       };
     }
     return null;
-  }, [kind, data, schema, rapport, municipalities, i18n.language]);
+  }, [kind, data, schema, rapport, entityCatalog, i18n.language]);
+
+  const showDocument =
+    !loading && (kind === "document_compose" || kind === "fiche_lecture");
+  const docHasBody = documentHasContent(data);
 
   return (
     <div className="page rapportVersionViewPage">
@@ -278,35 +445,43 @@ export function RapportVersionDetail({
       {!loading && tableContent ? (
         <div className="card rapportVersionViewCard">
           <TableTitleBlock tableMeta={tableContent.tableMeta} editable={false} />
-          <TableWorkspace
-            columns={tableContent.columns}
-            rows={tableContent.rows}
-            layoutJson={tableContent.layoutJson}
-            tableMeta={tableContent.tableMeta}
-            editable={false}
-            showRowMeta
-            rowCount={tableContent.rows.length}
-            finishedCount={0}
-            filterMode="all"
-            onFilterModeChange={() => {}}
-            showHeader={false}
-          />
+          {tableContent.rows.length === 0 ? (
+            <p className="muted communeEmptyHint">{t("noResults")}</p>
+          ) : (
+            <TableWorkspace
+              columns={tableContent.columns}
+              rows={tableContent.rows}
+              layoutJson={tableContent.layoutJson}
+              tableMeta={tableContent.tableMeta}
+              editable={false}
+              showRowMeta
+              rowCount={tableContent.rows.length}
+              finishedCount={0}
+              filterMode="all"
+              onFilterModeChange={() => {}}
+              showHeader={false}
+            />
+          )}
         </div>
       ) : null}
 
-      {!loading && (kind === "document_compose" || kind === "fiche_lecture") ? (
+      {showDocument ? (
         <div className="card rapportVersionViewCard">
-          <RichDocumentView
-            data={{
-              rich_html_ar: data.rich_html_ar,
-              rich_html_fr: data.rich_html_fr,
-              blocks: data.blocks,
-              embedded_tables: data.embedded_tables,
-            }}
-            locale={i18n.language}
-            token={token}
-            serviceId={rapport?.service_id}
-          />
+          {docHasBody ? (
+            <RichDocumentView
+              data={{
+                rich_html_ar: data.rich_html_ar,
+                rich_html_fr: data.rich_html_fr,
+                blocks: data.blocks,
+                embedded_tables: data.embedded_tables,
+              }}
+              locale={i18n.language}
+              token={token}
+              serviceId={rapport?.service_id}
+            />
+          ) : (
+            <p className="muted communeEmptyHint">{t("noResults")}</p>
+          )}
         </div>
       ) : null}
 
@@ -318,7 +493,8 @@ export function RapportVersionDetail({
           <CommuneListVersionView
             token={token}
             serviceId={rapport?.service_id}
-            municipalities={communeVersionView.municipalities}
+            entities={communeVersionView.entities}
+            entitiesData={communeVersionView.entitiesData}
             communes={communeVersionView.communes}
             schema={communeVersionView.schema}
             files={communeVersionView.files}
@@ -330,8 +506,11 @@ export function RapportVersionDetail({
         <CalendarEventsView events={data.calendar_events} />
       ) : null}
 
-      {!loading && versionWaliResponses.length ? (
-        <WaliResponsesSection responses={versionWaliResponses} />
+      {!loading && (versionWaliResponses.length || versionChefResponses.length) ? (
+        <WaliResponsesSection
+          chefResponses={versionChefResponses}
+          responses={versionWaliResponses}
+        />
       ) : null}
     </div>
   );

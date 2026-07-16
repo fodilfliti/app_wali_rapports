@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { useTranslation } from 'react-i18next'
 
@@ -27,6 +27,7 @@ import {
 
 } from '../utils/tableLayout'
 
+import { contentLocale } from '../config/features'
 import { pickBilingualText } from '../utils/bilingual'
 
 import {
@@ -45,7 +46,11 @@ import {
   type TableRowReorderScope,
 } from '../utils/tableRowReorder'
 import { TableScrollShell } from './TableScrollShell'
-import { countViewMetaColumns } from '../utils/tableLayoutPolicy'
+import {
+  columnMinWidthForKey,
+  computeTableLayoutPolicy,
+  countViewMetaColumns,
+} from '../utils/tableLayoutPolicy'
 
 function TableCellTextarea({
   value,
@@ -93,6 +98,9 @@ type Props = {
 
   showRowMeta?: boolean
 
+  /** Wali-visible + finished columns. Defaults to `showRowMeta && editable`. */
+  showAdminMeta?: boolean
+
   onUpdateRow?: (idx: number, key: string, value: unknown) => void
 
   onSetAllWaliVisible?: (visible: boolean) => void
@@ -129,11 +137,11 @@ export function TableTitleBlock({
 
   const { t, i18n } = useTranslation()
 
-  const locale = i18n.language
+  const displayLocale = i18n.language
+  const editLocale = contentLocale(i18n.language)
 
-  const title = locale === 'fr' ? tableMeta?.title_fr : tableMeta?.title_ar
-
-  const subtitle = locale === 'fr' ? tableMeta?.subtitle_fr : tableMeta?.subtitle_ar
+  const title = pickBilingualText(tableMeta?.title_ar, tableMeta?.title_fr, displayLocale)
+  const subtitle = pickBilingualText(tableMeta?.subtitle_ar, tableMeta?.subtitle_fr, displayLocale)
 
 
 
@@ -169,11 +177,11 @@ export function TableTitleBlock({
 
         <input
 
-          value={locale === 'fr' ? tableMeta?.title_fr ?? '' : tableMeta?.title_ar ?? ''}
+          value={editLocale === 'fr' ? tableMeta?.title_fr ?? '' : tableMeta?.title_ar ?? ''}
 
           onChange={(e) =>
 
-            onTableMetaChange?.(locale === 'fr' ? { title_fr: e.target.value } : { title_ar: e.target.value })
+            onTableMetaChange?.(editLocale === 'fr' ? { title_fr: e.target.value } : { title_ar: e.target.value })
 
           }
 
@@ -187,13 +195,13 @@ export function TableTitleBlock({
 
         <input
 
-          value={locale === 'fr' ? tableMeta?.subtitle_fr ?? '' : tableMeta?.subtitle_ar ?? ''}
+          value={editLocale === 'fr' ? tableMeta?.subtitle_fr ?? '' : tableMeta?.subtitle_ar ?? ''}
 
           onChange={(e) =>
 
             onTableMetaChange?.(
 
-              locale === 'fr' ? { subtitle_fr: e.target.value } : { subtitle_ar: e.target.value },
+              editLocale === 'fr' ? { subtitle_fr: e.target.value } : { subtitle_ar: e.target.value },
 
             )
 
@@ -592,6 +600,8 @@ export function TableGridView({
 
   showRowMeta = false,
 
+  showAdminMeta: showAdminMetaProp,
+
   onUpdateRow,
 
   onSetAllWaliVisible,
@@ -643,9 +653,9 @@ export function TableGridView({
   const canDeleteRows = editable && !!onDeleteRow && rows.length > 1
 
   const showLineNumbers = showRowMeta
-  const showAdminMeta = showRowMeta && editable
+  const showAdminMeta = showAdminMetaProp ?? (showRowMeta && editable)
 
-  const showDragCol = showAdminMeta && !!onReorderRows
+  const showDragCol = showRowMeta && editable && !!onReorderRows
 
   const tbodyRef = useRef<HTMLTableSectionElement>(null)
 
@@ -737,7 +747,35 @@ export function TableGridView({
 
   }
 
-  const showDeleteCol = showAdminMeta && !!onDeleteRow
+  const showDeleteCol = showRowMeta && editable && !!onDeleteRow
+
+  const showLeftMeta = showLineNumbers || showAdminMeta || showDragCol
+
+  const layoutLocale = locale === 'fr' ? 'fr' : 'ar'
+  const layoutPolicy = computeTableLayoutPolicy({
+    columns,
+    rows: visibleRows,
+    metaColCount: countViewMetaColumns({
+      showRowMeta,
+      showAdminMeta,
+      showDragCol,
+      showDeleteCol,
+    }),
+    embedded,
+    locale: layoutLocale,
+  })
+
+  function colMinAttrs(key: string): {
+    'data-col-min'?: string
+    style?: CSSProperties
+  } {
+    const w = columnMinWidthForKey(layoutPolicy, columns, key)
+    if (!w) return {}
+    return {
+      'data-col-min': String(w),
+      style: { minWidth: w, ['--col-min-width' as string]: `${w}px` },
+    }
+  }
 
   const dragHintKey = reorderScope === 'commune' ? 'dragRowCommuneHint' : 'dragRowHint'
 
@@ -751,7 +789,7 @@ export function TableGridView({
     <TableRowDeleteHeader title={t('deleteRow')} />
   ) : null
 
-  const metaHeaderCells = showLineNumbers || showAdminMeta ? (
+  const metaHeaderCells = showLeftMeta ? (
 
     <>
 
@@ -771,7 +809,7 @@ export function TableGridView({
 
 
 
-  const metaFooterCells = showLineNumbers || showAdminMeta ? (
+  const metaFooterCells = showLeftMeta ? (
 
     <>
 
@@ -798,8 +836,9 @@ export function TableGridView({
       <TableScrollShell
         columns={columns}
         rows={visibleRows}
-        metaColCount={countViewMetaColumns(showRowMeta, !!editable)}
+        metaColCount={layoutPolicy.metaColCount}
         embedded={embedded}
+        policy={layoutPolicy}
       >
 
       <table>
@@ -810,7 +849,7 @@ export function TableGridView({
 
             <tr className="headerGroupRow">
 
-              {(showLineNumbers || showAdminMeta) ? (
+              {showLeftMeta ? (
 
                 <>
 
@@ -845,18 +884,12 @@ export function TableGridView({
               ))}
 
               {showAdminMeta ? (
-
-                <>
-
-                  <th rowSpan={2} className="tableFinishedCol" title={t('rowFinished')}>
-                    {t('rowFinishedShort')}
-                  </th>
-
-                  {showDeleteCol ? <TableRowDeleteHeader title={t('deleteRow')} rowSpan={2} /> : null}
-
-                </>
-
+                <th rowSpan={2} className="tableFinishedCol" title={t('rowFinished')}>
+                  {t('rowFinishedShort')}
+                </th>
               ) : null}
+
+              {showDeleteCol ? <TableRowDeleteHeader title={t('deleteRow')} rowSpan={2} /> : null}
 
             </tr>
 
@@ -864,13 +897,16 @@ export function TableGridView({
 
           <tr>
 
-            {(showLineNumbers || showAdminMeta) && !header.hasGroupRow ? metaHeaderCells : null}
+            {showLeftMeta && !header.hasGroupRow ? metaHeaderCells : null}
 
-            {displayCols.map((c) => (
-
-              <th key={c.key}>{c.label}</th>
-
-            ))}
+            {displayCols.map((c) => {
+              const minAttrs = colMinAttrs(c.key)
+              return (
+                <th key={c.key} data-col-min={minAttrs['data-col-min']} style={minAttrs.style}>
+                  {c.label}
+                </th>
+              )
+            })}
 
             {showAdminMeta && !header.hasGroupRow ? (
 
@@ -878,7 +914,7 @@ export function TableGridView({
 
             ) : null}
 
-            {showAdminMeta && !header.hasGroupRow && showDeleteCol ? deleteMetaHeader : null}
+            {!header.hasGroupRow && showDeleteCol ? deleteMetaHeader : null}
 
           </tr>
 
@@ -908,7 +944,7 @@ export function TableGridView({
                   .join(' ') || undefined}
               >
 
-                {(showLineNumbers || showAdminMeta) ? (
+                {showLeftMeta ? (
 
                   <>
 
@@ -970,6 +1006,12 @@ export function TableGridView({
 
                   const cellBg = tableColorBackground(painted)
 
+                  const minAttrs = colMinAttrs(dc.key)
+                  const cellStyle = {
+                    ...(minAttrs.style || {}),
+                    ...(cellBg ? { backgroundColor: cellBg } : {}),
+                  }
+
                   return (
 
                     <td
@@ -977,6 +1019,8 @@ export function TableGridView({
                       key={dc.key}
 
                       rowSpan={span && span > 1 ? span : undefined}
+
+                      data-col-min={minAttrs['data-col-min']}
 
                       className={[
 
@@ -994,7 +1038,7 @@ export function TableGridView({
 
                         .join(' ')}
 
-                      style={cellBg ? { backgroundColor: cellBg } : undefined}
+                      style={Object.keys(cellStyle).length ? cellStyle : undefined}
 
                       onClick={canPaintCells ? (e) => applyCellPaint(idx, col.key, e) : undefined}
 
@@ -1141,7 +1185,7 @@ export function TableGridView({
 
             <tr className="tableFooterRow">
 
-              {(showLineNumbers || showAdminMeta) ? metaFooterCells : null}
+              {showLeftMeta ? metaFooterCells : null}
 
               {displayCols.map((dc) => {
 
@@ -1150,43 +1194,44 @@ export function TableGridView({
                 const footerVal = computeColumnFooter(rows, col)
 
                 if (footerVal != null) {
-
+                  const minAttrs = colMinAttrs(dc.key)
                   return (
-
-                    <td key={dc.key} className="tableFooterCell tableFooterValue">
-
+                    <td
+                      key={dc.key}
+                      className="tableFooterCell tableFooterValue"
+                      data-col-min={minAttrs['data-col-min']}
+                      style={minAttrs.style}
+                    >
                       {formatCell(footerVal, col, locale)}
-
                     </td>
-
                   )
-
                 }
 
                 if (!footerLabelPlaced) {
-
                   footerLabelPlaced = true
-
+                  const minAttrs = colMinAttrs(dc.key)
                   return (
-
-                    <td key={dc.key} className="tableFooterCell tableFooterLabel">
-
+                    <td
+                      key={dc.key}
+                      className="tableFooterCell tableFooterLabel"
+                      data-col-min={minAttrs['data-col-min']}
+                      style={minAttrs.style}
+                    >
                       {t('tableFooterTotal')}
-
                     </td>
-
                   )
-
                 }
 
+                const minAttrsEmpty = colMinAttrs(dc.key)
                 return (
-
-                  <td key={dc.key} className="tableFooterCell">
-
+                  <td
+                    key={dc.key}
+                    className="tableFooterCell"
+                    data-col-min={minAttrsEmpty['data-col-min']}
+                    style={minAttrsEmpty.style}
+                  >
                     —
-
                   </td>
-
                 )
 
               })}

@@ -7,8 +7,8 @@ const {
   municipalityPatchSchema,
   dairaCreateSchema,
   dairaPatchSchema,
-  modiriyaCreateSchema,
-  modiriyaPatchSchema,
+  directionCreateSchema,
+  directionPatchSchema,
   userCreateSchema,
   userPatchSchema
 } = require("../validation/schemas/adminCrud");
@@ -27,6 +27,8 @@ const {
   rapportTypePatchSchema
 } = require("../validation/schemas/schemaConfig");
 const { serviceCreateSchema, servicePatchSchema, serviceGrantsSchema, departmentCreateSchema, departmentPatchSchema } = require("../validation/schemas/serviceAdmin");
+const { singleUpload } = require("../middleware/upload");
+const guideVideoService = require("../modules/guideVideos/guideVideoService");
 
 const adminRouter = express.Router();
 adminRouter.use(requireAuth, attachUser, checkBlocked, requireRole("ADMIN"));
@@ -67,22 +69,52 @@ adminRouter.patch(
   }
 );
 
-adminRouter.get("/modiriyat", requirePermission("organization.municipalities.view", "view"), async (req, res, next) => {
+adminRouter.post(
+  "/dairas/:id/hide",
+  requirePermission("organization.municipalities.manage", "manage"),
+  async (req, res, next) => {
+    try {
+      const daira = await org.hideDaira(req.params.id, req.user, req);
+      res.json({ daira });
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+adminRouter.post(
+  "/dairas/:id/restore",
+  requirePermission("organization.municipalities.manage", "manage"),
+  async (req, res, next) => {
+    try {
+      const daira = await org.restoreDaira(req.params.id, req.user, req);
+      res.json({ daira });
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+adminRouter.get("/directions", requirePermission("organization.municipalities.view", "view"), async (req, res, next) => {
   try {
-    res.json(await org.listModiriyat(req.query));
+    res.json(await org.listDirections(req.query));
   } catch (e) {
     next(e);
   }
 });
 
 adminRouter.post(
-  "/modiriyat",
+  "/directions",
   requirePermission("organization.municipalities.manage", "manage"),
-  validateBody(modiriyaCreateSchema),
+  validateBody(directionCreateSchema),
   async (req, res, next) => {
     try {
-      const modiriya = await org.createModiriya(req.validatedBody, req.user, req);
-      res.json({ modiriya });
+      const direction = await org.createDirection(req.validatedBody, req.user, req);
+      res.json({ direction });
     } catch (e) {
       next(e);
     }
@@ -90,17 +122,47 @@ adminRouter.post(
 );
 
 adminRouter.patch(
-  "/modiriyat/:id",
+  "/directions/:id",
   requirePermission("organization.municipalities.manage", "manage"),
-  validateBody(modiriyaPatchSchema),
+  validateBody(directionPatchSchema),
   async (req, res, next) => {
     try {
-      const modiriya = await org.updateModiriya(req.params.id, req.validatedBody, req.user, req);
-      res.json({ modiriya });
+      const direction = await org.updateDirection(req.params.id, req.validatedBody, req.user, req);
+      res.json({ direction });
     } catch (e) {
       next(e);
     }
   }
+);
+
+adminRouter.post(
+  "/directions/:id/hide",
+  requirePermission("organization.municipalities.manage", "manage"),
+  async (req, res, next) => {
+    try {
+      const direction = await org.hideDirection(req.params.id, req.user, req);
+      res.json({ direction });
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+adminRouter.post(
+  "/directions/:id/restore",
+  requirePermission("organization.municipalities.manage", "manage"),
+  async (req, res, next) => {
+    try {
+      const direction = await org.restoreDirection(req.params.id, req.user, req);
+      res.json({ direction });
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
 );
 
 adminRouter.get("/municipalities", requirePermission("organization.municipalities.view", "view"), async (req, res, next) => {
@@ -137,6 +199,36 @@ adminRouter.patch(
       next(e);
     }
   }
+);
+
+adminRouter.post(
+  "/municipalities/:id/hide",
+  requirePermission("organization.municipalities.manage", "manage"),
+  async (req, res, next) => {
+    try {
+      const municipality = await org.hideMunicipality(req.params.id, req.user, req);
+      res.json({ municipality });
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+adminRouter.post(
+  "/municipalities/:id/restore",
+  requirePermission("organization.municipalities.manage", "manage"),
+  async (req, res, next) => {
+    try {
+      const municipality = await org.restoreMunicipality(req.params.id, req.user, req);
+      res.json({ municipality });
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
 );
 
 adminRouter.get("/users", requirePermission("organization.users.view", "view"), async (req, res, next) => {
@@ -431,6 +523,70 @@ adminRouter.get("/access/role-templates", async (req, res, next) => {
     const rows = await AccessRoleTemplate.findAll({ where: { is_active: true }, order: [["id", "ASC"]] });
     res.json({ roleTemplates: rows });
   } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/guide-videos", async (req, res, next) => {
+  try {
+    res.json(await guideVideoService.listGuideVideos(req.query, req.user.role));
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 403) return res.status(403).json({ error: e.message });
+    next(e);
+  }
+});
+
+adminRouter.post("/guide-videos", singleUpload("file"), async (req, res, next) => {
+  try {
+    if (!req.file?.buffer) return res.status(400).json({ error: "File required" });
+    const body = guideVideoService.parseMultipartBody(req);
+    const video = await guideVideoService.createGuideVideo(
+      {
+        fileBuffer: req.file.buffer,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        body
+      },
+      req.user,
+      req
+    );
+    res.status(201).json({ video });
+  } catch (e) {
+    if (e.status === 413) return res.status(413).json({ error: e.message });
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+adminRouter.patch("/guide-videos/:id", singleUpload("file"), async (req, res, next) => {
+  try {
+    const body = guideVideoService.parseMultipartBody(req);
+    const video = await guideVideoService.patchGuideVideo(
+      req.params.id,
+      {
+        fileBuffer: req.file?.buffer || null,
+        originalName: req.file?.originalname,
+        mimeType: req.file?.mimetype,
+        body
+      },
+      req.user,
+      req
+    );
+    res.json({ video });
+  } catch (e) {
+    if (e.status === 413) return res.status(413).json({ error: e.message });
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 404) return res.status(404).json({ error: e.message });
+    next(e);
+  }
+});
+
+adminRouter.delete("/guide-videos/:id", async (req, res, next) => {
+  try {
+    res.json(await guideVideoService.deleteGuideVideo(req.params.id, req.user, req));
+  } catch (e) {
+    if (e.status === 404) return res.status(404).json({ error: e.message });
     next(e);
   }
 });

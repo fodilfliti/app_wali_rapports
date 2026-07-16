@@ -1,6 +1,6 @@
 /** Prefixed entity keys for commune_list data_json */
 
-const KINDS = ["commune", "daira", "modiriya"];
+const KINDS = ["commune", "daira", "direction"];
 
 function normalizeTargetKinds(raw) {
   const arr = Array.isArray(raw) ? raw : raw ? [raw] : ["commune"];
@@ -25,10 +25,16 @@ function parseEntityKey(key) {
 
 function ensureEntitiesMap(dataJson) {
   const data = dataJson && typeof dataJson === "object" ? { ...dataJson } : {};
+  const communes =
+    data.communes && typeof data.communes === "object" ? { ...data.communes } : {};
   if (data.entities && typeof data.entities === "object") {
-    return data;
+    const entities = { ...data.entities };
+    for (const [code, val] of Object.entries(communes)) {
+      const key = entityKey("commune", code);
+      if (!(key in entities)) entities[key] = val;
+    }
+    return { ...data, entities, communes };
   }
-  const communes = data.communes && typeof data.communes === "object" ? data.communes : {};
   const entities = {};
   for (const [code, val] of Object.entries(communes)) {
     entities[entityKey("commune", code)] = val;

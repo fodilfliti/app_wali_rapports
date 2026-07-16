@@ -30,12 +30,36 @@ function serializeBroadcast(row, extras = {}) {
   };
 }
 
+const BROADCAST_RECIPIENT_ROLES = ["OFFICE_USER", "CHEF_CABINET"];
+
+function isBroadcastRecipientRole(role) {
+  return BROADCAST_RECIPIENT_ROLES.includes(role);
+}
+
 async function listOfficeUsers() {
   return User.findAll({
-    where: { role: "OFFICE_USER", is_blocked: false },
-    attributes: ["id", "name", "username"],
+    where: { role: { [Op.in]: BROADCAST_RECIPIENT_ROLES }, is_blocked: false },
+    attributes: ["id", "name", "username", "role"],
     order: [["name", "ASC"]]
   });
+}
+
+async function resolveRecipientIds(body) {
+  if (body.all_users) {
+    const users = await listOfficeUsers();
+    return users.map((u) => u.id);
+  }
+  const requested = (body.recipient_user_ids || []).map(Number).filter(Boolean);
+  if (!requested.length) return [];
+  const users = await User.findAll({
+    where: {
+      id: { [Op.in]: requested },
+      role: { [Op.in]: BROADCAST_RECIPIENT_ROLES },
+      is_blocked: false
+    },
+    attributes: ["id"]
+  });
+  return users.map((u) => u.id);
 }
 
 async function createBroadcast({ fileBuffer, originalName, mimeType, body }, actor, req) {
@@ -48,13 +72,7 @@ async function createBroadcast({ fileBuffer, originalName, mimeType, body }, act
     req
   });
 
-  let recipientIds = [];
-  if (body.all_users) {
-    const users = await listOfficeUsers();
-    recipientIds = users.map((u) => u.id);
-  } else {
-    recipientIds = (body.recipient_user_ids || []).map(Number).filter(Boolean);
-  }
+  const recipientIds = await resolveRecipientIds(body);
   if (!recipientIds.length) {
     const err = new Error("No recipients");
     err.status = 400;
@@ -125,9 +143,14 @@ async function getBroadcastDetail(broadcastId, actor) {
   };
 
   let readAt = null;
-  if (actor.role === "OFFICE_USER") {
+  if (isBroadcastRecipientRole(actor.role)) {
     const mine = recipients.find((r) => Number(r.user_id) === Number(actor.id));
-    readAt = mine?.read_at || null;
+    if (!mine) {
+      const err = new Error("Forbidden");
+      err.status = 403;
+      throw err;
+    }
+    readAt = mine.read_at || null;
   }
 
   return serializeBroadcast(broadcast, {
@@ -214,7 +237,7 @@ async function addComment(broadcastId, bodyText, actor) {
     err.status = 403;
     throw err;
   }
-  if (actor.role === "OFFICE_USER") {
+  if (isBroadcastRecipientRole(actor.role)) {
     const rec = await getRecipientRow(broadcastId, actor.id);
     if (!rec) {
       const err = new Error("Forbidden");

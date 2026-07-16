@@ -73,6 +73,36 @@ export function OfficeNotificationsBell({ token }: Props) {
   )
 }
 
+export function OfficeDiscussionBell({ token }: Props) {
+  const { t } = useTranslation()
+  const { counts } = useOfficeHubCounts(token)
+  const discussion = counts.unread_discussion || 0
+  const discLabel = discussion > 99 ? '99+' : String(discussion)
+  const discAria =
+    discussion > 0
+      ? t('unreadDiscussionBellWithCount', { count: discLabel })
+      : t('unreadDiscussionBell')
+
+  return (
+    <Link
+      className="btn btn-ghost notifBell"
+      to="/office/rapports?view=discussion"
+      title={discAria}
+      aria-label={discAria}
+    >
+      <span className="notifBellIconWrap">
+        <HubIcon name="notifications" className="notifBellIcon" />
+        {discussion > 0 ? (
+          <span className="notifBellCount notifBellCount--accent" aria-hidden="true">
+            {discLabel}
+          </span>
+        ) : null}
+      </span>
+      <span className="notifBellLabel">{t('navDiscussion')}</span>
+    </Link>
+  )
+}
+
 export function OfficeNotificationsPage({ token }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()

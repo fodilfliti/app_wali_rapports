@@ -8,7 +8,7 @@ import { DocumentTemplatePickModal } from './DocumentTemplatePickModal'
 import { TablePagination } from './TablePagination'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
-import { hasBilingualText } from '../utils/bilingual'
+import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
 
 type Props = {
   token: string
@@ -82,9 +82,10 @@ export function DocumentTemplatesSection({
       snack.show(t('bilingualLabelRequired'), 'error')
       return
     }
+    const names = bilingualPairForSave(form.name_ar, form.name_fr)
     const body = {
-      name_ar: form.name_ar.trim() || form.name_fr.trim(),
-      name_fr: form.name_fr.trim() || form.name_ar.trim(),
+      name_ar: names.ar,
+      name_fr: names.fr,
       content_kind: form.content_kind || null,
       rapport_type_ids: (form.rapport_type_ids || []).map(Number).filter(Boolean),
       is_default: form.is_default,
@@ -201,14 +202,14 @@ export function DocumentTemplatesSection({
                     <td>
                       <button
                         type="button"
-                        className="btn btn-secondary btn-sm"
+                        className="btn btn-primary btn-sm"
                         onClick={() => openEdit(tpl)}
                       >
                         {t('edit')}
                       </button>{' '}
                       <button
                         type="button"
-                        className="btn btn-ghost btn-sm"
+                        className="btn btn-danger btn-sm"
                         onClick={() => removeTemplate(tpl.id)}
                       >
                         {t('delete')}

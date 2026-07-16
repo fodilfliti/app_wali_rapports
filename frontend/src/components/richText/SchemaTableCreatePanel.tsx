@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../../api'
+import { ENABLE_FR_VALUE_INPUTS } from '../../config/features'
 import { SchemaColumnsEditor, validateDraftColumns, type DraftSchemaColumn } from '../SchemaColumnsEditor'
 import type { EmbeddedTable } from '../../types/embeddedTable'
 import { emptyRowsForColumns } from '../../types/embeddedTable'
@@ -120,7 +121,7 @@ export function SchemaTableCreatePanel({ token, serviceId, onCreated, onError, l
 
       <section className="schemaTableNameSection">
         <h3 className="schemaSectionTitle">{t('schemaTableNameSection')}</h3>
-        <div className="schemaMetaGrid">
+        <div className={`schemaMetaGrid${ENABLE_FR_VALUE_INPUTS ? '' : ' schemaMetaGrid--arOnly'}`}>
           <label>
             <span className="fieldLabel">{t('schemaTableNameAr')}</span>
             <input
@@ -129,14 +130,16 @@ export function SchemaTableCreatePanel({ token, serviceId, onCreated, onError, l
               placeholder={t('schemaTableNameArPh')}
             />
           </label>
-          <label>
-            <span className="fieldLabel">{t('schemaTableNameFr')}</span>
-            <input
-              value={schemaForm.name_fr}
-              onChange={(e) => setSchemaForm({ ...schemaForm, name_fr: e.target.value })}
-              placeholder={t('schemaTableNameFrPh')}
-            />
-          </label>
+          {ENABLE_FR_VALUE_INPUTS ? (
+            <label>
+              <span className="fieldLabel">{t('schemaTableNameFr')}</span>
+              <input
+                value={schemaForm.name_fr}
+                onChange={(e) => setSchemaForm({ ...schemaForm, name_fr: e.target.value })}
+                placeholder={t('schemaTableNameFrPh')}
+              />
+            </label>
+          ) : null}
         </div>
       </section>
 

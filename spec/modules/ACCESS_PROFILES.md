@@ -21,7 +21,7 @@
 - `hub.dashboard`
 - `organization.municipalities.view|manage`
 - `organization.dairas.view|manage`
-- `organization.modiriyat.view|manage`
+- `organization.directions.view|manage`
 - `organization.users.view|manage`
 - `organization.access_roles.manage`
 - `rapports.investissement.view|manage|export`

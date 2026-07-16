@@ -1,4 +1,4 @@
-export const ENTITY_TARGET_KINDS = ['commune', 'daira', 'modiriya'] as const
+export const ENTITY_TARGET_KINDS = ['commune', 'daira', 'direction'] as const
 
 export type EntityTargetKind = (typeof ENTITY_TARGET_KINDS)[number]
 
@@ -31,7 +31,7 @@ export function listEntityUnitKey(kinds: unknown): string {
   if (arr.length === 1) {
     if (arr[0] === 'commune') return 'listUnit_commune'
     if (arr[0] === 'daira') return 'listUnit_daira'
-    if (arr[0] === 'modiriya') return 'listUnit_modiriya'
+    if (arr[0] === 'direction') return 'listUnit_direction'
   }
   return 'listUnit_mixed'
 }

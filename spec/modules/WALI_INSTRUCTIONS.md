@@ -53,6 +53,7 @@ Wali sends operational instructions to all or selected office users: title, desc
 
 ### UI/UX
 
+- Create form `title_fr` / `body_fr` inputs respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 - Wali hub tile **تعليمات** → create form (title, description, files, recipient multi-select).
 - Office: separate section **تعليمات السيد الوالي** (not mixed into rapport feedback list); hub + header use `unread_instructions` only for this channel.
 - **All roles (office / wali / chef)** open instruction cards in an **in-page modal** (title, body, attachments; wali also shows recipients). Detail routes `/:id` redirect to the list and auto-open that modal.

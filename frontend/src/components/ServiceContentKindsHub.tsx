@@ -9,6 +9,7 @@ import {
   CONTENT_KINDS_ORDER,
   localizedRapportTypeName,
   rapportTypeHubIcon,
+  rapportTypeHubKindClass,
   sortRapportTypesForDisplay,
   type RapportTypeNav,
 } from '../utils/rapportNavigation'
@@ -64,7 +65,7 @@ export function ServiceContentKindsHub({
         {mode === 'office' && showConfig ? (
           <>
             <Link
-              className="btn btn-primary"
+              className="btn btn-accent"
               to={`/office/services/${service.id}/config?new=schema`}
             >
               {t('createSchema')}
@@ -77,7 +78,7 @@ export function ServiceContentKindsHub({
             </Link>
             {ENABLE_DOCUMENT_TEMPLATES ? (
               <Link
-                className="btn btn-primary"
+                className="btn btn-secondary"
                 to={`/office/services/${service.id}/config?new=template`}
               >
                 {t('createDocumentTemplate')}
@@ -124,13 +125,14 @@ export function ServiceContentKindsHub({
                   <HubTileWithMenu
                     key={rt.id}
                     to={rapportTypePath(rt)}
-                    icon={rapportTypeHubIcon(rt.content_kind)}
+                    icon={rapportTypeHubIcon(rt)}
                     title={localizedRapportTypeName(rt, i18n.language)}
                     dimmed={Boolean(rt.hidden_at)}
                     rapportType={rt}
                     canManageType={canManageTypes}
                     onHideType={onHideType}
                     onRestoreType={onRestoreType}
+                    className={rapportTypeHubKindClass(rt)}
                     badge={
                       Number(rt.action_count) > 0 ? (
                         <HubCountBadge count={Number(rt.action_count)} />

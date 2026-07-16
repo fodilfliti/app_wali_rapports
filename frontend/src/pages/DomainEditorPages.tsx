@@ -14,6 +14,7 @@ import { ENABLE_DOCUMENT_TEMPLATES } from "../config/features";
 import { BackButton } from "../components/BackButton";
 import { WaliRespondModal } from "../components/WaliRespondModal";
 import { WaliResponsesSection } from "../components/WaliResponsesSection";
+import type { ReviewResponseRow } from "../components/WaliResponsesSection";
 import {
   RapportDiscussionSection,
   isDiscussionEnabledByStatus,
@@ -67,6 +68,10 @@ import {
   officeServiceHubPath,
   rapportTypesForContentKind,
 } from "../utils/rapportNavigation";
+import {
+  activeRemarksVersionId,
+  filterResponsesByVersionId,
+} from "../utils/reviewResponses";
 import { RapportListScopeFilter } from "../components/RapportListScopeFilter";
 import { RapportRowHideActions } from "../components/RapportRowHideActions";
 import { RapportTypeHideActions } from "../components/RapportTypeHideActions";
@@ -113,6 +118,7 @@ export function OfficeTableGridPage({ token }: Props) {
   const [rowFilterMode, setRowFilterMode] =
     useState<TableRowFilterMode>("active");
   const [finishing, setFinishing] = useState(false);
+  const [returningToDraft, setReturningToDraft] = useState(false);
 
   const load = useCallback(async () => {
     if (!sid) return;
@@ -235,6 +241,21 @@ export function OfficeTableGridPage({ token }: Props) {
     }
   }
 
+  async function returnCurrentToDraft() {
+    if (!workspace?.rapport?.id) return;
+    setReturningToDraft(true);
+    try {
+      await api.returnRapportToDraft(token, workspace.rapport.id);
+      notifyHubCountsRefresh();
+      snack.show(t("returnToDraftDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setReturningToDraft(false);
+    }
+  }
+
   async function hideTypeFromPage(typeId: number) {
     try {
       await api.hideRapportType(token, typeId);
@@ -263,6 +284,30 @@ export function OfficeTableGridPage({ token }: Props) {
   const mergeKeys = tableMeta.merge_column_keys || [];
   const versionRows = workspace?.versions || [];
   const finishedRowCount = countFinishedRows(rows);
+  const tableRemarksVersionId = useMemo(() => {
+    const chef = workspace?.rapport?.chefResponses || [];
+    const wali = workspace?.rapport?.waliResponses || [];
+    return activeRemarksVersionId(workspace?.rapport, versionRows, [
+      ...chef,
+      ...wali,
+    ]);
+  }, [workspace?.rapport, versionRows]);
+  const tableChefResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        (workspace?.rapport?.chefResponses || []) as ReviewResponseRow[],
+        tableRemarksVersionId,
+      ),
+    [workspace?.rapport?.chefResponses, tableRemarksVersionId],
+  );
+  const tableWaliResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        (workspace?.rapport?.waliResponses || []) as ReviewResponseRow[],
+        tableRemarksVersionId,
+      ),
+    [workspace?.rapport?.waliResponses, tableRemarksVersionId],
+  );
 
   function updateRow(idx: number, key: string, value: unknown) {
     setRows((prev) =>
@@ -398,6 +443,9 @@ export function OfficeTableGridPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             editable={isEditable}
+            canManage={workspace?.accessLevel === "manage"}
+            onReturnToDraft={returnCurrentToDraft}
+            returning={returningToDraft}
             onFinish={finishCurrentRapport}
             finishing={finishing}
           />
@@ -467,8 +515,8 @@ export function OfficeTableGridPage({ token }: Props) {
           />
 
           <WaliResponsesSection
-            chefResponses={workspace?.rapport?.chefResponses || []}
-            responses={workspace?.rapport?.waliResponses || []}
+            chefResponses={tableChefResponses}
+            responses={tableWaliResponses}
           />
           {workspace?.rapport?.id ? (
             <RapportDiscussionSection
@@ -865,7 +913,7 @@ export function OfficeDocumentsPage({
                   <td>{r.status}</td>
                   <td>
                     <Link
-                      className="btn btn-ghost"
+                      className={`btn btn-sm ${canEdit ? 'btn-primary' : 'btn-secondary'}`}
                       to={`/office/rapports/${r.id}/document`}
                     >
                       {canEdit ? t("edit") : t("details")}
@@ -941,8 +989,10 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [importPickOpen, setImportPickOpen] = useState(false);
   const [waliResponses, setWaliResponses] = useState<any[]>([]);
+  const [chefResponses, setChefResponses] = useState<any[]>([]);
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
+  const [returningToDraft, setReturningToDraft] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
@@ -971,6 +1021,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         setTitle(r.rapport?.title || "");
         setCanEdit(r.accessLevel === "manage");
         setWaliResponses(r.rapport?.waliResponses || []);
+        setChefResponses(r.rapport?.chefResponses || []);
         const dj =
           r.rapport?.currentVersion?.data_json ||
           r.rapport?.versions?.[0]?.data_json ||
@@ -1074,6 +1125,22 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     ? officeServiceHubPath(rapport.service_id)
     : "/office/services";
 
+  const docRemarksVersionId = useMemo(
+    () =>
+      activeRemarksVersionId(rapport, versions, [
+        ...chefResponses,
+        ...waliResponses,
+      ]),
+    [rapport, versions, chefResponses, waliResponses],
+  );
+  const docChefResponses = useMemo(
+    () => filterResponsesByVersionId(chefResponses, docRemarksVersionId),
+    [chefResponses, docRemarksVersionId],
+  );
+  const docWaliResponses = useMemo(
+    () => filterResponsesByVersionId(waliResponses, docRemarksVersionId),
+    [waliResponses, docRemarksVersionId],
+  );
   async function finishCurrentRapport() {
     setFinishing(true);
     try {
@@ -1089,6 +1156,20 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       snack.show(t("errorGeneric"), "error");
     } finally {
       setFinishing(false);
+    }
+  }
+
+  async function returnCurrentToDraft() {
+    setReturningToDraft(true);
+    try {
+      await api.returnRapportToDraft(token, rid);
+      notifyHubCountsRefresh();
+      snack.show(t("returnToDraftDone"), "success");
+      loadCurrent();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setReturningToDraft(false);
     }
   }
 
@@ -1153,6 +1234,9 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       <RapportOfficeStatusBanner
         rapport={rapport}
         editable={!!editable}
+        canManage={canEdit}
+        onReturnToDraft={returnCurrentToDraft}
+        returning={returningToDraft}
         onFinish={finishCurrentRapport}
         finishing={finishing}
       />
@@ -1225,8 +1309,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       />
 
       <WaliResponsesSection
-        chefResponses={rapport?.chefResponses || []}
-        responses={waliResponses}
+        chefResponses={docChefResponses}
+        responses={docWaliResponses}
       />
       {rid ? (
         <RapportDiscussionSection
@@ -1325,6 +1409,30 @@ export function WaliRapportViewPage({
   );
   const waliResponses = view?.waliResponses || [];
   const chefResponses = view?.chefResponses || view?.rapport?.chefResponses || [];
+  const viewRemarksVersionId = useMemo(
+    () =>
+      activeRemarksVersionId(view?.rapport, view?.versions || [], [
+        ...chefResponses,
+        ...waliResponses,
+      ]),
+    [view?.rapport, view?.versions, chefResponses, waliResponses],
+  );
+  const scopedChefResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        chefResponses as ReviewResponseRow[],
+        viewRemarksVersionId,
+      ),
+    [chefResponses, viewRemarksVersionId],
+  );
+  const scopedWaliResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        waliResponses as ReviewResponseRow[],
+        viewRemarksVersionId,
+      ),
+    [waliResponses, viewRemarksVersionId],
+  );
   const documentDataJson = view?.rapport?.currentVersion?.data_json || {};
   const documentViewData = {
     rich_html_ar: documentDataJson.rich_html_ar,
@@ -1550,7 +1658,10 @@ export function WaliRapportViewPage({
       <CalendarEventsView events={view?.calendarEvents || []} />
 
       {isReviewer ? (
-        <WaliResponsesSection chefResponses={chefResponses} responses={waliResponses} />
+        <WaliResponsesSection
+          chefResponses={scopedChefResponses}
+          responses={scopedWaliResponses}
+        />
       ) : null}
 
       {isReviewer && rid ? (

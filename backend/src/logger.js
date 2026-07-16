@@ -6,12 +6,34 @@ let logger;
 function getLogger() {
   if (!logger) {
     const env = getEnv();
+    const isProd = env.nodeEnv === "production";
     logger = pino({
       level: env.logLevel,
-      transport:
-        env.nodeEnv !== "production"
-          ? { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:standard" } }
-          : undefined
+      base: { service: "wali-api", env: env.nodeEnv },
+      timestamp: pino.stdTimeFunctions.isoTime,
+      redact: {
+        paths: [
+          "req.headers.authorization",
+          "req.headers.cookie",
+          "password",
+          "password_hash",
+          "*.password",
+          "*.password_hash",
+        ],
+        remove: true,
+      },
+      transport: !isProd
+        ? {
+            target: "pino-pretty",
+            options: {
+              colorize: true,
+              translateTime: "SYS:standard",
+              singleLine: true,
+              ignore: "pid,hostname,service,env",
+              messageFormat: "{msg}",
+            },
+          }
+        : undefined,
     });
   }
   return logger;

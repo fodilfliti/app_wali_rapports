@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
-import { hasBilingualText } from '../utils/bilingual'
+import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
+import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
 import { BackButton } from '../components/BackButton'
 import { ExpandableHelp } from '../components/ExpandableHelp'
 import { TablePagination } from '../components/TablePagination'
@@ -68,10 +69,11 @@ export function AdminServicesPage({ token }: Props) {
       return
     }
     try {
+      const names = bilingualPairForSave(form.name_ar, form.name_fr)
       await api.createAdminService(token, {
         department_id: null,
-        name_ar: form.name_ar.trim() || form.name_fr.trim(),
-        name_fr: form.name_fr.trim() || form.name_ar.trim(),
+        name_ar: names.ar,
+        name_fr: names.fr,
         is_folder: form.is_folder,
         parent_service_id: form.is_folder || !form.parent_service_id ? null : Number(form.parent_service_id),
         sort_order: Number(form.sort_order) || 0,
@@ -100,9 +102,10 @@ export function AdminServicesPage({ token }: Props) {
       return
     }
     try {
+      const names = bilingualPairForSave(editForm.name_ar, editForm.name_fr)
       await api.patchAdminService(token, editingService.id, {
-        name_ar: editForm.name_ar.trim() || editForm.name_fr.trim(),
-        name_fr: editForm.name_fr.trim() || editForm.name_ar.trim(),
+        name_ar: names.ar,
+        name_fr: names.fr,
         department_id: null,
       })
       setEditOpen(false)
@@ -216,11 +219,11 @@ export function AdminServicesPage({ token }: Props) {
                   </td>
                   <td className="actionsCell">
                     <div className="actionsCellInner">
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditService(s)}>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => openEditService(s)}>
                         {t('editService')}
                       </button>
                       {!s.is_folder ? (
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openGrants(s)}>
+                        <button type="button" className="btn btn-accent btn-sm" onClick={() => openGrants(s)}>
                           {t('shareService')}
                         </button>
                       ) : (s.grant_count ?? 0) > 0 ? (
@@ -228,7 +231,7 @@ export function AdminServicesPage({ token }: Props) {
                       ) : null}
                       <button
                         type="button"
-                        className="btn btn-ghost btn-sm btn-danger-text"
+                        className="btn btn-danger btn-sm"
                         onClick={() => setDeleteTarget(s)}
                       >
                         {t('deleteService')}
@@ -259,10 +262,12 @@ export function AdminServicesPage({ token }: Props) {
               <span className="fieldLabel">{t('municipalityNameAr')}</span>
               <input value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} />
             </label>
-            <label>
-              <span className="fieldLabel">{t('municipalityNameFr')}</span>
-              <input value={form.name_fr} onChange={(e) => setForm({ ...form, name_fr: e.target.value })} />
-            </label>
+            {ENABLE_FR_VALUE_INPUTS ? (
+              <label>
+                <span className="fieldLabel">{t('municipalityNameFr')}</span>
+                <input value={form.name_fr} onChange={(e) => setForm({ ...form, name_fr: e.target.value })} />
+              </label>
+            ) : null}
 
             <fieldset className="serviceTypePick">
               <legend className="fieldLabel">{t('serviceTypeLabel')}</legend>
@@ -332,13 +337,15 @@ export function AdminServicesPage({ token }: Props) {
                 onChange={(e) => setEditForm({ ...editForm, name_ar: e.target.value })}
               />
             </label>
-            <label>
-              <span className="fieldLabel">{t('municipalityNameFr')}</span>
-              <input
-                value={editForm.name_fr}
-                onChange={(e) => setEditForm({ ...editForm, name_fr: e.target.value })}
-              />
-            </label>
+            {ENABLE_FR_VALUE_INPUTS ? (
+              <label>
+                <span className="fieldLabel">{t('municipalityNameFr')}</span>
+                <input
+                  value={editForm.name_fr}
+                  onChange={(e) => setEditForm({ ...editForm, name_fr: e.target.value })}
+                />
+              </label>
+            ) : null}
             <div className="modalActions">
               <button type="button" className="btn btn-primary" onClick={saveEditService}>
                 {t('save')}

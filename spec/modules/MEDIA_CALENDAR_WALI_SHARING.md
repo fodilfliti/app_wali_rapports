@@ -73,7 +73,11 @@ Recorded when Wali opens a rapport. Exposed to Wali on rapport detail. Unique in
 
 ### Wali broadcasts
 
-Wali uploads a file and shares with all office users or selected recipients.
+Wali uploads a file and shares with all eligible recipients or selected users.
+
+**Recipients:** non-blocked `OFFICE_USER` **and** `CHEF_CABINET`. The recipient picker (`GET /wali/office-users-for-share`) and “all users” create both include Chef. Chef cannot create broadcasts; they receive via `/chef/broadcasts` / UI `/chef/shared`.
+
+Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 
 #### `wali_broadcasts`
 
@@ -122,4 +126,7 @@ Wali uploads a file and shares with all office users or selected recipients.
 | GET | `/wali/broadcasts` | Wali list + read stats |
 | GET | `/office/broadcasts` | Office inbox |
 | POST | `/office/broadcasts/:id/read` | Mark read |
+| GET | `/chef/broadcasts` | Chef recipient inbox |
+| GET | `/chef/broadcasts/:id` | Chef detail |
+| POST | `/chef/broadcasts/:id/read` | Chef mark read |
 | POST | `/*/broadcasts/:id/comments` | Add comment |

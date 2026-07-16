@@ -1,8 +1,9 @@
 const { Op } = require("sequelize");
 const bcrypt = require("bcryptjs");
-const { Municipality, User, Daira, Modiriya } = require("../../db");
+const { Municipality, User, Daira, Direction } = require("../../db");
 const { audit } = require("../../services/audit");
 const { generateCredentialsPdf } = require("../../services/credentialsPdfService");
+const { revokeAllForUser } = require("../auth/refreshTokenService");
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -18,9 +19,38 @@ function refSearchWhere(q) {
   };
 }
 
+function applyHiddenScope(where, query) {
+  if (query.hidden_only === "1" || query.hidden_only === "true") {
+    where.hidden_at = { [Op.ne]: null };
+  } else if (query.include_hidden === "1" || query.include_hidden === "true") {
+    // no filter
+  } else {
+    where.hidden_at = null;
+  }
+  return where;
+}
+
+function notFound() {
+  const err = new Error("Not found");
+  err.status = 404;
+  throw err;
+}
+
+function alreadyHidden() {
+  const err = new Error("alreadyHidden");
+  err.status = 409;
+  throw err;
+}
+
+function notHidden() {
+  const err = new Error("notHidden");
+  err.status = 409;
+  throw err;
+}
+
 async function listDairas(query) {
   const { page, pageSize, offset, limit } = parsePagination(query);
-  const where = refSearchWhere(query.q);
+  const where = applyHiddenScope(refSearchWhere(query.q), query);
   const { rows, count } = await Daira.findAndCountAll({
     where,
     order: [["code", "ASC"]],
@@ -42,11 +72,7 @@ async function createDaira(data, actor, req) {
 
 async function updateDaira(id, data, actor, req) {
   const row = await Daira.findByPk(id);
-  if (!row) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  if (!row) notFound();
   await row.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
@@ -56,8 +82,45 @@ async function updateDaira(id, data, actor, req) {
   return row;
 }
 
-async function nextModiriyaCode() {
-  const rows = await Modiriya.findAll({ attributes: ["code"], raw: true });
+async function hideDaira(id, actor, req) {
+  const row = await Daira.findByPk(id);
+  if (!row) notFound();
+  if (row.hidden_at) alreadyHidden();
+  const now = new Date();
+  await row.update({ hidden_at: now });
+  const [cascadeCount] = await Municipality.update(
+    { hidden_at: now },
+    { where: { daira_id: row.id, hidden_at: null } },
+  );
+  await audit(
+    actor.id,
+    "DAIRA_HIDE",
+    { daira_id: row.id, communes_cascaded: cascadeCount },
+    { req },
+  );
+  return row;
+}
+
+async function restoreDaira(id, actor, req) {
+  const row = await Daira.findByPk(id);
+  if (!row) notFound();
+  if (!row.hidden_at) notHidden();
+  await row.update({ hidden_at: null });
+  const [cascadeCount] = await Municipality.update(
+    { hidden_at: null },
+    { where: { daira_id: row.id, hidden_at: { [Op.ne]: null } } },
+  );
+  await audit(
+    actor.id,
+    "DAIRA_RESTORE",
+    { daira_id: row.id, communes_cascaded: cascadeCount },
+    { req },
+  );
+  return row;
+}
+
+async function nextDirectionCode() {
+  const rows = await Direction.findAll({ attributes: ["code"], raw: true });
   let max = 0;
   for (const r of rows) {
     const n = parseInt(String(r.code || ""), 10);
@@ -66,48 +129,62 @@ async function nextModiriyaCode() {
   return String(max + 1);
 }
 
-async function listModiriyat(query) {
+async function listDirections(query) {
   const { page, pageSize, offset, limit } = parsePagination(query);
-  const where = refSearchWhere(query.q);
-  const { rows, count } = await Modiriya.findAndCountAll({
+  const where = applyHiddenScope(refSearchWhere(query.q), query);
+  const { rows, count } = await Direction.findAndCountAll({
     where,
     order: [["code", "ASC"]],
     offset,
     limit
   });
-  return { modiriyat: rows, total: count, page, pageSize };
+  return { directions: rows, total: count, page, pageSize };
 }
 
-async function createModiriya(data, actor, req) {
-  const code = String(data.code || "").trim() || (await nextModiriyaCode());
-  const row = await Modiriya.create({
+async function createDirection(data, actor, req) {
+  const code = String(data.code || "").trim() || (await nextDirectionCode());
+  const row = await Direction.create({
     name_ar: data.name_ar,
     name_fr: data.name_fr,
     code
   });
-  await audit(actor.id, "MODIRIYA_CREATE", { modiriya_id: row.id, code: row.code }, { req });
+  await audit(actor.id, "DIRECTION_CREATE", { direction_id: row.id, code: row.code }, { req });
   return row;
 }
 
-async function updateModiriya(id, data, actor, req) {
-  const row = await Modiriya.findByPk(id);
-  if (!row) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+async function updateDirection(id, data, actor, req) {
+  const row = await Direction.findByPk(id);
+  if (!row) notFound();
   await row.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
     ...(data.code != null ? { code: data.code } : {})
   });
-  await audit(actor.id, "MODIRIYA_UPDATE", { modiriya_id: row.id }, { req });
+  await audit(actor.id, "DIRECTION_UPDATE", { direction_id: row.id }, { req });
+  return row;
+}
+
+async function hideDirection(id, actor, req) {
+  const row = await Direction.findByPk(id);
+  if (!row) notFound();
+  if (row.hidden_at) alreadyHidden();
+  await row.update({ hidden_at: new Date() });
+  await audit(actor.id, "DIRECTION_HIDE", { direction_id: row.id }, { req });
+  return row;
+}
+
+async function restoreDirection(id, actor, req) {
+  const row = await Direction.findByPk(id);
+  if (!row) notFound();
+  if (!row.hidden_at) notHidden();
+  await row.update({ hidden_at: null });
+  await audit(actor.id, "DIRECTION_RESTORE", { direction_id: row.id }, { req });
   return row;
 }
 
 async function listMunicipalities(query) {
   const { page, pageSize, offset, limit } = parsePagination(query);
-  const where = refSearchWhere(query.q);
+  const where = applyHiddenScope(refSearchWhere(query.q), query);
   if (query.daira_id) where.daira_id = query.daira_id;
   const { rows, count } = await Municipality.findAndCountAll({
     where,
@@ -132,11 +209,7 @@ async function createMunicipality(data, actor, req) {
 
 async function updateMunicipality(id, data, actor, req) {
   const muni = await Municipality.findByPk(id);
-  if (!muni) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  if (!muni) notFound();
   await muni.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
@@ -144,6 +217,24 @@ async function updateMunicipality(id, data, actor, req) {
     ...(data.daira_id != null ? { daira_id: data.daira_id } : {})
   });
   await audit(actor.id, "MUNICIPALITY_UPDATE", { municipality_id: muni.id }, { req });
+  return muni;
+}
+
+async function hideMunicipality(id, actor, req) {
+  const muni = await Municipality.findByPk(id);
+  if (!muni) notFound();
+  if (muni.hidden_at) alreadyHidden();
+  await muni.update({ hidden_at: new Date() });
+  await audit(actor.id, "MUNICIPALITY_HIDE", { municipality_id: muni.id }, { req });
+  return muni;
+}
+
+async function restoreMunicipality(id, actor, req) {
+  const muni = await Municipality.findByPk(id);
+  if (!muni) notFound();
+  if (!muni.hidden_at) notHidden();
+  await muni.update({ hidden_at: null });
+  await audit(actor.id, "MUNICIPALITY_RESTORE", { municipality_id: muni.id }, { req });
   return muni;
 }
 
@@ -240,6 +331,9 @@ async function toggleBlockUser(id, actor, req) {
     throw err;
   }
   await user.update({ is_blocked: !user.is_blocked });
+  if (user.is_blocked) {
+    await revokeAllForUser(user.id);
+  }
   await audit(actor.id, "USER_BLOCK", { user_id: user.id, is_blocked: user.is_blocked }, { req });
   return user;
 }
@@ -253,6 +347,7 @@ async function resetUserPassword(id, actor, req) {
   }
   const newPassword = randomPassword8();
   await user.update({ password_hash: await bcrypt.hash(newPassword, 10) });
+  await revokeAllForUser(user.id);
   const pdf = await generateCredentialsPdf({
     username: user.username,
     name: user.name,
@@ -277,12 +372,18 @@ module.exports = {
   listDairas,
   createDaira,
   updateDaira,
-  listModiriyat,
-  createModiriya,
-  updateModiriya,
+  hideDaira,
+  restoreDaira,
+  listDirections,
+  createDirection,
+  updateDirection,
+  hideDirection,
+  restoreDirection,
   listMunicipalities,
   createMunicipality,
   updateMunicipality,
+  hideMunicipality,
+  restoreMunicipality,
   listUsers,
   createUser,
   updateUser,

@@ -1,5 +1,6 @@
 import { useState, Fragment, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import {
   buildColumnsPayload,
   defaultDraftColumns,
@@ -352,7 +353,7 @@ export function SchemaColumnsEditor({
               </button>
             </div>
 
-            <div className="schemaColumnGrid">
+            <div className={`schemaColumnGrid${ENABLE_FR_VALUE_INPUTS ? '' : ' schemaColumnGrid--arOnly'}`}>
               <label>
                 <span className="fieldLabel">{t('schemaColumnLabelAr')}</span>
                 <input
@@ -361,14 +362,16 @@ export function SchemaColumnsEditor({
                   placeholder={t('schemaColumnLabelArPh')}
                 />
               </label>
-              <label>
-                <span className="fieldLabel">{t('schemaColumnLabelFr')}</span>
-                <input
-                  value={col.label_fr}
-                  onChange={(e) => updateCol(col.uid, { label_fr: e.target.value })}
-                  placeholder={t('schemaColumnLabelFrPh')}
-                />
-              </label>
+              {ENABLE_FR_VALUE_INPUTS ? (
+                <label>
+                  <span className="fieldLabel">{t('schemaColumnLabelFr')}</span>
+                  <input
+                    value={col.label_fr}
+                    onChange={(e) => updateCol(col.uid, { label_fr: e.target.value })}
+                    placeholder={t('schemaColumnLabelFrPh')}
+                  />
+                </label>
+              ) : null}
               <label className="schemaColumnWide">
                 <span className="fieldLabel">{t('schemaColumnType')}</span>
                 <select
@@ -564,18 +567,23 @@ export function SchemaColumnsEditor({
                     <p className="muted small">{t('schemaChoiceOptionsHelp')}</p>
                   </ExpandableHelp>
                   {(col.choices || []).map((ch, choiceIndex) => (
-                    <div key={ch.uid} className="schemaChoiceRow">
+                    <div
+                      key={ch.uid}
+                      className={`schemaChoiceRow${ENABLE_FR_VALUE_INPUTS ? '' : ' schemaChoiceRow--arOnly'}`}
+                    >
                       <span className="schemaChoiceIndex">{choiceIndex + 1}.</span>
                       <input
                         value={ch.label_ar}
                         onChange={(e) => updateChoice(col.uid, ch.uid, { label_ar: e.target.value })}
                         placeholder={t('schemaColumnLabelArPh')}
                       />
-                      <input
-                        value={ch.label_fr}
-                        onChange={(e) => updateChoice(col.uid, ch.uid, { label_fr: e.target.value })}
-                        placeholder={t('schemaColumnLabelFrPh')}
-                      />
+                      {ENABLE_FR_VALUE_INPUTS ? (
+                        <input
+                          value={ch.label_fr}
+                          onChange={(e) => updateChoice(col.uid, ch.uid, { label_fr: e.target.value })}
+                          placeholder={t('schemaColumnLabelFrPh')}
+                        />
+                      ) : null}
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
@@ -651,7 +659,7 @@ export function SchemaColumnsEditor({
                       ×
                     </button>
                   </div>
-                  <div className="schemaColumnGrid">
+                  <div className={`schemaColumnGrid${ENABLE_FR_VALUE_INPUTS ? '' : ' schemaColumnGrid--arOnly'}`}>
                     <label>
                       <span className="fieldLabel">{t('schemaHeaderGroupLabelAr')}</span>
                       <input
@@ -660,14 +668,16 @@ export function SchemaColumnsEditor({
                         placeholder={t('schemaHeaderGroupLabelArPh')}
                       />
                     </label>
-                    <label>
-                      <span className="fieldLabel">{t('schemaHeaderGroupLabelFr')}</span>
-                      <input
-                        value={group.label_fr}
-                        onChange={(e) => updateGroup(group.uid, { label_fr: e.target.value })}
-                        placeholder={t('schemaHeaderGroupLabelFrPh')}
-                      />
-                    </label>
+                    {ENABLE_FR_VALUE_INPUTS ? (
+                      <label>
+                        <span className="fieldLabel">{t('schemaHeaderGroupLabelFr')}</span>
+                        <input
+                          value={group.label_fr}
+                          onChange={(e) => updateGroup(group.uid, { label_fr: e.target.value })}
+                          placeholder={t('schemaHeaderGroupLabelFrPh')}
+                        />
+                      </label>
+                    ) : null}
                   </div>
                   <fieldset className="schemaHeaderGroupColumns">
                     <legend>{t('schemaHeaderGroupColumns')}</legend>

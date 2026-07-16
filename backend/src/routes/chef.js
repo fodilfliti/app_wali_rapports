@@ -14,7 +14,9 @@ const calendarEventService = require("../modules/rapports/calendarEventService")
 const rapportViewService = require("../modules/rapports/rapportViewService");
 const hubCountsService = require("../modules/rapports/hubCountsService");
 const instructionService = require("../modules/rapports/instructionService");
+const broadcastService = require("../modules/rapports/broadcastService");
 const commentService = require("../modules/rapports/commentService");
+const guideVideoService = require("../modules/guideVideos/guideVideoService");
 const workspaceService = require("../modules/rapports/workspaceService");
 const { generateRapportPdf } = require("../services/rapportPdfService");
 const { generateRapportDocx } = require("../services/rapportDocxService");
@@ -103,7 +105,12 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
-      if (req.query.unread_discussion === "1" || req.query.unread_discussion === "true") {
+      const discussionList =
+        req.query.unread_discussion === "1" ||
+        req.query.unread_discussion === "true" ||
+        req.query.has_discussion === "1" ||
+        req.query.has_discussion === "true";
+      if (discussionList) {
         const result = await rapportService.listRapports(req.query, {
           inboxOnly: false,
           discussionUserId: req.user.id,
@@ -377,6 +384,50 @@ chefRouter.get("/instructions/:id", async (req, res, next) => {
   }
 });
 
+chefRouter.get("/broadcasts", async (req, res, next) => {
+  try {
+    const broadcasts = await broadcastService.listForOfficeUser(req.user.id);
+    res.json({ broadcasts });
+  } catch (e) {
+    next(e);
+  }
+});
+
+chefRouter.get("/broadcasts/:id", async (req, res, next) => {
+  try {
+    const broadcast = await broadcastService.getBroadcastDetail(req.params.id, req.user);
+    res.json({ broadcast });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    next(e);
+  }
+});
+
+chefRouter.post("/broadcasts/:id/read", async (req, res, next) => {
+  try {
+    const broadcast = await broadcastService.markBroadcastRead(req.params.id, req.user);
+    res.json({ broadcast });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    next(e);
+  }
+});
+
+chefRouter.post("/broadcasts/:id/comments", async (req, res, next) => {
+  try {
+    const broadcast = await broadcastService.addComment(
+      req.params.id,
+      req.body?.body_text,
+      req.user,
+    );
+    res.json({ broadcast });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
 chefRouter.get(
   "/rapports/:id/comments",
   requirePermission("rapports.inbox.view", "view"),
@@ -410,5 +461,15 @@ chefRouter.post(
     }
   },
 );
+
+chefRouter.get("/guide-videos", async (req, res, next) => {
+  try {
+    res.json(await guideVideoService.listGuideVideos(req.query, req.user.role));
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 403) return res.status(403).json({ error: e.message });
+    next(e);
+  }
+});
 
 module.exports = { chefRouter };

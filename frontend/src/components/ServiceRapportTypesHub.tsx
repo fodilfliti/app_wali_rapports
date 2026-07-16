@@ -11,6 +11,7 @@ import {
   localizedRapportTypeName,
   officeRapportTypePath,
   rapportTypeHubIcon,
+  rapportTypeHubKindClass,
   sortRapportTypesForDisplay,
   type RapportTypeNav,
   waliRapportTypeListPath,
@@ -99,13 +100,14 @@ export function ServiceRapportTypesHub({
                   ? waliRapportTypeListPath(waliUserId, service.id, rt)
                   : '#'
             }
-            icon={rapportTypeHubIcon(rt.content_kind)}
+            icon={rapportTypeHubIcon(rt)}
             title={localizedRapportTypeName(rt, i18n.language)}
             dimmed={Boolean(rt.hidden_at)}
             rapportType={rt}
             canManageType={canManageTypes}
             onHideType={onHideType}
             onRestoreType={onRestoreType}
+            className={rapportTypeHubKindClass(rt)}
             badge={
               Number(rt.action_count) > 0 ? (
                 <HubCountBadge count={Number(rt.action_count)} />

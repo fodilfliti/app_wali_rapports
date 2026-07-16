@@ -14,6 +14,7 @@ import { TableMergeToolbar, TableWorkspace } from "../components/TableGridView";
 import { CommuneBulkAddRowBar } from "../components/CommuneBulkAddRowBar";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import { markOfficeRapportOpened } from "../utils/officeRapportList";
+import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
 import {
   COMMUNE_NAME_COL_KEY,
   buildEmptyCommuneRow,
@@ -50,6 +51,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const [versions, setVersions] = useState<any[]>([]);
   const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
   const [addRowCommuneCode, setAddRowCommuneCode] = useState("");
+  const [returningToDraft, setReturningToDraft] = useState(false);
 
   const listPath = `/office/services/${sid}/communes${
     rapportTypeId || rapportIdParam
@@ -205,6 +207,21 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
     return counts;
   }, [rows]);
 
+  async function returnCurrentToDraft() {
+    if (!workspace?.rapport?.id) return;
+    setReturningToDraft(true);
+    try {
+      await api.returnRapportToDraft(token, workspace.rapport.id);
+      notifyHubCountsRefresh();
+      snack.show(t("returnToDraftDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setReturningToDraft(false);
+    }
+  }
+
   return (
     <div className="page communeBulkEditorPage">
       <div className="pageHeader row compact">
@@ -247,6 +264,9 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             editable={editable}
+            canManage={workspace?.accessLevel === "manage"}
+            onReturnToDraft={returnCurrentToDraft}
+            returning={returningToDraft}
           />
 
           {editable ? (

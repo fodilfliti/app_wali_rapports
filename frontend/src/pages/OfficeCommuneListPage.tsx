@@ -11,6 +11,7 @@ import {
 } from "../components/RapportTitleField";
 import { TablePagination } from "../components/TablePagination";
 import { WaliResponsesSection } from "../components/WaliResponsesSection";
+import type { ReviewResponseRow } from "../components/WaliResponsesSection";
 import {
   RapportDiscussionSection,
   isDiscussionEnabledByStatus,
@@ -25,6 +26,10 @@ import {
   officeEntityEditorPath,
   officeServiceHubPath,
 } from "../utils/rapportNavigation";
+import {
+  activeRemarksVersionId,
+  filterResponsesByVersionId,
+} from "../utils/reviewResponses";
 import { listEntityUnitKey } from "../utils/entityTargets";
 import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
 import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
@@ -58,6 +63,7 @@ export function OfficeCommuneListPage({ token }: Props) {
   const [page, setPage] = useState(1);
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
+  const [returningToDraft, setReturningToDraft] = useState(false);
   const [inclusionOpen, setInclusionOpen] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -124,9 +130,9 @@ export function OfficeCommuneListPage({ token }: Props) {
     () => filterEntities(workspace?.dairas || []),
     [workspace?.dairas, filterEntities],
   );
-  const modiriyat = useMemo(
-    () => filterEntities(workspace?.modiriyat || []),
-    [workspace?.modiriyat, filterEntities],
+  const directions = useMemo(
+    () => filterEntities(workspace?.directions || []),
+    [workspace?.directions, filterEntities],
   );
 
   useEffect(() => {
@@ -143,13 +149,37 @@ export function OfficeCommuneListPage({ token }: Props) {
     () => [
       ...(workspace?.municipalities || []),
       ...(workspace?.dairas || []),
-      ...(workspace?.modiriyat || []),
+      ...(workspace?.directions || []),
     ],
-    [workspace?.municipalities, workspace?.dairas, workspace?.modiriyat],
+    [workspace?.municipalities, workspace?.dairas, workspace?.directions],
   );
   const filledCount = allEntities.filter((m: any) => m.filled).length;
   const changedCount = allEntities.filter((m: any) => m.is_changed).length;
   const totalCount = allEntities.length;
+  const communeRemarksVersionId = useMemo(() => {
+    const chef = workspace?.rapport?.chefResponses || [];
+    const wali = workspace?.rapport?.waliResponses || [];
+    return activeRemarksVersionId(workspace?.rapport, versions, [
+      ...chef,
+      ...wali,
+    ]);
+  }, [workspace?.rapport, versions]);
+  const communeChefResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        (workspace?.rapport?.chefResponses || []) as ReviewResponseRow[],
+        communeRemarksVersionId,
+      ),
+    [workspace?.rapport?.chefResponses, communeRemarksVersionId],
+  );
+  const communeWaliResponses = useMemo(
+    () =>
+      filterResponsesByVersionId(
+        (workspace?.rapport?.waliResponses || []) as ReviewResponseRow[],
+        communeRemarksVersionId,
+      ),
+    [workspace?.rapport?.waliResponses, communeRemarksVersionId],
+  );
   const unitLabel = t(
     listEntityUnitKey(
       workspace?.rapportType?.entity_target_kinds || workspace?.targetKinds,
@@ -199,6 +229,21 @@ export function OfficeCommuneListPage({ token }: Props) {
       snack.show(t("errorGeneric"), "error");
     } finally {
       setFinishing(false);
+    }
+  }
+
+  async function returnCurrentToDraft() {
+    if (!workspace?.rapport?.id) return;
+    setReturningToDraft(true);
+    try {
+      await api.returnRapportToDraft(token, workspace.rapport.id);
+      notifyHubCountsRefresh();
+      snack.show(t("returnToDraftDone"), "success");
+      loadWorkspace();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setReturningToDraft(false);
     }
   }
 
@@ -361,6 +406,9 @@ export function OfficeCommuneListPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             editable={!!editable}
+            canManage={workspace?.accessLevel === "manage"}
+            onReturnToDraft={returnCurrentToDraft}
+            returning={returningToDraft}
             onFinish={finishCurrentRapport}
             finishing={finishing}
           />
@@ -380,6 +428,37 @@ export function OfficeCommuneListPage({ token }: Props) {
             </div>
           ) : null}
 
+          {editable && workspace?.selection_catalog ? (
+            <div className="entityInclusionBanner card">
+              <div className="entityInclusionBannerBody">
+                <strong className="entityInclusionBannerTitle">
+                  {t("entityInclusionBannerTitle")}
+                </strong>
+                <p className="muted small entityInclusionBannerDesc">
+                  {t("entityInclusionBannerDesc")}
+                </p>
+                {(workspace.included_entity_keys?.length ?? 0) > 0 ? (
+                  <span className="entityInclusionBannerCount">
+                    {t("entityInclusionSelectedCount", {
+                      count: workspace.included_entity_keys!.length,
+                    })}
+                  </span>
+                ) : null}
+              </div>
+              <div className="entityInclusionBannerActions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-lg entityInclusionBannerBtn"
+                  onClick={() => setInclusionOpen(true)}
+                >
+                  {(workspace.included_entity_keys?.length ?? 0) > 0
+                    ? t("entityInclusionEdit")
+                    : t("entityInclusionOpen")}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="communeHubToolbar card">
             <input
               type="search"
@@ -388,7 +467,7 @@ export function OfficeCommuneListPage({ token }: Props) {
               onChange={(e) => setMunicipalitySearch(e.target.value)}
               placeholder={t("listSearchPlaceholder", { unit: unitLabel })}
             />
-            <div className="communeFilterRow">
+            <div className="communeFilterRow" role="group" aria-label={t("communeFilter_all")}>
               {(["all", "filled", "empty"] as FilterMode[]).map((mode) => (
                 <button
                   key={mode}
@@ -399,15 +478,6 @@ export function OfficeCommuneListPage({ token }: Props) {
                   {t(`communeFilter_${mode}`)}
                 </button>
               ))}
-              {editable && workspace?.selection_catalog ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setInclusionOpen(true)}
-                >
-                  {t("entityInclusionTitle")}
-                </button>
-              ) : null}
             </div>
             <p className="muted small communeProgress">
               {t("listProgress", {
@@ -421,12 +491,12 @@ export function OfficeCommuneListPage({ token }: Props) {
             </p>
           </div>
 
-          {!municipalities.length && !dairas.length && !modiriyat.length ? (
+          {!municipalities.length && !dairas.length && !directions.length ? (
             <p className="muted communeEmptyHint">{t("noResults")}</p>
           ) : null}
           {municipalities.length ? (
             <>
-              {dairas.length || modiriyat.length ? (
+              {dairas.length || directions.length ? (
                 <h2 className="entitySectionTitle">{t("entitySectionCommunes")}</h2>
               ) : null}
               {renderEntityGrid(municipalities, pagedMunicipalities)}
@@ -440,19 +510,19 @@ export function OfficeCommuneListPage({ token }: Props) {
             </section>
           ) : null}
 
-          {modiriyat.length ? (
+          {directions.length ? (
             <section className="entityListSection">
-              <h2 className="entitySectionTitle">{t("entitySectionModiriyat")}</h2>
+              <h2 className="entitySectionTitle">{t("entitySectionDirections")}</h2>
               {renderEntityGrid(
-                modiriyat,
-                paginateSlice(modiriyat, page, DEFAULT_PAGE_SIZE),
+                directions,
+                paginateSlice(directions, page, DEFAULT_PAGE_SIZE),
               )}
             </section>
           ) : null}
 
           <WaliResponsesSection
-            chefResponses={workspace?.rapport?.chefResponses || []}
-            responses={workspace?.rapport?.waliResponses || []}
+            chefResponses={communeChefResponses}
+            responses={communeWaliResponses}
           />
           {workspace?.rapport?.id ? (
             <RapportDiscussionSection

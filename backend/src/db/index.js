@@ -6,7 +6,7 @@ const config = sequelizeConfig[env.nodeEnv];
 const sequelize = sequelizeConfig.createSequelize(config);
 
 const Daira = require("./models/Daira")(sequelize);
-const Modiriya = require("./models/Modiriya")(sequelize);
+const Direction = require("./models/Direction")(sequelize);
 const Municipality = require("./models/Municipality")(sequelize);
 const User = require("./models/User")(sequelize);
 const AuditLog = require("./models/AuditLog")(sequelize);
@@ -34,12 +34,17 @@ const WaliInstruction = require("./models/WaliInstruction")(sequelize);
 const WaliInstructionFile = require("./models/WaliInstructionFile")(sequelize);
 const WaliInstructionRecipient = require("./models/WaliInstructionRecipient")(sequelize);
 const RapportComment = require("./models/RapportComment")(sequelize);
+const GuideVideo = require("./models/GuideVideo")(sequelize);
+const RefreshToken = require("./models/RefreshToken")(sequelize);
 
 Daira.hasMany(Municipality, { foreignKey: "daira_id", as: "municipalities" });
 Municipality.belongsTo(Daira, { foreignKey: "daira_id", as: "daira" });
 
 Department.hasMany(User, { foreignKey: "department_id", as: "users" });
 User.belongsTo(Department, { foreignKey: "department_id", as: "department" });
+
+User.hasMany(RefreshToken, { foreignKey: "user_id", as: "refreshTokens" });
+RefreshToken.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 AccessRoleTemplate.hasMany(AccessRoleTemplatePermission, { foreignKey: "role_template_id", as: "permissions" });
 AccessRoleTemplatePermission.belongsTo(AccessRoleTemplate, { foreignKey: "role_template_id" });
@@ -170,6 +175,11 @@ RapportComment.belongsTo(RapportVersion, { foreignKey: "rapport_version_id", as:
 RapportComment.hasMany(Notification, { foreignKey: "comment_id", as: "notifications" });
 Notification.belongsTo(RapportComment, { foreignKey: "comment_id", as: "comment" });
 
+GuideVideo.belongsTo(UploadedFile, { foreignKey: "uploaded_file_id", as: "file" });
+UploadedFile.hasMany(GuideVideo, { foreignKey: "uploaded_file_id", as: "guideVideos" });
+User.hasMany(GuideVideo, { foreignKey: "created_by_user_id", as: "guideVideosCreated" });
+GuideVideo.belongsTo(User, { foreignKey: "created_by_user_id", as: "createdByUser" });
+
 User.hasMany(UserServiceGrant, { foreignKey: "user_id", as: "serviceGrants" });
 UserServiceGrant.belongsTo(User, { foreignKey: "user_id", as: "user" });
 Service.hasMany(UserServiceGrant, { foreignKey: "service_id", as: "userGrants" });
@@ -178,7 +188,7 @@ UserServiceGrant.belongsTo(Service, { foreignKey: "service_id", as: "service" })
 module.exports = {
   sequelize,
   Daira,
-  Modiriya,
+  Direction,
   Municipality,
   User,
   AuditLog,
@@ -205,5 +215,7 @@ module.exports = {
   WaliInstruction,
   WaliInstructionFile,
   WaliInstructionRecipient,
-  RapportComment
+  RapportComment,
+  GuideVideo,
+  RefreshToken
 };

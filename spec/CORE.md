@@ -16,18 +16,19 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 
 | Internal enum | UI label | Scope |
 | ------------- | -------- | ----- |
-| `ADMIN` | compte admin | Users, communes, dairas, modiriyat, services, rapport types, access profiles |
+| `ADMIN` | compte admin | Users, communes, dairas, directions, services, rapport types, access profiles |
 | `OFFICE_USER` | compte bureau | Create/edit/submit rapports in assigned domains |
 | `CHEF_CABINET` | رئيس الديوان | First-line validation before Wali; same review tools as Wali (no instruction/broadcast create) |
 | `WALI` | compte wali | Read validated rapports, respond, request changes, create instructions |
 
-- **Reference geography/org:** `dairas`, `municipalities` (FK `daira_id`), `modiriyat` (flat) — **not login accounts**.
+- **Reference geography/org:** `dairas`, `municipalities` (FK `daira_id`), `directions` (flat) — **not login accounts**.
 - **User**: `username`, `name`, `role`, optional `department_id`, access role template.
 
 ### Authentication & Access Control
 
-- **JWT required** for protected endpoints (12h HS256, payload `{ sub, role }`).
-- **Blocked users** (`is_blocked = true`) rejected by `checkBlocked` middleware.
+- **Access JWT** required for protected endpoints (15m HS256, payload `{ sub, role, typ: "access" }`).
+- **Refresh session** (opaque HttpOnly cookie, 7 days absolute) renews access without re-login — full rules in `spec/modules/AUTH.md`.
+- **Blocked users** (`is_blocked = true`) rejected by `checkBlocked` middleware; block / password change / reset revoke refresh sessions.
 - **Route prefixes** by role:
   - `/admin/*` → `ADMIN`
   - `/office/*` → `OFFICE_USER` or `ADMIN`
@@ -41,6 +42,19 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 Write to `audit_logs` for: login, user lifecycle, rapport submit/respond, file exports.
 
 Minimum shape: `actor_id`, `action_type`, `details` (JSON), `timestamp`.
+
+### App / console logging (backend)
+
+Readable operational logs via **pino** (`backend/src/logger.js`) + **pino-http** — not ad-hoc `console.log` in routes/services.
+
+- **Levels:** `LOG_LEVEL` — day-to-day **`info`**; use **`debug`** only when digging into a bug. Production default `info`.
+- **Access lines:** one short line per request, e.g. `GET /admin/users → 200` (skip `/health` and `/files/*`).
+  - ≥500 → **error**; 4xx → **warn**; 2xx/3xx → **info**.
+- **Errors:** central `errorHandler` — full stack only for **5xx**; 4xx log reason + `requestId` without dumping huge objects.
+- **Secrets:** redact `authorization`, cookies, passwords.
+- **SQL:** off by default; opt-in with `SEQUELIZE_LOGGING=true` (never leave on in production).
+- **Correlation:** every response includes `x-request-id` / JSON `requestId` — match that id in logs when debugging a failed UI call.
+- Prefer `req.log` / `getLogger()` for any new operational messages; do not log request bodies by default (PII / large rapport payloads).
 
 ### API Conventions
 
@@ -127,19 +141,28 @@ Canonical code (backend + frontend must stay aligned):
 
 | Rule | Value | Effect |
 | ---- | ----- | ------ |
-| Wide table (view scroll) | `totalCols > 6` | `TableScrollShell` adds horizontal scroll + `--table-min-width` |
+| Wide table (view scroll) | `estimatedMinWidthPx > VIEW_SCROLL_BUDGET_PX` (~380px) | `TableScrollShell` adds horizontal scroll + `--table-min-width` |
 | Landscape (PDF width) | `totalCols × 48pt > 515pt` | PDF uses landscape A4 for that table |
 | Portrait inner width | 515pt | A4 portrait minus margins |
 | Row height (PDF) | 16pt (schema tables), 18pt (HTML tables) | Used in height estimates |
 | Export font size | 9 / 8 / 7pt | Scales down when `totalCols` > 9 / > 12 |
 
-**Column widths:** weighted by column type (`text` > `commune_ref` > `number` > meta `#`). Meta columns use a fixed narrow weight. Same ratios drive PDF points and Word twips (`pdfColumnWidths`, `docxColumnWidthsTwip`).
+**Column widths (export):** weighted by column type (`text` > `commune_ref` > `number` > meta `#`). Meta columns use a fixed narrow weight. Same ratios drive PDF points and Word twips (`pdfColumnWidths`, `docxColumnWidthsTwip`).
 
-**In-app view**
+**In-app view (content-aware min widths)**
 
 - `TableGridView` wraps tables in `TableScrollShell`.
 - Shell sets `dir="rtl"` for Arabic, `dir="ltr"` for French.
 - `data-table-cols` and `data-table-orient` attributes reflect computed policy (debug/layout).
+- Per-column min widths are estimated from header labels + sampled cell content (no DOM measure): char × locale glyph width, with type floors/caps.
+  - **choice:** longest option label (or header) + pad; cap ~220px; `nowrap`.
+  - **text:** floor for ~3–4 words/line (~14–18 AR / ~20–24 FR chars) + header; wrap allowed; cap ~280px.
+  - **number / formula:** longest formatted sample + header; floor ~88px; `nowrap`.
+  - **date:** readable floor (~112px) vs header.
+  - **commune_ref:** header + longest sampled name; floor ~108px; cap ~180px.
+  - **meta** (`#`, drag, wali, finished, delete): fixed CSS widths; policy uses meta px sum.
+- Scroll when the **sum of mins** exceeds the view budget (mobile-first), not when column count alone is high — so preview / embedded / ≤6-col tables do not crush cells.
+- Table uses `width: max(var(--table-min-width), 100%)` so short tables still fill the card; overflow scrolls when mins exceed the shell.
 
 **PDF pagination (`ensurePdfTablePage`)**
 
@@ -207,12 +230,52 @@ Shared: `backend/src/services/waliResponseExport.js`.
 
 - **RTL-first**; French LTR toggle optional.
 - **Theme**: `frontend/src/theme/tokens.css` — primary teal `#0d4f4f`, accent gold `#c9a227`, rounded cards.
+
+#### Bilingual content fields (frontend preference)
+
+Paired storage (`name_ar`/`name_fr`, `label_ar`/`label_fr`, `title_ar`/`title_fr`, `rich_html_ar`/`rich_html_fr`, etc.) remains in API and DB. Create/edit validation for **names and labels** still requires **at least one** language (`hasBilingualText`).
+
+**Display / export fallback** (frontend + backend): requested locale first, then the other language (`pickBilingualText` / export `?locale=`).
+
+**Frontend flag** `ENABLE_FR_VALUE_INPUTS` in `frontend/src/config/features.ts`:
+
+| Flag | Behavior |
+| ---- | -------- |
+| `false` (default for current product) | Hide French **content-value** inputs in forms across admin / office / wali / chef UIs. JSX for FR inputs stays in source (wrapped by the flag) so they can be re-enabled. Content editors that normally follow UI language bind to **Arabic** fields only. |
+| `true` | Show dual AR/FR value inputs as before. |
+
+- **UI language toggle** (chrome AR/FR, RTL/LTR) is **independent** of this flag — keep the French UI option.
+- When the flag is `false`, **do not** wipe or overwrite existing `*_fr` on save (leave loaded FR as-is / omit from patch). Do **not** auto-copy AR→FR on save; empty FR already falls back to AR at display/export time.
+- Applies to dual-input forms (org names, services, schema/column labels, instructions, broadcasts, template names, etc.) and to locale-switched editors (rich HTML, calendar title/note, table title/subtitle).
+- **Layout:** when FR inputs are hidden, dual-field grids must expand the remaining AR field to full row width (`schemaMetaGrid--arOnly`, `schemaColumnGrid--arOnly`, `schemaChoiceRow--arOnly`) — do not leave a half-empty column.
 - **Hub layout**: role-specific launcher tiles after login.
 - **BackButton** always last in action rows (`frontend/src/components/BackButton.tsx`).
   - Default: **history pop** (`navigate(-1)`) when in-app history exists; otherwise **`fallbackTo`** with `replace`.
   - Explicit `to` (structural parent / archive escape) uses **`replace: true` by default** — never push the parent under the current page (avoids list ↔ view bounce loops).
   - Pass `location.state.backTo` via `backNavigationState` for entry context; consume it as **fallback**, not as a push target.
   - Do not send Back to obsolete intermediate routes (e.g. `/kinds/:contentKind`); prefer service hub / list parents.
+  - Must use the **same size class** as sibling controls in that row (default `btn btn-secondary` unless the whole row is intentionally `btn-sm`).
+
+#### Button sizing & action rows
+
+Shared classes live in `frontend/src/App.css` (`.btn`, `.btn-sm`, `.btn-lg` + color variants). Agents and UI work must keep heights and padding consistent.
+
+- **One size per row:** Every control in the same action group (`.pageHeaderActions`, modal footers, filter/toggle bars, confirm dialogs) must use the **same** size class. Never mix `btn-sm`, default `.btn`, and `btn-lg` in one row.
+- **Page primary actions = default `.btn`:** Save / submit / Back / edit-list links in page headers use default `.btn` (+ color variant only). Do not put `btn-sm` on a header Save (or similar) while neighbors stay default.
+- **Size roles:**
+  - `btn-sm` — dense secondary only (inline table/row actions, compact filter chips when the **whole** bar is `btn-sm`)
+  - default `.btn` — standard page/modal actions
+  - `btn-lg` — single standout CTA in a banner/empty state, **not** beside default header buttons
+- **Equal metrics:** Within a size tier, buttons share the same vertical padding, `line-height`, `box-sizing`, and effective min-height. No one-off `padding` / `height` / `min-height` on individual buttons except via shared size classes.
+- **Links as buttons:** `<Link className="btn …">` must use the same size class as sibling `<button>` / `BusyButton` / `BackButton` in that row.
+- **Alignment:** Action rows keep `align-items: center`; icon-only and text buttons in one row must match the height of the shared size tier.
+- **List/table action colors** (`.actionsCell` / card action rows — prefer filled variants, not all `btn-ghost`):
+  - Edit / open-to-edit → `btn-primary`
+  - Details / view-only → `btn-secondary`
+  - Share / reset-password / respond / submit CTA → `btn-accent` (or keep existing export color classes)
+  - Block / delete / remove → `btn-danger` (unblock → `btn-secondary`)
+  - Dense list rows use `btn-sm` for the whole cell.
+
 - **Async actions**: show loading and disable primary controls while pending (`BusyButton`, `PageLoading`, confirm-modal `loading`); snackbar on failure — no silent `.catch`. List/page fetch must show `PageLoading` before an empty “no results” state.
 - **Media upload** (rich text / media blocks): show `mediaUploading` and disable insert controls until the file is inserted.
 

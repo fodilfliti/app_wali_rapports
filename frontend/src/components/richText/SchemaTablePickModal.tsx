@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../../api'
 import type { EmbeddedTable } from '../../types/embeddedTable'
 import { cloneImportedTableSnapshot, emptyRowsForColumns } from '../../types/embeddedTable'
 import { localizedName } from '../../utils/schemaColumns'
 import type { Column, LayoutJson } from '../../utils/tableLayout'
+import { TableGridView } from '../TableGridView'
 import { SchemaTableCreatePanel } from './SchemaTableCreatePanel'
 import { formatImportRapportLabel, SchemaTableImportPreview } from './SchemaTableImportPreview'
 
@@ -50,8 +51,14 @@ export function SchemaTablePickModal({ token, serviceId, otherServiceIds = [], o
   const [selectedRapportId, setSelectedRapportId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [schemaPreviewTab, setSchemaPreviewTab] = useState<'data' | 'schema'>('data')
 
   const serviceOptions = [serviceId, ...otherServiceIds.filter((id) => id !== serviceId)]
+
+  const selectedSchema = useMemo(
+    () => schemas.find((s) => s.slug === selectedSchemaSlug) || null,
+    [schemas, selectedSchemaSlug],
+  )
 
   useEffect(() => {
     api.listOfficeServiceSchemas(token, serviceId).then((r) => {
@@ -136,7 +143,7 @@ export function SchemaTablePickModal({ token, serviceId, otherServiceIds = [], o
     onConfirm(table, { openEdit: true })
   }
 
-  const wide = mode === 'create' || mode === 'import'
+  const wide = mode === 'create' || mode === 'import' || mode === 'schema'
 
   return (
     <div className="modalOverlay">
@@ -178,16 +185,83 @@ export function SchemaTablePickModal({ token, serviceId, otherServiceIds = [], o
 
         {mode === 'schema' ? (
           schemas.length ? (
-            <label>
-              {t('selectSchema')}
-              <select value={selectedSchemaSlug} onChange={(e) => setSelectedSchemaSlug(e.target.value)}>
-                {schemas.map((s) => (
-                  <option key={s.slug} value={s.slug}>
-                    {localizedName(s, i18n.language)} ({(s.columns_json || []).length} {t('columnsCount')})
-                  </option>
-                ))}
-              </select>
-            </label>
+            <>
+              <label>
+                {t('selectSchema')}
+                <select
+                  value={selectedSchemaSlug}
+                  onChange={(e) => {
+                    setSelectedSchemaSlug(e.target.value)
+                    setSchemaPreviewTab('data')
+                  }}
+                >
+                  {schemas.map((s) => (
+                    <option key={s.slug} value={s.slug}>
+                      {localizedName(s, i18n.language)} ({(s.columns_json || []).length} {t('columnsCount')})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedSchema ? (
+                <div className="schemaImportPreview">
+                  <div className="schemaImportPreviewHeader">
+                    <div>
+                      <strong>{t('importPreviewTitle')}</strong>
+                      <p className="muted small schemaImportPreviewMeta">
+                        {localizedName(selectedSchema, i18n.language)} ·{' '}
+                        {(selectedSchema.columns_json || []).length} {t('columnsCount')}
+                      </p>
+                    </div>
+                    <div className="schemaPickTabs schemaImportPreviewTabs">
+                      <button
+                        type="button"
+                        className={`btn btn-sm${schemaPreviewTab === 'data' ? ' btn-primary' : ' btn-secondary'}`}
+                        onClick={() => setSchemaPreviewTab('data')}
+                      >
+                        {t('importPreviewData')}
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm${schemaPreviewTab === 'schema' ? ' btn-primary' : ' btn-secondary'}`}
+                        onClick={() => setSchemaPreviewTab('schema')}
+                      >
+                        {t('importPreviewSchema')}
+                      </button>
+                    </div>
+                  </div>
+                  {schemaPreviewTab === 'schema' ? (
+                    <ul className="schemaImportColumnList">
+                      {(selectedSchema.columns_json || []).map((col) => (
+                        <li key={col.key}>
+                          <span className="schemaImportColKey">{col.key}</span>
+                          <span>
+                            {localizedName(
+                              { name_ar: col.label_ar, name_fr: col.label_fr },
+                              i18n.language,
+                            )}
+                          </span>
+                          <span className="muted small">
+                            ({t(`schemaColType_${col.type}` as any, { defaultValue: col.type })})
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="schemaImportPreviewScroll tableWrap excelTable">
+                      <TableGridView
+                        columns={selectedSchema.columns_json || []}
+                        rows={emptyRowsForColumns(selectedSchema.columns_json || [], 3)}
+                        layoutJson={selectedSchema.layout_json}
+                        editable={false}
+                        showRowMeta
+                        rowFilterMode="all"
+                        embedded
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </>
           ) : (
             <p className="muted small">{t('schemaTableNoSchemasHint')}</p>
           )

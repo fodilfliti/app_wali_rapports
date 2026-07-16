@@ -82,8 +82,8 @@ export function SchemaTableNodeView({ node, selected, deleteNode }: NodeViewProp
             layoutJson={table.layout_json}
             tableMeta={table.table_meta}
             editable={false}
-            showRowMeta={false}
-            rowFilterMode="active"
+            showRowMeta
+            rowFilterMode="all"
             hideColorToolbar
             embedded={true}
           />

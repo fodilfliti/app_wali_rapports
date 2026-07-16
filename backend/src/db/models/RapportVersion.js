@@ -10,6 +10,8 @@ module.exports = (sequelize) =>
       data_json: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
       changed_commune_codes: { type: DataTypes.JSONB, allowNull: true },
       commune_versions: { type: DataTypes.JSONB, allowNull: true },
+      changed_entity_keys: { type: DataTypes.JSONB, allowNull: true },
+      entity_versions: { type: DataTypes.JSONB, allowNull: true },
       submitted_at: { type: DataTypes.DATE, allowNull: true },
       created_by_user_id: { type: DataTypes.BIGINT, allowNull: false },
       created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }

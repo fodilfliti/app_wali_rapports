@@ -7,6 +7,8 @@ Spec-driven platform for Wilaya office rapports → Wali review.
 - `spec/` — canonical specifications
 - `backend/` — Express + Sequelize (port 4001)
 - `frontend/` — React + Vite (port 5174)
+- `DEPLOY.md` — production on DZSecurity cPanel (File Manager + Node.js App)
+- `scripts/package-deploy.ps1` — build + zip only uploadable packages → `deploy-out/`
 
 ## Quick start
 
