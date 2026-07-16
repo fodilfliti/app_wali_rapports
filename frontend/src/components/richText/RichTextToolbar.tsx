@@ -9,6 +9,7 @@ type Props = {
   onPickImages: () => void
   onPickVideos: () => void
   onInsertSchemaTable?: () => void
+  uploading?: boolean
 }
 
 function ToolbarBtn({
@@ -16,20 +17,35 @@ function ToolbarBtn({
   onClick,
   title,
   children,
+  disabled,
 }: {
   active?: boolean
   onClick: () => void
   title: string
   children: ReactNode
+  disabled?: boolean
 }) {
   return (
-    <button type="button" className={`tiptapToolbarBtn${active ? ' active' : ''}`} title={title} onClick={onClick}>
+    <button
+      type="button"
+      className={`tiptapToolbarBtn${active ? ' active' : ''}`}
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {children}
     </button>
   )
 }
 
-export function RichTextToolbar({ editor, fontSizes, onPickImages, onPickVideos, onInsertSchemaTable }: Props) {
+export function RichTextToolbar({
+  editor,
+  fontSizes,
+  onPickImages,
+  onPickVideos,
+  onInsertSchemaTable,
+  uploading = false,
+}: Props) {
   const { t } = useTranslation()
   const [, setSelectionTick] = useState(0)
 
@@ -47,10 +63,11 @@ export function RichTextToolbar({ editor, fontSizes, onPickImages, onPickVideos,
     editor.isActive('image') || editor.isActive('video') || editor.isActive('schemaTable')
 
   return (
-    <div className="tiptapToolbar" role="toolbar">
+    <div className="tiptapToolbar" role="toolbar" aria-busy={uploading || undefined}>
       <ToolbarBtn
         title={t('richTextBold')}
         active={editor.isActive('bold')}
+        disabled={uploading}
         onClick={() => editor.chain().focus().toggleBold().run()}
       >
         <strong>B</strong>
@@ -58,6 +75,7 @@ export function RichTextToolbar({ editor, fontSizes, onPickImages, onPickVideos,
       <ToolbarBtn
         title={t('richTextItalic')}
         active={editor.isActive('italic')}
+        disabled={uploading}
         onClick={() => editor.chain().focus().toggleItalic().run()}
       >
         <em>I</em>
@@ -65,6 +83,7 @@ export function RichTextToolbar({ editor, fontSizes, onPickImages, onPickVideos,
       <ToolbarBtn
         title={t('richTextUnderline')}
         active={editor.isActive('underline')}
+        disabled={uploading}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
       >
         <span className="tiptapUnderline">U</span>
@@ -73,6 +92,7 @@ export function RichTextToolbar({ editor, fontSizes, onPickImages, onPickVideos,
       <ToolbarBtn
         title={t('richTextHeading1')}
         active={editor.isActive('heading', { level: 1 })}
+        disabled={uploading}
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
       >
         H1
@@ -172,10 +192,10 @@ export function RichTextToolbar({ editor, fontSizes, onPickImages, onPickVideos,
           🗑
         </ToolbarBtn>
       ) : null}
-      <ToolbarBtn title={t('richTextInsertImage')} onClick={onPickImages}>
+      <ToolbarBtn title={t('richTextInsertImage')} onClick={onPickImages} disabled={uploading}>
         🖼
       </ToolbarBtn>
-      <ToolbarBtn title={t('richTextInsertVideo')} onClick={onPickVideos}>
+      <ToolbarBtn title={t('richTextInsertVideo')} onClick={onPickVideos} disabled={uploading}>
         ▶
       </ToolbarBtn>
       <ToolbarBtn title={t('richTextHorizontalRule')} onClick={() => editor.chain().focus().setHorizontalRule().run()}>

@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { backNavigationState } from '../utils/navigationBack'
+import type { ReviewerMode } from '../utils/reviewerMode'
+import { reviewerCalendarPath, reviewerHubPath, reviewerRapportViewPath } from '../utils/reviewerMode'
 
-type Props = { token: string }
+type Props = { token: string; reviewer?: ReviewerMode }
 
 type CalendarEvent = {
   id: number
@@ -64,7 +66,7 @@ function eventCardClass(kind?: string, index = 0) {
   return `waliCalendarEvent--tone${index % 4}`
 }
 
-export function WaliCalendarPage({ token }: Props) {
+export function WaliCalendarPage({ token, reviewer = 'wali' }: Props) {
   const { t, i18n } = useTranslation()
   const [anchor, setAnchor] = useState(() => new Date().toISOString().slice(0, 10))
   const [data, setData] = useState<{ from?: string; to?: string; events?: CalendarEvent[] } | null>(
@@ -73,11 +75,13 @@ export function WaliCalendarPage({ token }: Props) {
 
   const load = useCallback(async () => {
     try {
-      setData(await api.getWaliCalendar(token, { week: anchor }))
+      setData(
+        await (reviewer === 'chef' ? api.getChefCalendar : api.getWaliCalendar)(token, { week: anchor }),
+      )
     } catch {
       setData(null)
     }
-  }, [token, anchor])
+  }, [token, anchor, reviewer])
 
   useEffect(() => {
     load()
@@ -113,7 +117,7 @@ export function WaliCalendarPage({ token }: Props) {
         <button type="button" className="btn btn-secondary" onClick={() => setAnchor(addDays(anchor, 7))}>
           {t('nextWeek')}
         </button>
-        <BackButton to="/wali" fallbackTo="/wali" />
+        <BackButton to={reviewerHubPath(reviewer)} fallbackTo={reviewerHubPath(reviewer)} />
       </div>
       <p className="muted">
         {data?.from} — {data?.to}
@@ -160,8 +164,8 @@ export function WaliCalendarPage({ token }: Props) {
                         className={`waliCalendarEvent ${eventCardClass(e.rapport?.content_kind, eventIndex)}`}
                       >
                         <Link
-                          to={`/wali/rapports/${e.rapport_id}/view`}
-                          state={backNavigationState('/wali/calendar')}
+                          to={reviewerRapportViewPath(reviewer, e.rapport_id)}
+                          state={backNavigationState(reviewerCalendarPath(reviewer))}
                           className="waliCalendarEventTitle"
                         >
                           {eventTitle || e.rapport?.title || `#${e.rapport_id}`}

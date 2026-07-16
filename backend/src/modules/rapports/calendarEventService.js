@@ -21,7 +21,11 @@ function serializeEvent(row) {
 }
 
 async function listForRapport(rapportId, actor) {
-  if (actor?.role !== "WALI" && actor?.role !== "ADMIN") {
+  if (
+    actor?.role !== "WALI" &&
+    actor?.role !== "CHEF_CABINET" &&
+    actor?.role !== "ADMIN"
+  ) {
     await assertRapportAccess(actor, rapportId, "view");
   }
   const rows = await RapportCalendarEvent.findAll({
@@ -79,7 +83,7 @@ function weekBounds(anchorDate) {
   return { from: fmt(saturday), to: fmt(friday) };
 }
 
-async function listForWaliCalendar(query) {
+async function listForWaliCalendar(query, opts = {}) {
   let from = parseDateOnly(query.from);
   let to = parseDateOnly(query.to);
   if (!from || !to) {
@@ -88,6 +92,10 @@ async function listForWaliCalendar(query) {
     to = w.to;
   }
 
+  const hiddenStatuses = opts.forChef
+    ? ["draft", "archived"]
+    : ["draft", "pending_chef", "archived"];
+
   const rows = await RapportCalendarEvent.findAll({
     where: { event_date: { [Op.between]: [from, to] } },
     order: [["event_date", "ASC"], ["id", "ASC"]],
@@ -95,7 +103,14 @@ async function listForWaliCalendar(query) {
       {
         model: Rapport,
         as: "rapport",
+        required: true,
         attributes: ["id", "title", "status"],
+        where: {
+          status: {
+            [Op.notIn]: hiddenStatuses,
+          },
+          hidden_at: null,
+        },
         include: [
           { model: Service, as: "service", attributes: ["id", "name_ar", "name_fr"] },
           { model: RapportType, as: "rapportType", attributes: ["id", "content_kind"] }

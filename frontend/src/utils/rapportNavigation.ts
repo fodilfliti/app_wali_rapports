@@ -38,6 +38,30 @@ export function waliContentKindPath(userId: number, serviceId: number, contentKi
   return `/wali/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
 }
 
+export function reviewerContentKindPath(
+  mode: import('./reviewerMode').ReviewerMode,
+  userId: number,
+  serviceId: number,
+  contentKind: string,
+) {
+  const base = mode === 'chef' ? '/chef' : '/wali'
+  return `${base}/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
+}
+
+export function waliRapportTypeListPath(userId: number, serviceId: number, rt: RapportTypeNav) {
+  return `/wali/office-users/${userId}/services/${serviceId}/rapports/${rt.id}`
+}
+
+export function reviewerRapportTypeListPath(
+  mode: import('./reviewerMode').ReviewerMode,
+  userId: number,
+  serviceId: number,
+  rapportTypeId: number,
+) {
+  const base = mode === 'chef' ? '/chef' : '/wali'
+  return `${base}/office-users/${userId}/services/${serviceId}/rapports/${rapportTypeId}`
+}
+
 export function sortRapportTypesForDisplay(types: RapportTypeNav[], locale: string): RapportTypeNav[] {
   return [...types].sort((a, b) => {
     const orderA = CONTENT_KIND_DISPLAY_ORDER[a.content_kind] ?? 99
@@ -100,16 +124,20 @@ export function officeRapportTypeWorkspacePath(
   }
 }
 
-export function waliRapportTypeListPath(userId: number, serviceId: number, rt: RapportTypeNav) {
-  return `/wali/office-users/${userId}/services/${serviceId}/rapports/${rt.id}`
-}
-
 export function canOfficeEditRapport(status: string) {
   return status === 'draft' || status === 'changes_requested'
 }
 
 export function isAwaitingWaliResponse(status: string) {
   return status === 'submitted' || status === 'under_review'
+}
+
+export function isAwaitingChefResponse(status: string) {
+  return status === 'pending_chef'
+}
+
+export function isAwaitingReviewerResponse(status: string) {
+  return isAwaitingChefResponse(status) || isAwaitingWaliResponse(status)
 }
 
 /** Archived version UI for versioned types once at least one snapshot was submitted. */
@@ -167,17 +195,19 @@ export function isDirectWorkspaceKind(contentKind: string) {
   return contentKind === 'table_grid' || contentKind === 'commune_list'
 }
 
-export function officeCommuneEditorPath(
+export function officeEntityEditorPath(
   serviceId: number,
-  municipalityCode: string,
+  entityKeyOrCode: string,
   opts?: { rapportTypeId?: number; rapportId?: number },
 ) {
   const q = new URLSearchParams()
   if (opts?.rapportTypeId) q.set('rapport_type_id', String(opts.rapportTypeId))
   if (opts?.rapportId) q.set('rapport_id', String(opts.rapportId))
   const qs = q.toString()
-  return `/office/services/${serviceId}/communes/${encodeURIComponent(municipalityCode)}${qs ? `?${qs}` : ''}`
+  return `/office/services/${serviceId}/communes/${encodeURIComponent(entityKeyOrCode)}${qs ? `?${qs}` : ''}`
 }
+
+export const officeCommuneEditorPath = officeEntityEditorPath
 
 export function officeCommuneBulkPath(
   serviceId: number,

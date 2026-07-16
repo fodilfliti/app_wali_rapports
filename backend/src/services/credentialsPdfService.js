@@ -29,6 +29,7 @@ function registerBodyFont(doc) {
 function roleLabels(role) {
   if (role === "ADMIN") return { ar: "مدير", fr: "Administrateur" };
   if (role === "WALI") return { ar: "والي", fr: "Wali" };
+  if (role === "CHEF_CABINET") return { ar: "رئيس الديوان", fr: "Chef de cabinet" };
   return { ar: "مكتب", fr: "Bureau" };
 }
 

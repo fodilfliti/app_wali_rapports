@@ -3,8 +3,9 @@
 require("./load-env");
 
 const bcrypt = require("bcryptjs");
+const tlemcenDairas = require("../src/db/seed-data/tlemcen-dairas");
 const tlemcenMunicipalities = require("../src/db/seed-data/tlemcen-municipalities");
-const { sequelize, Municipality, User, AccessRoleTemplate } = require("../src/db");
+const { sequelize, Daira, Municipality, User, AccessRoleTemplate } = require("../src/db");
 
 function devAdminConfig() {
   return {
@@ -15,17 +16,50 @@ function devAdminConfig() {
   };
 }
 
-async function seedMunicipalities() {
-  const existing = await Municipality.count();
+async function seedDairas() {
+  const existing = await Daira.count();
   if (existing > 0) {
-    console.log(`Municipalities already present (${existing}) — skipping insert.`);
+    console.log(`Dairas already present (${existing}) — skipping insert.`);
     return existing;
   }
   const now = new Date();
-  await Municipality.bulkCreate(
-    tlemcenMunicipalities.map((m) => ({ ...m, created_at: now }))
-  );
-  console.log(`Inserted ${tlemcenMunicipalities.length} Tlemcen municipalities.`);
+  await Daira.bulkCreate(tlemcenDairas.map((d) => ({ ...d, created_at: now })));
+  console.log(`Inserted ${tlemcenDairas.length} Tlemcen dairas.`);
+  return tlemcenDairas.length;
+}
+
+async function seedMunicipalities() {
+  const existing = await Municipality.count();
+  if (existing > 0) {
+    const missing = await Municipality.count({ where: { daira_id: null } }).catch(() => 0);
+    if (missing === 0) {
+      console.log(`Municipalities already present (${existing}) — skipping insert.`);
+      return existing;
+    }
+  }
+  const dairas = await Daira.findAll();
+  const dairaByCode = Object.fromEntries(dairas.map((d) => [d.code, d.id]));
+  const now = new Date();
+  if (existing === 0) {
+    await Municipality.bulkCreate(
+      tlemcenMunicipalities.map((m) => ({
+        code: m.code,
+        name_ar: m.name_ar,
+        name_fr: m.name_fr,
+        daira_id: dairaByCode[m.daira_code] || dairaByCode["1301"],
+        created_at: now
+      }))
+    );
+    console.log(`Inserted ${tlemcenMunicipalities.length} Tlemcen municipalities.`);
+  } else {
+    for (const m of tlemcenMunicipalities) {
+      await Municipality.update(
+        { daira_id: dairaByCode[m.daira_code] || dairaByCode["1301"] },
+        { where: { code: m.code, daira_id: null } }
+      );
+    }
+    console.log("Linked existing municipalities to dairas.");
+  }
   return tlemcenMunicipalities.length;
 }
 
@@ -71,6 +105,7 @@ async function seedAdmin() {
 async function main() {
   try {
     await sequelize.authenticate();
+    await seedDairas();
     await seedMunicipalities();
     await seedAdmin();
     const cfg = devAdminConfig();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
@@ -66,6 +66,7 @@ export function RichTextEditor({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
   const skipNextUpdate = useRef(false)
+  const [uploading, setUploading] = useState(false)
 
   const editor = useEditor({
     extensions: [
@@ -136,25 +137,36 @@ export function RichTextEditor({
   )
 
   async function onFilesSelected(files: FileList | null, kind: 'image' | 'video') {
-    if (!files?.length || !onUpload) return
-    for (const file of Array.from(files)) {
-      await insertUploadedMedia(file, kind)
+    if (!files?.length || !onUpload || uploading) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        await insertUploadedMedia(file, kind)
+      }
+    } finally {
+      setUploading(false)
     }
   }
 
   if (!editor) return null
 
   return (
-    <div className={`tiptapShell${editable ? '' : ' tiptapShell-readonly'}`}>
+    <div
+      className={`tiptapShell richTextEditorWrap${editable ? '' : ' tiptapShell-readonly'}${
+        uploading ? ' isUploading' : ''
+      }`}
+    >
       {editable ? (
         <RichTextToolbar
           editor={editor}
           fontSizes={FONT_SIZES}
+          uploading={uploading}
           onPickImages={() => imageInputRef.current?.click()}
           onPickVideos={() => videoInputRef.current?.click()}
           onInsertSchemaTable={enableSchemaTables && onOpenSchemaTablePick ? onOpenSchemaTablePick : undefined}
         />
       ) : null}
+      {uploading ? <p className="muted richTextUploadingHint">{t('mediaUploading')}</p> : null}
       <EditorContent editor={editor} className="tiptapEditorWrap" dir={locale === 'ar' ? 'rtl' : 'ltr'} />
       <input
         ref={imageInputRef}
@@ -162,6 +174,7 @@ export function RichTextEditor({
         accept="image/*"
         multiple
         className="srOnly"
+        disabled={uploading}
         onChange={(e) => {
           onFilesSelected(e.target.files, 'image').catch(() => {})
           e.target.value = ''
@@ -173,6 +186,7 @@ export function RichTextEditor({
         accept="video/*"
         multiple
         className="srOnly"
+        disabled={uploading}
         onChange={(e) => {
           onFilesSelected(e.target.files, 'video').catch(() => {})
           e.target.value = ''

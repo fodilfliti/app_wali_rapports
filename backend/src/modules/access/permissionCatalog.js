@@ -32,7 +32,8 @@ function permissionAppliesToAccount(perm, accountRole) {
   if (perm.scope === "both") return true;
   if (perm.scope === "admin" && accountRole === "ADMIN") return true;
   if (perm.scope === "office" && accountRole === "OFFICE_USER") return true;
-  if (perm.scope === "wali" && accountRole === "WALI") return true;
+  if (perm.scope === "wali" && (accountRole === "WALI" || accountRole === "CHEF_CABINET")) return true;
+  if (perm.scope === "chef" && accountRole === "CHEF_CABINET") return true;
   if (accountRole === "ADMIN") return true;
   return false;
 }

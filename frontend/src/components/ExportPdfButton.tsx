@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import type { RapportExportOpts } from '../api'
 import { useSnackbar } from '../snackbar/SnackbarContext'
+import { BusyButton } from './BusyButton'
 import { RapportExportPreviewModal } from './RapportExportPreviewModal'
 import { ExcelExportOptionsModal } from './ExcelExportOptionsModal'
 
@@ -10,6 +11,7 @@ type Props = {
   token: string
   rapportId: number
   wali?: boolean
+  chef?: boolean
   showHidden?: boolean
   /** When set, export that version snapshot (archive view). */
   versionId?: number
@@ -21,6 +23,7 @@ export function RapportExportButtons({
   token,
   rapportId,
   wali = false,
+  chef = false,
   showHidden = false,
   versionId,
   onPreparePreview,
@@ -34,9 +37,10 @@ export function RapportExportButtons({
     rowFilter: 'active',
     showHidden: showHidden,
   })
+  const [busy, setBusy] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
-  const opts = { locale: i18n.language, wali, showHidden, versionId, ...excelOpts }
+  const opts = { locale: i18n.language, wali, chef, showHidden, versionId, ...excelOpts }
 
   useEffect(() => {
     if (!open) return
@@ -49,21 +53,27 @@ export function RapportExportButtons({
 
   async function runWithPrepare(action: () => Promise<void>) {
     setOpen(false)
+    setBusy(true)
     try {
       if (onPreparePreview) await onPreparePreview()
       await action()
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setBusy(false)
     }
   }
 
   async function openPreview(format: 'pdf' | 'docx') {
+    setBusy(true)
     try {
       if (onPreparePreview) await onPreparePreview()
       setOpen(false)
       setPreviewFormat(format)
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -109,10 +119,15 @@ export function RapportExportButtons({
   return (
     <>
       <div className="exportMenuWrap" ref={wrapRef}>
-        <button type="button" className="btn btn-secondary exportMenuBtn" onClick={() => setOpen((v) => !v)}>
+        <BusyButton
+          type="button"
+          className="btn btn-secondary exportMenuBtn"
+          busy={busy}
+          onClick={() => setOpen((v) => !v)}
+        >
           {t('exportRapport')} ▾
-        </button>
-        {open ? (
+        </BusyButton>
+        {open && !busy ? (
           <div className="exportMenuPanel">
             <button type="button" className="exportMenuItem exportMenuItemPreview" onClick={() => openPreview('pdf')}>
               {t('previewPdf')}

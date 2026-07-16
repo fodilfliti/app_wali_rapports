@@ -604,12 +604,19 @@ async function seedDemo() {
     role: "OFFICE_USER",
     templateSlug: "OFFICE_STANDARD",
   });
+  const chef = await ensureUser({
+    username: "chef1",
+    name: "رئيس الديوان — عرض تجريبي",
+    role: "CHEF_CABINET",
+    templateSlug: "CHEF_STANDARD",
+  });
   const wali = await ensureUser({
     username: "wali1",
     name: "والي — عرض تجريبي",
     role: "WALI",
     templateSlug: "WALI_STANDARD",
   });
+  void chef;
 
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 86400000);
@@ -1526,7 +1533,7 @@ async function seedDemo() {
   });
 
   console.log("\n=== Demo presentation seed complete ===\n");
-  console.log("Logins (password for office1 / wali1):", TEST_PASSWORD);
+  console.log("Logins (password for office1 / chef1 / wali1):", TEST_PASSWORD);
   console.log("\nDepartments:");
   console.log(`  [${deptHyd.id}] ${deptHyd.name_ar}`);
   console.log(`  [${deptInv.id}] ${deptInv.name_ar}`);

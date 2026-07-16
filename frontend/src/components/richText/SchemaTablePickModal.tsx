@@ -100,18 +100,21 @@ export function SchemaTablePickModal({ token, serviceId, otherServiceIds = [], o
     const schema = schemas.find((s) => s.slug === selectedSchemaSlug)
     if (!schema) return
     const columns = schema.columns_json || []
-    onConfirm({
-      id: crypto.randomUUID(),
-      schema_id: schema.id,
-      schema_slug: schema.slug,
-      schema_name_ar: schema.name_ar,
-      schema_name_fr: schema.name_fr,
-      columns,
-      layout_json: schema.layout_json || null,
-      table_meta: {},
-      rows: emptyRowsForColumns(columns, 1),
-      rapport_only: false,
-    })
+    onConfirm(
+      {
+        id: crypto.randomUUID(),
+        schema_id: schema.id,
+        schema_slug: schema.slug,
+        schema_name_ar: schema.name_ar,
+        schema_name_fr: schema.name_fr,
+        columns,
+        layout_json: schema.layout_json || null,
+        table_meta: {},
+        rows: emptyRowsForColumns(columns, 1),
+        rapport_only: false,
+      },
+      { openEdit: true },
+    )
   }
 
   async function confirmFromImport() {

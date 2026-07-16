@@ -1,12 +1,21 @@
 const { Op } = require("sequelize");
 const { Rapport, RapportType, Notification, WaliBroadcastRecipient } = require("../../db");
 const { getAccessMapForUser } = require("./serviceAccessService");
+const { DEDICATED_NOTIFICATION_KEYS } = require("./notificationKeys");
 
 const WALI_INBOX_ACTION_STATUSES = ["submitted", "under_review"];
+const CHEF_INBOX_ACTION_STATUSES = ["pending_chef"];
 
 function waliInboxActionWhere() {
   return {
     status: { [Op.in]: WALI_INBOX_ACTION_STATUSES },
+    hidden_at: null,
+  };
+}
+
+function chefInboxActionWhere() {
+  return {
+    status: { [Op.in]: CHEF_INBOX_ACTION_STATUSES },
     hidden_at: null,
   };
 }
@@ -57,7 +66,13 @@ async function loadSharedFicheCounts(allowedServiceIds, statusWhere) {
 }
 
 async function countUnreadNotifications(userId) {
-  return Notification.count({ where: { user_id: userId, read_at: null } });
+  return Notification.count({
+    where: {
+      user_id: userId,
+      read_at: null,
+      message_key: { [Op.notIn]: DEDICATED_NOTIFICATION_KEYS },
+    },
+  });
 }
 
 async function countOfficeChangesRequested(userId) {
@@ -93,6 +108,17 @@ async function countUnreadSharedFiles(userId) {
 
 async function countWaliInboxPending() {
   return Rapport.count({ where: waliInboxActionWhere() });
+}
+
+async function countChefInboxPending() {
+  return Rapport.count({ where: chefInboxActionWhere() });
+}
+
+async function countUnreadInstructions(userId) {
+  const { WaliInstructionRecipient } = require("../../db");
+  return WaliInstructionRecipient.count({
+    where: { user_id: userId, read_at: null },
+  });
 }
 
 async function loadRapportCountsByService(whereExtra) {
@@ -155,15 +181,27 @@ function applyServiceActionCounts(nodes, countByService, countByType) {
 }
 
 async function getOfficeHubCounts(userId) {
-  const [unread_notifications, changes_requested_rapports, unread_shared_files, serviceCounts] =
-    await Promise.all([
-      countUnreadNotifications(userId),
-      countOfficeChangesRequested(userId),
-      countUnreadSharedFiles(userId),
-      getOfficeServiceActionCounts(userId),
-    ]);
+  const [
+    unread_notifications,
+    changes_requested_rapports,
+    unread_shared_files,
+    unread_instructions,
+    serviceCounts,
+  ] = await Promise.all([
+    countUnreadNotifications(userId),
+    countOfficeChangesRequested(userId),
+    countUnreadSharedFiles(userId),
+    countUnreadInstructions(userId),
+    getOfficeServiceActionCounts(userId),
+  ]);
   const services_action_count = Object.values(serviceCounts.byService).filter((c) => c > 0).length;
-  return { unread_notifications, changes_requested_rapports, unread_shared_files, services_action_count };
+  return {
+    unread_notifications,
+    changes_requested_rapports,
+    unread_shared_files,
+    unread_instructions,
+    services_action_count,
+  };
 }
 
 async function countWaliOfficeUsersWithPending() {
@@ -182,12 +220,67 @@ async function countWaliOfficeUsersWithPending() {
   return rows.length;
 }
 
-async function getWaliHubCounts() {
-  const [inbox_pending, office_users_pending] = await Promise.all([
+async function countChefOfficeUsersWithPending() {
+  const rows = await Rapport.findAll({
+    attributes: [
+      "owner_office_user_id",
+      [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"],
+    ],
+    where: {
+      ...chefInboxActionWhere(),
+      owner_office_user_id: { [Op.ne]: null },
+    },
+    group: ["owner_office_user_id"],
+    raw: true,
+  });
+  return rows.length;
+}
+
+async function countUnreadDiscussion(userId, opts = {}) {
+  if (!userId) return 0;
+  const rows = await Notification.findAll({
+    where: {
+      user_id: userId,
+      message_key: "rapportComment",
+      read_at: null,
+      rapport_id: { [Op.ne]: null },
+    },
+    attributes: ["rapport_id"],
+    group: ["rapport_id"],
+    raw: true,
+  });
+  const ids = rows.map((r) => Number(r.rapport_id)).filter(Boolean);
+  if (!ids.length) return 0;
+
+  const where = {
+    id: { [Op.in]: ids },
+    hidden_at: null,
+    status: { [Op.ne]: "draft" },
+  };
+  // Wali never sees pending_chef threads — keep badge aligned with inbox visibility
+  if (opts.forWali) {
+    where.status = { [Op.notIn]: ["pending_chef", "draft"] };
+  }
+
+  return Rapport.count({ where });
+}
+
+async function getWaliHubCounts(userId) {
+  const [inbox_pending, office_users_pending, unread_discussion] = await Promise.all([
     countWaliInboxPending(),
     countWaliOfficeUsersWithPending(),
+    countUnreadDiscussion(userId, { forWali: true }),
   ]);
-  return { inbox_pending, office_users_pending };
+  return { inbox_pending, office_users_pending, unread_discussion };
+}
+
+async function getChefHubCounts(userId) {
+  const [inbox_pending, office_users_pending, unread_discussion] = await Promise.all([
+    countChefInboxPending(),
+    countChefOfficeUsersWithPending(),
+    countUnreadDiscussion(userId),
+  ]);
+  return { inbox_pending, office_users_pending, unread_discussion };
 }
 
 async function getOfficeServiceActionCounts(userId) {
@@ -225,12 +318,34 @@ async function getWaliServicePendingCounts(officeUserId) {
   };
 }
 
+async function getChefServicePendingCounts(officeUserId) {
+  const ownedWhere = {
+    owner_office_user_id: officeUserId,
+    ...chefInboxActionWhere(),
+  };
+  const [ownedByService, ownedByType, serviceIds] = await Promise.all([
+    loadRapportCountsByService(ownedWhere),
+    loadRapportCountsByServiceAndType(ownedWhere),
+    getAccessibleServiceIds(officeUserId),
+  ]);
+  const shared = await loadSharedFicheCounts(serviceIds, chefInboxActionWhere());
+  return {
+    byService: mergeCountMaps(ownedByService, shared.byService),
+    byType: mergeCountMaps(ownedByType, shared.byType),
+  };
+}
+
 module.exports = {
   WALI_INBOX_ACTION_STATUSES,
+  CHEF_INBOX_ACTION_STATUSES,
+  DEDICATED_NOTIFICATION_KEYS,
   waliInboxActionWhere,
+  chefInboxActionWhere,
   getOfficeHubCounts,
   getWaliHubCounts,
+  getChefHubCounts,
   applyServiceActionCounts,
   getOfficeServiceActionCounts,
   getWaliServicePendingCounts,
+  getChefServicePendingCounts,
 };

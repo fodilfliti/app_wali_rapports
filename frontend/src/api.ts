@@ -55,7 +55,7 @@ async function request<T>(
   return data as T;
 }
 
-export type UserRole = "ADMIN" | "OFFICE_USER" | "WALI";
+export type UserRole = "ADMIN" | "OFFICE_USER" | "CHEF_CABINET" | "WALI";
 
 export type SessionUser = {
   id: number;
@@ -108,7 +108,7 @@ export function listMunicipalities(
 
 export function createMunicipality(
   token: string,
-  body: { name_ar: string; name_fr: string; code: string },
+  body: { name_ar: string; name_fr: string; code: string; daira_id: number },
 ) {
   return request<{ municipality: any }>("/admin/municipalities", {
     method: "POST",
@@ -120,9 +120,83 @@ export function createMunicipality(
 export function patchMunicipality(
   token: string,
   id: number,
-  body: Partial<{ name_ar: string; name_fr: string; code: string }>,
+  body: Partial<{ name_ar: string; name_fr: string; code: string; daira_id: number }>,
 ) {
   return request<{ municipality: any }>(`/admin/municipalities/${id}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function listDairas(
+  token: string,
+  params: { page?: number; q?: string; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  if (params.q) q.set("q", params.q);
+  return request<{ dairas: any[]; total: number; page: number; pageSize: number }>(
+    `/admin/dairas?${q}`,
+    { token },
+  );
+}
+
+export function createDaira(
+  token: string,
+  body: { name_ar: string; name_fr: string; code: string },
+) {
+  return request<{ daira: any }>("/admin/dairas", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchDaira(
+  token: string,
+  id: number,
+  body: Partial<{ name_ar: string; name_fr: string; code: string }>,
+) {
+  return request<{ daira: any }>(`/admin/dairas/${id}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function listModiriyat(
+  token: string,
+  params: { page?: number; q?: string; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  if (params.q) q.set("q", params.q);
+  return request<{ modiriyat: any[]; total: number; page: number; pageSize: number }>(
+    `/admin/modiriyat?${q}`,
+    { token },
+  );
+}
+
+export function createModiriya(
+  token: string,
+  body: { name_ar: string; name_fr: string; code?: string },
+) {
+  return request<{ modiriya: any }>("/admin/modiriyat", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchModiriya(
+  token: string,
+  id: number,
+  body: Partial<{ name_ar: string; name_fr: string; code: string }>,
+) {
+  return request<{ modiriya: any }>(`/admin/modiriyat/${id}`, {
     method: "PATCH",
     token,
     body: JSON.stringify(body),
@@ -261,6 +335,8 @@ export function listWaliRapports(
     pageSize?: number;
     service_id?: number;
     rapport_type_id?: number;
+    search?: string;
+    unread_discussion?: boolean;
   },
 ) {
   const q = new URLSearchParams();
@@ -269,12 +345,41 @@ export function listWaliRapports(
   if (params.service_id) q.set("service_id", String(params.service_id));
   if (params.rapport_type_id)
     q.set("rapport_type_id", String(params.rapport_type_id));
+  if (params.search?.trim()) q.set("search", params.search.trim());
+  if (params.unread_discussion) q.set("unread_discussion", "1");
   return request<{
     rapports: any[];
     total: number;
     page?: number;
     pageSize?: number;
   }>(`/wali/rapports?${q}`, { token });
+}
+
+export function listChefRapports(
+  token: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    service_id?: number;
+    rapport_type_id?: number;
+    search?: string;
+    unread_discussion?: boolean;
+  } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  if (params.service_id) q.set("service_id", String(params.service_id));
+  if (params.rapport_type_id)
+    q.set("rapport_type_id", String(params.rapport_type_id));
+  if (params.search?.trim()) q.set("search", params.search.trim());
+  if (params.unread_discussion) q.set("unread_discussion", "1");
+  return request<{
+    rapports: any[];
+    total: number;
+    page?: number;
+    pageSize?: number;
+  }>(`/chef/rapports?${q}`, { token });
 }
 
 export function listOfficeServices(token: string) {
@@ -337,12 +442,34 @@ export function waliRespond(
   });
 }
 
+export function chefRespond(
+  token: string,
+  id: number,
+  body: { decision: string; follow_up_status?: string; body_text?: string },
+) {
+  return request<{ rapport: any }>(`/chef/rapports/${id}/respond`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
 export function listWaliOfficeUsers(token: string) {
   return request<{ officeUsers: any[] }>("/wali/office-users", { token });
 }
 
+export function listChefOfficeUsers(token: string) {
+  return request<{ officeUsers: any[] }>("/chef/office-users", { token });
+}
+
 export function listWaliUserServices(token: string, userId: number) {
   return request<{ services: any[] }>(`/wali/office-users/${userId}/services`, {
+    token,
+  });
+}
+
+export function listChefUserServices(token: string, userId: number) {
+  return request<{ services: any[] }>(`/chef/office-users/${userId}/services`, {
     token,
   });
 }
@@ -358,12 +485,20 @@ export type OfficeHubCounts = {
   unread_notifications: number;
   changes_requested_rapports: number;
   unread_shared_files: number;
+  unread_instructions: number;
   services_action_count: number;
 };
 
 export type WaliHubCounts = {
   inbox_pending: number;
   office_users_pending: number;
+  unread_discussion: number;
+};
+
+export type ChefHubCounts = {
+  inbox_pending: number;
+  office_users_pending: number;
+  unread_discussion: number;
 };
 
 export function getOfficeHubCounts(token: string) {
@@ -372,6 +507,10 @@ export function getOfficeHubCounts(token: string) {
 
 export function getWaliHubCounts(token: string) {
   return request<WaliHubCounts>("/wali/hub-counts", { token });
+}
+
+export function getChefHubCounts(token: string) {
+  return request<ChefHubCounts>("/chef/hub-counts", { token });
 }
 
 export function markNotificationRead(token: string, id: number) {
@@ -409,6 +548,13 @@ export function listWaliRapportVersions(token: string, rapportId: number) {
   );
 }
 
+export function listChefRapportVersions(token: string, rapportId: number) {
+  return request<{ versions: any[] }>(
+    `/chef/rapports/${rapportId}/versions`,
+    { token },
+  );
+}
+
 export function getWaliRapportVersion(
   token: string,
   rapportId: number,
@@ -416,6 +562,17 @@ export function getWaliRapportVersion(
 ) {
   return request<{ version: any }>(
     `/wali/rapports/${rapportId}/versions/${versionId}`,
+    { token },
+  );
+}
+
+export function getChefRapportVersion(
+  token: string,
+  rapportId: number,
+  versionId: number,
+) {
+  return request<{ version: any }>(
+    `/chef/rapports/${rapportId}/versions/${versionId}`,
     { token },
   );
 }
@@ -461,6 +618,21 @@ export function saveCommuneBulkData(
       method: "PATCH",
       token,
       body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function patchIncludedEntities(
+  token: string,
+  rapportId: number,
+  keys: string[] | null,
+) {
+  return request<{ rapport: any }>(
+    `/office/rapports/${rapportId}/included-entities`,
+    {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ keys }),
     },
   );
 }
@@ -610,6 +782,17 @@ export function getWaliServiceContentHub(
 ) {
   return request<any>(
     `/wali/office-users/${userId}/services/${serviceId}/content`,
+    { token },
+  );
+}
+
+export function getChefServiceContentHub(
+  token: string,
+  userId: number,
+  serviceId: number,
+) {
+  return request<any>(
+    `/chef/office-users/${userId}/services/${serviceId}/content`,
     { token },
   );
 }
@@ -945,6 +1128,21 @@ export function getWaliRapportView(
   });
 }
 
+export function getChefRapportView(
+  token: string,
+  rapportId: number,
+  showHidden = false,
+  versionId: number | null = null,
+) {
+  const q = new URLSearchParams();
+  if (showHidden) q.set("showHidden", "1");
+  if (versionId) q.set("versionId", String(versionId));
+  const qs = q.toString();
+  return request<any>(`/chef/rapports/${rapportId}/view${qs ? `?${qs}` : ""}`, {
+    token,
+  });
+}
+
 export function listPermissionsCatalog(token: string) {
   return request<{ permissions: any[] }>("/admin/access/permissions-catalog", {
     token,
@@ -1091,6 +1289,17 @@ export function getWaliCalendar(
   return request<any>(`/wali/calendar?${q}`, { token });
 }
 
+export function getChefCalendar(
+  token: string,
+  params: { from?: string; to?: string; week?: string },
+) {
+  const q = new URLSearchParams();
+  if (params.from) q.set("from", params.from);
+  if (params.to) q.set("to", params.to);
+  if (params.week) q.set("week", params.week);
+  return request<any>(`/chef/calendar?${q}`, { token });
+}
+
 export function listWaliBroadcasts(token: string) {
   return request<{ broadcasts: any[] }>("/wali/broadcasts", { token });
 }
@@ -1164,9 +1373,76 @@ export function addOfficeBroadcastComment(
   });
 }
 
+export function listWaliInstructions(
+  token: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
+    `/wali/instructions?${q}`,
+    { token },
+  );
+}
+
+export function getWaliInstruction(token: string, id: number) {
+  return request<{ instruction: any }>(`/wali/instructions/${id}`, { token });
+}
+
+export function createWaliInstruction(
+  token: string,
+  files: File[],
+  body: Record<string, unknown>,
+) {
+  const fd = new FormData();
+  for (const file of files) fd.append("files", file);
+  fd.append("payload", JSON.stringify(body));
+  return request<{ instruction: any }>("/wali/instructions", {
+    method: "POST",
+    token,
+    body: fd,
+  });
+}
+
+export function listOfficeInstructions(
+  token: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
+    `/office/instructions?${q}`,
+    { token },
+  );
+}
+
+export function getOfficeInstruction(token: string, id: number) {
+  return request<{ instruction: any }>(`/office/instructions/${id}`, { token });
+}
+
+export function listChefInstructions(
+  token: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
+    `/chef/instructions?${q}`,
+    { token },
+  );
+}
+
+export function getChefInstruction(token: string, id: number) {
+  return request<{ instruction: any }>(`/chef/instructions/${id}`, { token });
+}
+
 export type RapportExportOpts = {
   locale?: string;
   wali?: boolean;
+  chef?: boolean;
   showHidden?: boolean;
   rowFilter?: "active" | "with_finished" | "finished_only";
   /** Export a specific archived version snapshot (read-only). */
@@ -1201,9 +1477,11 @@ async function fetchRapportExport(
   if (opts.showHidden) q.set("showHidden", "1");
   if (opts.rowFilter && opts.rowFilter !== "active") q.set("rowFilter", opts.rowFilter);
   if (opts.versionId) q.set("versionId", String(opts.versionId));
-  const base = opts.wali
-    ? `/wali/rapports/${rapportId}/export.${kind}`
-    : `/office/rapports/${rapportId}/export.${kind}`;
+  const base = opts.chef
+    ? `/chef/rapports/${rapportId}/export.${kind}`
+    : opts.wali
+      ? `/wali/rapports/${rapportId}/export.${kind}`
+      : `/office/rapports/${rapportId}/export.${kind}`;
   const res = await fetch(`${API_BASE}${base}?${q}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -1289,6 +1567,93 @@ export async function downloadRapportExcel(
     opts,
   );
   downloadBlob(blob, filename);
+}
+
+export function listOfficeRapportComments(
+  token: string,
+  rapportId: number,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{
+    comments: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+    discussion_available?: boolean;
+  }>(`/office/rapports/${rapportId}/comments?${q}`, { token });
+}
+
+export function createOfficeRapportComment(
+  token: string,
+  rapportId: number,
+  body_text: string,
+) {
+  return request<{ comment: any }>(`/office/rapports/${rapportId}/comments`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ body_text }),
+  });
+}
+
+export function listChefRapportComments(
+  token: string,
+  rapportId: number,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{
+    comments: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+    discussion_available?: boolean;
+  }>(`/chef/rapports/${rapportId}/comments?${q}`, { token });
+}
+
+export function createChefRapportComment(
+  token: string,
+  rapportId: number,
+  body_text: string,
+) {
+  return request<{ comment: any }>(`/chef/rapports/${rapportId}/comments`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ body_text }),
+  });
+}
+
+export function listWaliRapportComments(
+  token: string,
+  rapportId: number,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{
+    comments: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+    discussion_available?: boolean;
+  }>(`/wali/rapports/${rapportId}/comments?${q}`, { token });
+}
+
+export function createWaliRapportComment(
+  token: string,
+  rapportId: number,
+  body_text: string,
+) {
+  return request<{ comment: any }>(`/wali/rapports/${rapportId}/comments`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ body_text }),
+  });
 }
 
 function downloadBlob(blob: Blob, filename: string) {

@@ -15,13 +15,15 @@ import { ChangeCodeModal } from "./components/ChangeCodeModal";
 import { TopbarProfileMenu } from "./components/TopbarProfileMenu";
 import { SnackbarProvider } from "./snackbar/SnackbarContext";
 import { AdminMunicipalitiesListPage } from "./pages/AdminMunicipalitiesListPage";
+import { AdminDairasListPage } from "./pages/AdminDairasListPage";
+import { AdminModiriyatListPage } from "./pages/AdminModiriyatListPage";
 import { AdminSchemasPage } from "./pages/AdminSchemasPage";
-import { AdminDepartmentsPage } from "./pages/AdminDepartmentsPage";
 import { AdminServicesPage } from "./pages/AdminServicesPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import {
   AdminAccessPage,
   AdminHubPage,
+  ChefHubPage,
   OfficeHubPage,
   OfficeServicesPage,
   WaliHubPage,
@@ -37,7 +39,6 @@ import {
   OfficeDocumentsPage,
   OfficeFichesPage,
   OfficeServiceContentHubPage,
-  OfficeServiceKindRapportTypesPage,
   OfficeTableGridPage,
   WaliRapportViewPage,
 } from "./pages/DomainEditorPages";
@@ -53,9 +54,9 @@ import {
   OfficeNotificationsPage,
 } from "./pages/OfficeNotificationsPage";
 import { WaliInboxBell } from "./components/WaliInboxBell";
+import { ChefInboxBell } from "./components/ChefInboxBell";
 import {
   WaliOfficeUsersPage,
-  WaliServiceKindRapportTypesPage,
   WaliServiceRapportListPage,
   WaliServiceRapportTypesPage,
   WaliUserServicesPage,
@@ -68,12 +69,58 @@ import {
   WaliBroadcastDetailPage,
   WaliBroadcastsPage,
 } from "./pages/SharingPages";
+import {
+  ChefInstructionDetailPage,
+  ChefInstructionsPage,
+  OfficeInstructionDetailPage,
+  OfficeInstructionsPage,
+  WaliInstructionCreatePage,
+  WaliInstructionDetailPage,
+  WaliInstructionsPage,
+} from "./pages/InstructionPages";
 
 function hubPath(role: api.UserRole | undefined) {
   if (role === "ADMIN") return "/";
   if (role === "WALI") return "/wali";
+  if (role === "CHEF_CABINET") return "/chef";
   if (role === "OFFICE_USER") return "/office";
   return "/";
+}
+
+function OfficeKindRedirect() {
+  const { serviceId } = useParams();
+  const sid = Number(serviceId);
+  if (!sid) return <Navigate to="/office/services" replace />;
+  return <Navigate to={`/office/services/${sid}`} replace />;
+}
+
+function ChefUserServicesRoute({ token }: { token: string }) {
+  const { userId } = useParams();
+  const id = Number(userId);
+  if (!id) return <Navigate to="/chef/office-users" replace />;
+  return <WaliUserServicesPage token={token} userId={id} reviewer="chef" />;
+}
+
+function ChefServiceRapportTypesRoute({ token }: { token: string }) {
+  const { userId } = useParams();
+  const id = Number(userId);
+  if (!id) return <Navigate to="/chef/office-users" replace />;
+  return <WaliServiceRapportTypesPage token={token} userId={id} reviewer="chef" />;
+}
+
+function ChefServiceKindRapportTypesRoute({ token: _token }: { token: string }) {
+  const { userId, serviceId } = useParams();
+  const id = Number(userId);
+  const sid = Number(serviceId);
+  if (!id || !sid) return <Navigate to="/chef/office-users" replace />;
+  return <Navigate to={`/chef/office-users/${id}/services/${sid}`} replace />;
+}
+
+function ChefServiceRapportListRoute({ token }: { token: string }) {
+  const { userId } = useParams();
+  const id = Number(userId);
+  if (!id) return <Navigate to="/chef/office-users" replace />;
+  return <WaliServiceRapportListPage token={token} userId={id} reviewer="chef" />;
 }
 
 function WaliUserServicesRoute({ token }: { token: string }) {
@@ -90,11 +137,12 @@ function WaliServiceRapportTypesRoute({ token }: { token: string }) {
   return <WaliServiceRapportTypesPage token={token} userId={id} />;
 }
 
-function WaliServiceKindRapportTypesRoute({ token }: { token: string }) {
-  const { userId } = useParams();
+function WaliServiceKindRapportTypesRoute({ token: _token }: { token: string }) {
+  const { userId, serviceId } = useParams();
   const id = Number(userId);
-  if (!id) return <Navigate to="/wali/office-users" replace />;
-  return <WaliServiceKindRapportTypesPage token={token} userId={id} />;
+  const sid = Number(serviceId);
+  if (!id || !sid) return <Navigate to="/wali/office-users" replace />;
+  return <Navigate to={`/wali/office-users/${id}/services/${sid}`} replace />;
 }
 
 function WaliServiceRapportListRoute({ token }: { token: string }) {
@@ -192,6 +240,7 @@ function AppShell() {
             <OfficeNotificationsBell token={token} />
           ) : null}
           {me.role === "WALI" ? <WaliInboxBell token={token} /> : null}
+          {me.role === "CHEF_CABINET" ? <ChefInboxBell token={token} /> : null}
           <TopbarProfileMenu
             user={me}
             lang={lang}
@@ -215,6 +264,15 @@ function AppShell() {
                 path="/municipalities"
                 element={<AdminMunicipalitiesListPage token={token} />}
               />
+              <Route
+                path="/dairas"
+                element={<AdminDairasListPage token={token} />}
+              />
+              <Route
+                path="/directions"
+                element={<AdminModiriyatListPage token={token} />}
+              />
+              <Route path="/modiriyat" element={<Navigate to="/directions" replace />} />
               <Route path="/users" element={<AdminUsersPage token={token} />} />
               <Route
                 path="/admin/rapports"
@@ -226,7 +284,7 @@ function AppShell() {
               />
               <Route
                 path="/admin/departments"
-                element={<AdminDepartmentsPage token={token} />}
+                element={<Navigate to="/admin/services" replace />}
               />
               <Route
                 path="/admin/services"
@@ -260,7 +318,7 @@ function AppShell() {
               />
               <Route
                 path="/office/services/:serviceId/kinds/:contentKind"
-                element={<OfficeServiceKindRapportTypesPage token={token} />}
+                element={<OfficeKindRedirect />}
               />
               <Route
                 path="/office/services/:serviceId/rapports/:rapportTypeId"
@@ -297,6 +355,14 @@ function AppShell() {
               <Route
                 path="/office/notifications"
                 element={<OfficeNotificationsPage token={token} />}
+              />
+              <Route
+                path="/office/instructions"
+                element={<OfficeInstructionsPage token={token} />}
+              />
+              <Route
+                path="/office/instructions/:id"
+                element={<OfficeInstructionDetailPage token={token} />}
               />
               <Route
                 path="/office/shared"
@@ -360,6 +426,18 @@ function AppShell() {
                 element={<WaliServiceRapportListRoute token={token} />}
               />
               <Route
+                path="/wali/instructions"
+                element={<WaliInstructionsPage token={token} />}
+              />
+              <Route
+                path="/wali/instructions/new"
+                element={<WaliInstructionCreatePage token={token} />}
+              />
+              <Route
+                path="/wali/instructions/:id"
+                element={<WaliInstructionDetailPage token={token} />}
+              />
+              <Route
                 path="/wali/rapports"
                 element={<WaliRapportsInboxPage token={token} />}
               />
@@ -370,6 +448,59 @@ function AppShell() {
               <Route
                 path="/wali/rapports/:rapportId/versions/:versionId?"
                 element={<RapportVersionsArchivePage token={token} wali />}
+              />
+            </>
+          ) : null}
+          {me.role === "CHEF_CABINET" || me.role === "ADMIN" ? (
+            <>
+              <Route path="/chef" element={<ChefHubPage token={token} />} />
+              <Route
+                path="/chef/calendar"
+                element={<WaliCalendarPage token={token} reviewer="chef" />}
+              />
+              <Route
+                path="/chef/instructions"
+                element={<ChefInstructionsPage token={token} />}
+              />
+              <Route
+                path="/chef/instructions/:id"
+                element={<ChefInstructionDetailPage token={token} />}
+              />
+              <Route
+                path="/chef/office-users"
+                element={<WaliOfficeUsersPage token={token} reviewer="chef" />}
+              />
+              <Route
+                path="/chef/office-users/:userId/services/folder/:folderId"
+                element={<ChefUserServicesRoute token={token} />}
+              />
+              <Route
+                path="/chef/office-users/:userId/services"
+                element={<ChefUserServicesRoute token={token} />}
+              />
+              <Route
+                path="/chef/office-users/:userId/services/:serviceId"
+                element={<ChefServiceRapportTypesRoute token={token} />}
+              />
+              <Route
+                path="/chef/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                element={<ChefServiceKindRapportTypesRoute token={token} />}
+              />
+              <Route
+                path="/chef/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                element={<ChefServiceRapportListRoute token={token} />}
+              />
+              <Route
+                path="/chef/rapports"
+                element={<WaliRapportsInboxPage token={token} reviewer="chef" />}
+              />
+              <Route
+                path="/chef/rapports/:rapportId/view"
+                element={<WaliRapportViewPage token={token} audience="chef" />}
+              />
+              <Route
+                path="/chef/rapports/:rapportId/versions/:versionId?"
+                element={<RapportVersionsArchivePage token={token} chef />}
               />
             </>
           ) : null}

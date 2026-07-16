@@ -88,6 +88,7 @@ export function MediaRowsView({ rows, files, token }: ViewProps) {
                 key={id}
                 file={file}
                 token={token}
+                className="mediaCell mediaFileCard"
                 onImageClick={lightbox.open}
               />
             )

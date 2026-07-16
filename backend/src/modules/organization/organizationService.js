@@ -1,6 +1,6 @@
 const { Op } = require("sequelize");
 const bcrypt = require("bcryptjs");
-const { Municipality, User } = require("../../db");
+const { Municipality, User, Daira, Modiriya } = require("../../db");
 const { audit } = require("../../services/audit");
 const { generateCredentialsPdf } = require("../../services/credentialsPdfService");
 
@@ -10,7 +10,7 @@ function parsePagination(query) {
   return { page, pageSize, offset: (page - 1) * pageSize, limit: pageSize };
 }
 
-function municipalitySearchWhere(q) {
+function refSearchWhere(q) {
   if (!q || !String(q).trim()) return {};
   const s = `%${String(q).trim()}%`;
   return {
@@ -18,14 +18,103 @@ function municipalitySearchWhere(q) {
   };
 }
 
-async function listMunicipalities(query) {
+async function listDairas(query) {
   const { page, pageSize, offset, limit } = parsePagination(query);
-  const where = municipalitySearchWhere(query.q);
-  const { rows, count } = await Municipality.findAndCountAll({
+  const where = refSearchWhere(query.q);
+  const { rows, count } = await Daira.findAndCountAll({
     where,
     order: [["code", "ASC"]],
     offset,
     limit
+  });
+  return { dairas: rows, total: count, page, pageSize };
+}
+
+async function createDaira(data, actor, req) {
+  const row = await Daira.create({
+    name_ar: data.name_ar,
+    name_fr: data.name_fr,
+    code: data.code
+  });
+  await audit(actor.id, "DAIRA_CREATE", { daira_id: row.id, code: row.code }, { req });
+  return row;
+}
+
+async function updateDaira(id, data, actor, req) {
+  const row = await Daira.findByPk(id);
+  if (!row) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  await row.update({
+    ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
+    ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
+    ...(data.code != null ? { code: data.code } : {})
+  });
+  await audit(actor.id, "DAIRA_UPDATE", { daira_id: row.id }, { req });
+  return row;
+}
+
+async function nextModiriyaCode() {
+  const rows = await Modiriya.findAll({ attributes: ["code"], raw: true });
+  let max = 0;
+  for (const r of rows) {
+    const n = parseInt(String(r.code || ""), 10);
+    if (!Number.isNaN(n) && n > max) max = n;
+  }
+  return String(max + 1);
+}
+
+async function listModiriyat(query) {
+  const { page, pageSize, offset, limit } = parsePagination(query);
+  const where = refSearchWhere(query.q);
+  const { rows, count } = await Modiriya.findAndCountAll({
+    where,
+    order: [["code", "ASC"]],
+    offset,
+    limit
+  });
+  return { modiriyat: rows, total: count, page, pageSize };
+}
+
+async function createModiriya(data, actor, req) {
+  const code = String(data.code || "").trim() || (await nextModiriyaCode());
+  const row = await Modiriya.create({
+    name_ar: data.name_ar,
+    name_fr: data.name_fr,
+    code
+  });
+  await audit(actor.id, "MODIRIYA_CREATE", { modiriya_id: row.id, code: row.code }, { req });
+  return row;
+}
+
+async function updateModiriya(id, data, actor, req) {
+  const row = await Modiriya.findByPk(id);
+  if (!row) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  await row.update({
+    ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
+    ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
+    ...(data.code != null ? { code: data.code } : {})
+  });
+  await audit(actor.id, "MODIRIYA_UPDATE", { modiriya_id: row.id }, { req });
+  return row;
+}
+
+async function listMunicipalities(query) {
+  const { page, pageSize, offset, limit } = parsePagination(query);
+  const where = refSearchWhere(query.q);
+  if (query.daira_id) where.daira_id = query.daira_id;
+  const { rows, count } = await Municipality.findAndCountAll({
+    where,
+    order: [["code", "ASC"]],
+    offset,
+    limit,
+    include: [{ association: "daira", attributes: ["id", "code", "name_ar", "name_fr"] }]
   });
   return { municipalities: rows, total: count, page, pageSize };
 }
@@ -34,7 +123,8 @@ async function createMunicipality(data, actor, req) {
   const muni = await Municipality.create({
     name_ar: data.name_ar,
     name_fr: data.name_fr,
-    code: data.code
+    code: data.code,
+    daira_id: data.daira_id
   });
   await audit(actor.id, "MUNICIPALITY_CREATE", { municipality_id: muni.id, code: muni.code }, { req });
   return muni;
@@ -50,7 +140,8 @@ async function updateMunicipality(id, data, actor, req) {
   await muni.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
-    ...(data.code != null ? { code: data.code } : {})
+    ...(data.code != null ? { code: data.code } : {}),
+    ...(data.daira_id != null ? { daira_id: data.daira_id } : {})
   });
   await audit(actor.id, "MUNICIPALITY_UPDATE", { municipality_id: muni.id }, { req });
   return muni;
@@ -183,6 +274,12 @@ async function resetUserPassword(id, actor, req) {
 }
 
 module.exports = {
+  listDairas,
+  createDaira,
+  updateDaira,
+  listModiriyat,
+  createModiriya,
+  updateModiriya,
   listMunicipalities,
   createMunicipality,
   updateMunicipality,

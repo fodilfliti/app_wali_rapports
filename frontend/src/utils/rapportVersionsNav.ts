@@ -7,7 +7,8 @@ export type RapportPreviewSource = {
   rapportType?: { content_kind?: string }
 }
 
-export function versionsListPath(rapportId: number, wali: boolean) {
+export function versionsListPath(rapportId: number, wali: boolean, chef = false) {
+  if (chef) return `/chef/rapports/${rapportId}/versions`
   return wali
     ? `/wali/rapports/${rapportId}/versions`
     : `/office/rapports/${rapportId}/versions`
@@ -17,7 +18,9 @@ export function versionDetailPath(
   rapportId: number,
   versionId: number,
   wali: boolean,
+  chef = false,
 ) {
+  if (chef) return `/chef/rapports/${rapportId}/versions/${versionId}`
   return wali
     ? `/wali/rapports/${rapportId}/versions/${versionId}`
     : `/office/rapports/${rapportId}/versions/${versionId}`
@@ -28,7 +31,9 @@ export function rapportPreviewPath(
   rapportId: number,
   wali: boolean,
   rapport?: RapportPreviewSource | null,
+  chef = false,
 ): string {
+  if (chef) return `/chef/rapports/${rapportId}/view`
   if (wali) return `/wali/rapports/${rapportId}/view`
 
   if (rapport?.service_id && rapport?.rapport_type_id && rapport?.rapportType) {

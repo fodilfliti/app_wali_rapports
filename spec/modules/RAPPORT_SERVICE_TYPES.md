@@ -44,9 +44,11 @@ flowchart TD
 | **1 — Table grid**       | `table_grid`       | One or more **tables** per service; typed columns; formulas; row visibility; cell highlights | Usually **versioned**; archive old versions for graphs      | Per-table or whole-rapport submit; feedback optional or required |
 | **2 — Document compose** | `document_compose` | **List of files**; each file = rich blocks (text, table, image) → PDF/Word                   | **Standalone** (new file per subject/date)                  | Wali reads export-like view; note on file                        |
 | **3 — Fiche lecture**    | `fiche_lecture`    | Same as type 2 but **shared** by all office users; **new file every time** (dated)           | **Standalone** (always new file + date)                     | Wali inbox grouped by date; optional note                        |
-| **4 — Commune list**     | `commune_list`     | List of **communes** → per-commune table or form                                             | Configurable: versioned whole état or standalone per period | Wali filters communes; sees highlighted rows                     |
+| **4 — قائمة / Liste**    | `commune_list`     | Configurable targets: **communes** and/or **dairas** and/or **modiriyat** → per-entity table or form | Configurable: versioned whole état or standalone per period | Filters entities; sees highlighted rows; `entity_target_kinds` on type |
 
 Admin configures `content_kind` when creating a service / rapport type. A **service** may contain **multiple tables** (type 1) or **multiple document instances** (types 2–3).
+
+**UI labels (AR / FR, never raw enums):** جدول / Tableau · ملف مركّب / Document · مذكرة استخلاصية / Fiche lecture · **قائمة / Liste**.
 
 ---
 
@@ -114,8 +116,11 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - **New document** → optional **template picker** (service templates or blank) → **rich HTML editor** (TipTap):
   - Bilingual `rich_html_ar` / `rich_html_fr` (headings, bold, colors, alignment, lists, tables in HTML).
   - **Embedded tables** (`embedded_tables[]`) with schema from table library or inline columns.
+    - Insert options: empty from existing schema, create new schema (live column preview like admin/office), or import from another rapport.
+    - Empty-from-schema and create/import all open the **fill modal** before the table is inserted into the document.
+    - Fill modal is rapport-scoped: add/remove/reorder rows allowed; **no** finish / Wali-visible meta columns and **no** active/finished/all row filters.
   - **Images** inline in HTML; legacy **blocks** (`heading`, `paragraph`, `media_row`) still rendered for old data.
-- **Templates:** office defines reusable starters per service — see **`SCHEMA_CONFIGURATION.md`** (`rapport_document_templates`). Import in editor: **replace** or **append**.
+- **Templates:** office defines reusable starters per service — see **`SCHEMA_CONFIGURATION.md`** (`rapport_document_templates`). Import in editor: **replace** or **append**. Office UI for document templates is gated by frontend `ENABLE_DOCUMENT_TEMPLATES` (default off); API remains available.
 
 ### Output
 
@@ -142,22 +147,30 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 ---
 
-## Type 4 — Commune list
+## Type 4 — قائمة / Liste (`commune_list`)
 
-- Collection of data for **all municipalities** in the Wilaya.
-- **Office view**: Hub of municipalities; click one to edit its specific data **or** use **Bulk Entry** (table mode only) to edit all communes in one grid.
+- Collection of data for selected **entity kinds** in the Wilaya (not communes-only).
+- **`entity_target_kinds`** on `rapport_types`: JSON array subset of `commune` | `daira` | `modiriya` (at least one). Default `["commune"]` for backward compatibility.
+- **Per-rapport membership** (`data_json.included_entity_keys`): optional non-empty array of prefixed keys (`daira:1301`, …). Absent / null = **all** entities of the type’s kinds. Office can narrow or expand the set while the rapport is `draft` / `changes_requested` (hub **Choisir la liste**). Removing a key hides it from the hub without deleting stored entity data (re-adding restores content). New draft after finish **inherits** the previous finished rapport’s `included_entity_keys` when auto-created.
+- **Office view**: Hub grouped by kind (only included entities); progress counter sums filled across all kinds with kind-aware unit wording (بلدية / دائرة / مديرية / عنصر). Click one entity to edit **or** **Bulk Entry** (table mode) across selected kinds.
 - **Modes** (`commune_content_kind` on `rapport_types`):
-  - **`complex`**: Rich text document per commune (like type 2). **No linked table schema** required at create time.
-  - **`table`**: Grid rows per commune. **Requires linked table schema**. Same row tools as type 1 (Wali visibility, finished rows, cell colors, merge, filters).
-- **Create rapport type** (admin + office): schema selector shown only for `table_grid` and `commune_list` + `table` — **not** for `document_compose`, `fiche_lecture`, or `commune_list` + `complex`.
+  - **`complex`**: Rich text document per entity (like type 2). **No linked table schema** required at create time.
+  - **`table`**: Grid rows per entity. **Requires linked table schema**. Same row tools as type 1.
+- **Create rapport type** (admin + office): multi-select targets; schema selector shown only for `table_grid` and `commune_list` + `table`.
+- **Storage keys** in `data_json.entities` (or migrated `communes`): prefixed `commune:1301`, `daira:1304`, `modiriya:DIR01`.
 - **Bulk entry (table mode)**:
-  - First column = commune name (read-only).
-  - One empty row per commune by default; add rows per commune without opening each commune page.
-  - Separate per-commune editor still available; commune name is fixed there (cannot rename municipality).
-  - **Drag reorder** uses **`commune` scope**: reorder and `#` numbering are **per commune** in the bulk UI (Tlemcen rows numbered 1…4 only within Tlemcen). Export `#` remains **global sequential** over all exported rows (PDF/Word/Excel).
-- **Versioning**: Incremental whole-état. On submit, compare each commune to last submitted version → `changed_commune_codes`. Unchanged communes keep prior snapshot reference in `commune_versions`.
-- **Wali view**: Hub with badges **Filled** / **Changed**; filter **Modifiées** to see only communes changed in current draft. **Versions archivées** modal (office, wali, admin) to open any past version read-only.
-- **Archive UI**: Use **Versions archivées** popup (not inline dropdown) on all versioned types including commune list and table grid.
+  - First column = entity display name (read-only) + kind.
+  - **Drag reorder** uses **`commune` scope** generalized to **per-entity** blocks. Export `#` remains global sequential.
+- **Versioning**: On submit, compare each entity → `changed_entity_keys` (legacy `changed_commune_codes` dual-read). Snapshots in `entity_versions` / legacy `commune_versions`.
+- **Wali / Chef view**: Hub with badges **Filled** / **Changed**; filter Modifiées. **Versions archivées** modal.
+- Reference data: communes → daira; dairas and modiriyat (UI **Directions** / المديريات) managed in admin — see `ORGANIZATION.md`.
+
+### Chef Cabinet gate (cross-cutting)
+
+- First office **Envoyer** → status `pending_chef` when `chef_gate = required`.
+- Chef accept → `submitted` (Wali inbox). Chef demand/reject → `changes_requested`.
+- Wali demand changes → `chef_gate = bypass`; next office submit skips Chef (Chef notified only).
+- Remarks: show Chef responses then Wali responses on the rapport — `CHEF_CABINET.md`.
 
 ---
 
@@ -185,8 +198,8 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ### `notifications`
 
 - `user_id` (office recipient), `rapport_id` (nullable FK), `broadcast_id` (nullable FK to `wali_broadcasts`), `wali_response_id` (nullable FK), `message_key` (e.g. `waliFeedback` or `waliBroadcast`), `read_at`, `created_at`
-- Office hub badge + list **Notifications du wali**
-- Mark read when user opens rapport
+- Office hub badge + list **Notifications du wali** (`unread_notifications`): feedback / chef replies / discussion only — **excludes** `waliInstruction`, `waliBroadcast`, `waliBroadcastReminder` (those use `unread_instructions` / `unread_shared_files`). List API applies the same exclusion.
+- Mark read when user opens rapport; generic notification mark-read also clears linked broadcast/instruction recipient rows.
 
 ### Optional comment
 
@@ -198,7 +211,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 - **`rapport_table_schemas`**: reusable column definitions — **admin creates/edits via `/admin/schemas`** (not hardcoded per domain).
 - Each **`rapport_type`** with `content_kind = table_grid` links to a schema via `schema_json.table_schema_slug`.
-- Type-2 document composer: **Import schema** into embedded tables; **document templates** for full HTML starters — `SCHEMA_CONFIGURATION.md`.
+- Type-2 document composer: insert embedded tables (empty schema → fill, create with live preview, import from rapport); **document templates** for full HTML starters — `SCHEMA_CONFIGURATION.md`.
 - **Demo seeds:** `npm run db:seed-demo` (`backend/scripts/seed-demo-presentation.js`) resets domain rapports/services and loads a **presentation dataset** (Hydraulique + Investissement) with table grids (grouped headers, formulas, colors, media, versions, Wali responses), document compose, commune list (table + complex modes), and rich **fiche lecture** (embedded tables, photos from `storage/uploads`). Logins: `office1`, `wali1` — password from `TEST_USER_PASSWORD` env or default `Test1234!`. Sample data only — add real services/schemas through admin UI.
 
 See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
@@ -260,7 +273,7 @@ Details: **`spec/CORE.md`** § Rapport export.
 
 ## UI/UX — Wali presentation rules
 
-- **Inbox list** (`/wali/rapports`): columns for title, **service**, **rapport type**, status, actions.
+- **Inbox list** (`/wali/rapports` and `/chef/rapports`): columns for title, **service**, **rapport type**, status, actions; optional **title search**.
 - **Status colors:** row background tints by status (`submitted`, `under_review`, `acknowledged`, `changes_requested`); legend bar at top of inbox.
 - **New submissions:** `is_inbox_new` shows **« جديد »** badge on title; row classes `waliInboxRowNew` / `waliInboxRowPending`.
 - **Wali decision on row:** when a response exists, show compact decision badge under status (not a duplicate full note).

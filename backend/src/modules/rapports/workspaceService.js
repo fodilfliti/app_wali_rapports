@@ -181,7 +181,7 @@ function buildContentKindSummaries(contentKinds) {
 async function getServiceContentHub(serviceId, user, options = {}) {
   let accessLevel = "view";
   if (options.waliForOfficeUserId) {
-    if (!["WALI", "ADMIN"].includes(user?.role)) {
+    if (!["WALI", "CHEF_CABINET", "ADMIN"].includes(user?.role)) {
       const err = new Error("Forbidden");
       err.status = 403;
       throw err;
@@ -214,9 +214,15 @@ async function getServiceContentHub(serviceId, user, options = {}) {
 
   let byType = {};
   if (options.waliForOfficeUserId) {
-    const counts = await hubCountsService.getWaliServicePendingCounts(
-      Number(options.waliForOfficeUserId),
-    );
+    const forChef =
+      options.forChef === true || user?.role === "CHEF_CABINET";
+    const counts = forChef
+      ? await hubCountsService.getChefServicePendingCounts(
+          Number(options.waliForOfficeUserId),
+        )
+      : await hubCountsService.getWaliServicePendingCounts(
+          Number(options.waliForOfficeUserId),
+        );
     byType = counts.byType;
   } else {
     const counts = await hubCountsService.getOfficeServiceActionCounts(user.id);
@@ -779,6 +785,7 @@ async function getWaliTableView(
     media_rows: table.media_rows || [],
     versions,
     waliResponses: rapport.waliResponses || [],
+    chefResponses: rapport.chefResponses || [],
   };
 }
 
@@ -798,6 +805,7 @@ async function getWaliDocumentView(
     media_rows: normalizeMediaRows(dj.media_rows),
     versions,
     waliResponses: rapport.waliResponses || [],
+    chefResponses: rapport.chefResponses || [],
   };
 }
 
@@ -918,12 +926,29 @@ async function getCommuneListWorkspace(
 
     if (!rapport && accessLevel === "manage") {
       const title = `${service.name_ar} — ${new Date().toISOString().slice(0, 10)}`;
+      const { getIncludedEntityKeys } = require("./entityKeys");
+      let data_json = { communes: {}, entities: {} };
+      const prevFinished = await Rapport.findOne({
+        where: {
+          service_id: service.id,
+          rapport_type_id: rapportType.id,
+          hidden_at: { [Op.ne]: null },
+        },
+        order: [["updated_at", "DESC"]],
+        include: [{ model: RapportVersion, as: "currentVersion" }],
+      });
+      const inherited = getIncludedEntityKeys(
+        prevFinished?.currentVersion?.data_json || {},
+      );
+      if (inherited) {
+        data_json = { ...data_json, included_entity_keys: inherited };
+      }
       rapport = await rapportService.createRapport(
         {
           service_id: service.id,
           rapport_type_id: rapportType.id,
           title,
-          data_json: { communes: {} },
+          data_json,
         },
         actor,
         req,
@@ -935,27 +960,107 @@ async function getCommuneListWorkspace(
 
   const schema = await resolveTableSchemaOptional(rapportType, serviceId);
   const columns = schema?.columns_json || [];
-  const municipalities = await Municipality.findAll({
-    order: [["code", "ASC"]],
+  const {
+    normalizeTargetKinds,
+    entityKey,
+    ensureEntitiesMap,
+    getEntitiesMap,
+    getIncludedEntityKeys,
+    filterSummariesByInclusion,
+  } = require("./entityKeys");
+  const targetKinds = normalizeTargetKinds(
+    rapportType.entity_target_kinds || ["commune"],
+  );
+  const { Daira, Modiriya } = require("../../db");
+
+  const municipalities = targetKinds.includes("commune")
+    ? await Municipality.findAll({ order: [["code", "ASC"]] })
+    : [];
+  const dairas = targetKinds.includes("daira")
+    ? await Daira.findAll({ order: [["code", "ASC"]] })
+    : [];
+  const modiriyat = targetKinds.includes("modiriya")
+    ? await Modiriya.findAll({ order: [["code", "ASC"]] })
+    : [];
+
+  const dataJson = ensureEntitiesMap(rapport?.currentVersion?.data_json || {});
+  const entitiesData = getEntitiesMap(dataJson);
+  const communesData = dataJson.communes || {};
+  const includedEntityKeys = getIncludedEntityKeys(dataJson);
+  const baselineCommunes = getBaselineCommunes(rapport);
+
+  function summarizeEntity(entry, baseline, cols) {
+    return summarizeMunicipality(entry, baseline, cols);
+  }
+
+  const municipalitySummariesAll = municipalities.map((m) => {
+    const key = entityKey("commune", m.code);
+    return {
+      kind: "commune",
+      entity_key: key,
+      code: m.code,
+      name_ar: m.name_ar,
+      name_fr: m.name_fr,
+      daira_id: m.daira_id,
+      ...summarizeEntity(
+        entitiesData[key] || communesData[m.code],
+        baselineCommunes[m.code] || baselineCommunes[key],
+        columns,
+      ),
+    };
   });
 
-  const communesData = rapport?.currentVersion?.data_json?.communes || {};
-  const baselineCommunes = getBaselineCommunes(rapport);
-  const municipalitySummaries = municipalities.map((m) => ({
-    code: m.code,
-    name_ar: m.name_ar,
-    name_fr: m.name_fr,
-    ...summarizeMunicipality(
-      communesData[m.code],
-      baselineCommunes[m.code],
-      columns,
-    ),
-  }));
+  const dairaSummariesAll = dairas.map((d) => {
+    const key = entityKey("daira", d.code);
+    return {
+      kind: "daira",
+      entity_key: key,
+      code: d.code,
+      name_ar: d.name_ar,
+      name_fr: d.name_fr,
+      ...summarizeEntity(entitiesData[key], null, columns),
+    };
+  });
+
+  const modiriyaSummariesAll = modiriyat.map((d) => {
+    const key = entityKey("modiriya", d.code);
+    return {
+      kind: "modiriya",
+      entity_key: key,
+      code: d.code,
+      name_ar: d.name_ar,
+      name_fr: d.name_fr,
+      ...summarizeEntity(entitiesData[key], null, columns),
+    };
+  });
+
+  const municipalitySummaries = filterSummariesByInclusion(
+    municipalitySummariesAll,
+    includedEntityKeys,
+  );
+  const dairaSummaries = filterSummariesByInclusion(
+    dairaSummariesAll,
+    includedEntityKeys,
+  );
+  const modiriyaSummaries = filterSummariesByInclusion(
+    modiriyaSummariesAll,
+    includedEntityKeys,
+  );
 
   const editable =
     accessLevel === "manage" &&
     rapport &&
     ["draft", "changes_requested"].includes(rapport.status);
+
+  function catalogItems(summaries) {
+    return summaries.map((s) => ({
+      entity_key: s.entity_key,
+      kind: s.kind,
+      code: s.code,
+      name_ar: s.name_ar,
+      name_fr: s.name_fr,
+    }));
+  }
 
   return {
     service: {
@@ -971,6 +1076,7 @@ async function getCommuneListWorkspace(
       content_kind: rapportType.content_kind,
       versioning_mode: rapportType.versioning_mode,
       commune_content_kind: rapportType.commune_content_kind,
+      entity_target_kinds: targetKinds,
     },
     schema: schema
       ? {
@@ -983,7 +1089,20 @@ async function getCommuneListWorkspace(
       : null,
     rapport,
     municipalities: municipalitySummaries,
+    dairas: dairaSummaries,
+    modiriyat: modiriyaSummaries,
+    entities: [...municipalitySummaries, ...dairaSummaries, ...modiriyaSummaries],
+    entitiesData,
     communesData,
+    targetKinds,
+    included_entity_keys: includedEntityKeys,
+    selection_catalog: editable
+      ? {
+          municipalities: catalogItems(municipalitySummariesAll),
+          dairas: catalogItems(dairaSummariesAll),
+          modiriyat: catalogItems(modiriyaSummariesAll),
+        }
+      : null,
     accessLevel,
     editable,
   };
@@ -1086,6 +1205,64 @@ async function saveBulkCommuneData(rapportId, payload, actor, req) {
   return rapportService.getRapportDetail(rapportId);
 }
 
+async function resolveEntityRef(entityKeyOrCode) {
+  const { parseEntityKey, entityKey } = require("./entityKeys");
+  const { Daira, Modiriya } = require("../../db");
+  const parsed = parseEntityKey(entityKeyOrCode);
+  if (!parsed) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  const key = entityKey(parsed.kind, parsed.code);
+  if (parsed.kind === "commune") {
+    const municipality = await Municipality.findOne({ where: { code: parsed.code } });
+    if (!municipality) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
+    return {
+      kind: "commune",
+      entity_key: key,
+      code: municipality.code,
+      name_ar: municipality.name_ar,
+      name_fr: municipality.name_fr,
+      municipality,
+    };
+  }
+  if (parsed.kind === "daira") {
+    const daira = await Daira.findOne({ where: { code: parsed.code } });
+    if (!daira) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
+    return {
+      kind: "daira",
+      entity_key: key,
+      code: daira.code,
+      name_ar: daira.name_ar,
+      name_fr: daira.name_fr,
+      municipality: null,
+    };
+  }
+  const modiriya = await Modiriya.findOne({ where: { code: parsed.code } });
+  if (!modiriya) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  return {
+    kind: "modiriya",
+    entity_key: key,
+    code: modiriya.code,
+    name_ar: modiriya.name_ar,
+    name_fr: modiriya.name_fr,
+    municipality: null,
+  };
+}
+
 async function getCommuneRows(rapportId, municipalityCode, actor) {
   const { accessLevel } = await assertRapportAccess(actor, rapportId, "view");
   const rapport = await rapportService.getRapportDetail(rapportId);
@@ -1100,19 +1277,29 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
       ? await resolveTableSchema(rapport.rapportType, rapport.service_id)
       : null;
   const columns = schema?.columns_json || [];
-  const municipality = await Municipality.findOne({
-    where: { code: municipalityCode },
-  });
-  if (!municipality) {
+  const ref = await resolveEntityRef(municipalityCode);
+  const { ensureEntitiesMap, isEntityIncluded } = require("./entityKeys");
+  const dataJson = ensureEntitiesMap(rapport.currentVersion?.data_json || {});
+  if (!isEntityIncluded(dataJson, ref.entity_key)) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
+  const entities = dataJson.entities || {};
+  const communes = dataJson.communes || {};
+  const communeEntry =
+    entities[ref.entity_key] ||
+    (ref.kind === "commune" ? communes[ref.code] || {} : {}) ||
+    {};
 
-  const communes = rapport.currentVersion?.data_json?.communes || {};
-  const communeEntry = communes[municipalityCode] || {};
+  const fakeMuni = {
+    code: ref.code,
+    name_ar: ref.name_ar,
+    name_fr: ref.name_fr,
+  };
+
   let blocks = communeEntry.blocks;
-  if (!blocks?.length) blocks = buildDefaultCommuneBlocks(municipality);
+  if (!blocks?.length) blocks = buildDefaultCommuneBlocks(fakeMuni);
 
   const rich_html_ar = communeEntry.rich_html_ar || "";
   const rich_html_fr = communeEntry.rich_html_fr || "";
@@ -1123,7 +1310,7 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
   let rows = communeEntry.rows || [];
   if (rows.length) rows = recalcTableRows(rows, columns);
   else if (rapport.rapportType.commune_content_kind === "table")
-    rows = buildDefaultCommuneRows(columns, municipality);
+    rows = buildDefaultCommuneRows(columns, fakeMuni);
 
   const editable =
     accessLevel === "manage" &&
@@ -1131,11 +1318,15 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
 
   return {
     municipality: {
-      code: municipality.code,
-      name_ar: municipality.name_ar,
-      name_fr: municipality.name_fr,
+      code: ref.code,
+      name_ar: ref.name_ar,
+      name_fr: ref.name_fr,
+      kind: ref.kind,
+      entity_key: ref.entity_key,
     },
-    municipality_code: municipality.code,
+    municipality_code: ref.code,
+    entity_key: ref.entity_key,
+    entity_kind: ref.kind,
     blocks,
     rich_html_ar,
     rich_html_fr,
@@ -1173,8 +1364,18 @@ async function saveCommuneData(
     err.status = 400;
     throw err;
   }
-  const communes = { ...(rapport.currentVersion?.data_json?.communes || {}) };
-  const prev = communes[municipalityCode] || {};
+  const ref = await resolveEntityRef(municipalityCode);
+  const { ensureEntitiesMap, isEntityIncluded } = require("./entityKeys");
+  const dataJson = ensureEntitiesMap(rapport.currentVersion?.data_json || {});
+  if (!isEntityIncluded(dataJson, ref.entity_key)) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  const entities = { ...(dataJson.entities || {}) };
+  const communes = { ...(dataJson.communes || {}) };
+  const storageKey = ref.entity_key;
+  const prev = entities[storageKey] || (ref.kind === "commune" ? communes[ref.code] : {}) || {};
   const next = { ...prev };
 
   if (payload.blocks !== undefined) next.blocks = payload.blocks;
@@ -1217,13 +1418,17 @@ async function saveCommuneData(
     }
   }
 
-  communes[municipalityCode] = next;
+  entities[storageKey] = next;
+  if (ref.kind === "commune") {
+    communes[ref.code] = next;
+  }
 
   return rapportService.updateRapportDraft(
     rapportId,
     {
       data_json: {
-        ...(rapport.currentVersion?.data_json || {}),
+        ...dataJson,
+        entities,
         communes,
       },
     },
@@ -1272,6 +1477,7 @@ async function getWaliCommuneView(rapportId, versionId = null, markReview = true
     communes,
     versions,
     waliResponses: rapport.waliResponses || [],
+    chefResponses: rapport.chefResponses || [],
   };
 }
 
@@ -1308,6 +1514,91 @@ async function getRapportTableSnapshot(rapportId, actor) {
   };
 }
 
+async function saveIncludedEntities(rapportId, keys, actor, req) {
+  await assertRapportAccess(actor, rapportId, "manage");
+  const rapport = await rapportService.getRapportDetail(rapportId);
+  if (rapport.rapportType?.content_kind !== "commune_list") {
+    const err = new Error("Not a commune list rapport");
+    err.status = 400;
+    throw err;
+  }
+  if (!["draft", "changes_requested"].includes(rapport.status)) {
+    const err = new Error("Rapport not editable");
+    err.status = 409;
+    throw err;
+  }
+
+  const {
+    normalizeTargetKinds,
+    entityKey,
+    parseEntityKey,
+    ensureEntitiesMap,
+  } = require("./entityKeys");
+  const { Daira, Modiriya } = require("../../db");
+  const targetKinds = normalizeTargetKinds(
+    rapport.rapportType.entity_target_kinds || ["commune"],
+  );
+  const dataJson = ensureEntitiesMap(rapport.currentVersion?.data_json || {});
+
+  let included_entity_keys = null;
+  if (keys != null) {
+    if (!Array.isArray(keys) || keys.length === 0) {
+      const err = new Error("includedEntitiesRequired");
+      err.status = 400;
+      throw err;
+    }
+    const validated = [];
+    for (const raw of keys) {
+      const parsed = parseEntityKey(raw);
+      if (!parsed || !targetKinds.includes(parsed.kind)) {
+        const err = new Error("Invalid entity key");
+        err.status = 400;
+        throw err;
+      }
+      const key = entityKey(parsed.kind, parsed.code);
+      if (parsed.kind === "commune") {
+        const m = await Municipality.findOne({ where: { code: parsed.code } });
+        if (!m) {
+          const err = new Error("Not found");
+          err.status = 404;
+          throw err;
+        }
+      } else if (parsed.kind === "daira") {
+        const d = await Daira.findOne({ where: { code: parsed.code } });
+        if (!d) {
+          const err = new Error("Not found");
+          err.status = 404;
+          throw err;
+        }
+      } else {
+        const d = await Modiriya.findOne({ where: { code: parsed.code } });
+        if (!d) {
+          const err = new Error("Not found");
+          err.status = 404;
+          throw err;
+        }
+      }
+      validated.push(key);
+    }
+    included_entity_keys = [...new Set(validated)];
+  }
+
+  const nextJson = { ...dataJson };
+  if (included_entity_keys == null) {
+    delete nextJson.included_entity_keys;
+  } else {
+    nextJson.included_entity_keys = included_entity_keys;
+  }
+
+  await rapportService.updateRapportDraft(
+    rapportId,
+    { data_json: nextJson },
+    actor,
+    req,
+  );
+  return rapportService.getRapportDetail(rapportId);
+}
+
 module.exports = {
   getServiceContentHub,
   getServiceWorkspace,
@@ -1324,5 +1615,6 @@ module.exports = {
   saveBulkCommuneData,
   getCommuneRows,
   saveCommuneData,
+  saveIncludedEntities,
   getRapportView,
 };

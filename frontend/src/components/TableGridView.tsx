@@ -447,6 +447,7 @@ export function TableWorkspaceHeader({
   filterMode,
   onFilterModeChange,
   onAddRow,
+  showRowFilters = true,
 }: {
   editable?: boolean
   rowCount: number
@@ -454,13 +455,14 @@ export function TableWorkspaceHeader({
   filterMode: TableRowFilterMode
   onFilterModeChange: (mode: TableRowFilterMode) => void
   onAddRow?: () => void
+  showRowFilters?: boolean
 }) {
   const activeCount = rowCount - finishedCount
   if (rowCount <= 0 && !editable) return null
 
   return (
     <div className="tableWorkspaceHeader">
-      {editable ? (
+      {editable && showRowFilters ? (
         <TableRowFilterBar
           filterMode={filterMode}
           finishedCount={finishedCount}
@@ -487,6 +489,7 @@ export function TableWorkspace({
   onFilterModeChange,
   onAddRow,
   showHeader = true,
+  showRowFilters = true,
   className,
   reorderScope,
   ...gridProps
@@ -497,6 +500,7 @@ export function TableWorkspace({
   onFilterModeChange: (mode: TableRowFilterMode) => void
   onAddRow?: () => void
   showHeader?: boolean
+  showRowFilters?: boolean
   className?: string
   reorderScope?: TableRowReorderScope
 }) {
@@ -515,6 +519,7 @@ export function TableWorkspace({
               filterMode={filterMode}
               onFilterModeChange={onFilterModeChange}
               onAddRow={onAddRow}
+              showRowFilters={showRowFilters}
             />
           ) : null}
           {canPaintCells ? (
@@ -526,7 +531,7 @@ export function TableWorkspace({
         <TableGridView
           {...gridProps}
           reorderScope={reorderScope}
-          rowFilterMode={filterMode}
+          rowFilterMode={showRowFilters ? filterMode : 'all'}
           hideColorToolbar
           activeCellColor={activeCellColor}
           onActiveCellColorChange={setActiveCellColor}

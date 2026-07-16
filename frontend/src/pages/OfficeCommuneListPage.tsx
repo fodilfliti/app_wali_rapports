@@ -11,13 +11,21 @@ import {
 } from "../components/RapportTitleField";
 import { TablePagination } from "../components/TablePagination";
 import { WaliResponsesSection } from "../components/WaliResponsesSection";
+import {
+  RapportDiscussionSection,
+  isDiscussionEnabledByStatus,
+} from "../components/RapportDiscussionSection";
+import { EntityInclusionModal } from "../components/EntityInclusionModal";
+import { BusyButton } from "../components/BusyButton";
+import { PageLoading } from "../components/PageLoading";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import {
   localizedRapportTypeName,
   officeCommuneBulkPath,
-  officeCommuneEditorPath,
+  officeEntityEditorPath,
   officeServiceHubPath,
 } from "../utils/rapportNavigation";
+import { listEntityUnitKey } from "../utils/entityTargets";
 import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
 import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
@@ -50,6 +58,9 @@ export function OfficeCommuneListPage({ token }: Props) {
   const [page, setPage] = useState(1);
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
+  const [inclusionOpen, setInclusionOpen] = useState(false);
+  const [savingTitle, setSavingTitle] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     if (!sid) return;
@@ -89,18 +100,34 @@ export function OfficeCommuneListPage({ token }: Props) {
     navigate({ pathname: location.pathname, search: `?${next.toString()}` }, { replace: true });
   }, [workspace?.rapport?.id, rapportId, rapportTypeId, searchParams, navigate, location.pathname]);
 
-  const municipalities = useMemo(() => {
-    const list = workspace?.municipalities || [];
-    const q = municipalitySearch.trim().toLowerCase();
-    return list.filter((m: any) => {
-      if (filter === "filled" && !m.filled) return false;
-      if (filter === "empty" && m.filled) return false;
-      if (!q) return true;
-      const name =
-        `${m.name_ar || ""} ${m.name_fr || ""} ${m.code || ""}`.toLowerCase();
-      return name.includes(q);
-    });
-  }, [workspace?.municipalities, municipalitySearch, filter]);
+  const filterEntities = useCallback(
+    (list: any[]) => {
+      const q = municipalitySearch.trim().toLowerCase();
+      return list.filter((m: any) => {
+        if (filter === "filled" && !m.filled) return false;
+        if (filter === "empty" && m.filled) return false;
+        if (!q) return true;
+        const name =
+          `${m.name_ar || ""} ${m.name_fr || ""} ${m.code || ""}`.toLowerCase();
+        return name.includes(q);
+      });
+    },
+    [municipalitySearch, filter],
+  );
+
+  const municipalities = useMemo(
+    () => filterEntities(workspace?.municipalities || []),
+    [workspace?.municipalities, filterEntities],
+  );
+
+  const dairas = useMemo(
+    () => filterEntities(workspace?.dairas || []),
+    [workspace?.dairas, filterEntities],
+  );
+  const modiriyat = useMemo(
+    () => filterEntities(workspace?.modiriyat || []),
+    [workspace?.modiriyat, filterEntities],
+  );
 
   useEffect(() => {
     setPage(1);
@@ -112,16 +139,26 @@ export function OfficeCommuneListPage({ token }: Props) {
     DEFAULT_PAGE_SIZE,
   );
 
-  const filledCount = (workspace?.municipalities || []).filter(
-    (m: any) => m.filled,
-  ).length;
-  const changedCount = (workspace?.municipalities || []).filter(
-    (m: any) => m.is_changed,
-  ).length;
-  const totalCount = workspace?.municipalities?.length || 0;
+  const allEntities = useMemo(
+    () => [
+      ...(workspace?.municipalities || []),
+      ...(workspace?.dairas || []),
+      ...(workspace?.modiriyat || []),
+    ],
+    [workspace?.municipalities, workspace?.dairas, workspace?.modiriyat],
+  );
+  const filledCount = allEntities.filter((m: any) => m.filled).length;
+  const changedCount = allEntities.filter((m: any) => m.is_changed).length;
+  const totalCount = allEntities.length;
+  const unitLabel = t(
+    listEntityUnitKey(
+      workspace?.rapportType?.entity_target_kinds || workspace?.targetKinds,
+    ),
+  );
 
   async function submitAll() {
     if (!workspace?.rapport?.id) return;
+    setSubmitting(true);
     try {
       await patchRapportTitle(token, workspace.rapport.id, title);
       await api.submitRapport(token, workspace.rapport.id);
@@ -134,6 +171,8 @@ export function OfficeCommuneListPage({ token }: Props) {
           ? "rapportTitleRequired"
           : "errorGeneric";
       snack.show(t(msg), "error");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -173,6 +212,49 @@ export function OfficeCommuneListPage({ token }: Props) {
 
   const serviceBackPath = officeServiceHubPath(sid);
 
+  function entityLinkKey(entity: any) {
+    return entity.entity_key || entity.code;
+  }
+
+  function renderEntityGrid(items: any[], paged: any[]) {
+    return (
+      <>
+        <div className="hubGrid communeHubGrid">
+          {paged.map((m: any) => {
+            const name = i18n.language === "fr" ? m.name_fr : m.name_ar;
+            const linkKey = entityLinkKey(m);
+            return (
+              <HubTile
+                key={linkKey}
+                to={officeEntityEditorPath(sid, linkKey, {
+                  rapportTypeId,
+                  rapportId: workspace?.rapport?.id,
+                })}
+                icon="communes"
+                title={name}
+                subtitle={m.filled ? t("communeFilled") : t("communeEmpty")}
+                className={
+                  m.filled ? "communeHubTileFilled" : "communeHubTileEmpty"
+                }
+                badge={
+                  m.filled ? (
+                    <span className="badge badge-submitted communeHubBadge">
+                      {t("communeFilled")}
+                    </span>
+                  ) : null
+                }
+              />
+            );
+          })}
+        </div>
+        {!items.length ? (
+          <p className="muted communeEmptyHint">{t("noResults")}</p>
+        ) : null}
+        <TablePagination page={page} total={items.length} onPageChange={setPage} />
+      </>
+    );
+  }
+
   return (
     <div className="page communeHubPage">
       <div className="pageHeader row compact">
@@ -192,11 +274,15 @@ export function OfficeCommuneListPage({ token }: Props) {
             />
           ) : null}
           {editable ? (
-            <button
+            <BusyButton
               type="button"
               className="btn btn-primary btn-sm"
+              busy={savingTitle}
+              busyLabel={t("saving")}
+              disabled={submitting}
               onClick={async () => {
                 if (!workspace?.rapport?.id) return;
+                setSavingTitle(true);
                 try {
                   const patched = await patchRapportTitle(
                     token,
@@ -211,16 +297,25 @@ export function OfficeCommuneListPage({ token }: Props) {
                       ? "rapportTitleRequired"
                       : "errorGeneric";
                   snack.show(t(msg), "error");
+                } finally {
+                  setSavingTitle(false);
                 }
               }}
             >
               {t("save")}
-            </button>
+            </BusyButton>
           ) : null}
           {editable ? (
-            <button type="button" className="btn btn-accent" onClick={submitAll}>
+            <BusyButton
+              type="button"
+              className="btn btn-accent"
+              onClick={submitAll}
+              busy={submitting}
+              busyLabel={t("submitting")}
+              disabled={savingTitle}
+            >
               {t("submitRapport")}
-            </button>
+            </BusyButton>
           ) : null}
           {isTableCommuneMode ? (
             <Link className="btn btn-primary" to={bulkPath}>
@@ -234,7 +329,7 @@ export function OfficeCommuneListPage({ token }: Props) {
         </div>
       </div>
 
-      {loading ? <p className="muted communeStatus">{t("loading")}</p> : null}
+      {loading ? <PageLoading className="communeStatus" /> : null}
       {loadError ? (
         <div className="communeError card">
           <p>
@@ -291,7 +386,7 @@ export function OfficeCommuneListPage({ token }: Props) {
               className="communeSearch"
               value={municipalitySearch}
               onChange={(e) => setMunicipalitySearch(e.target.value)}
-              placeholder={t("communeSearchPlaceholder")}
+              placeholder={t("listSearchPlaceholder", { unit: unitLabel })}
             />
             <div className="communeFilterRow">
               {(["all", "filled", "empty"] as FilterMode[]).map((mode) => (
@@ -304,55 +399,83 @@ export function OfficeCommuneListPage({ token }: Props) {
                   {t(`communeFilter_${mode}`)}
                 </button>
               ))}
+              {editable && workspace?.selection_catalog ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setInclusionOpen(true)}
+                >
+                  {t("entityInclusionTitle")}
+                </button>
+              ) : null}
             </div>
             <p className="muted small communeProgress">
-              {t("communeProgress", { filled: filledCount, total: totalCount })}
+              {t("listProgress", {
+                filled: filledCount,
+                total: totalCount,
+                unit: unitLabel,
+              })}
               {changedCount > 0
                 ? ` · ${t("communeProgressChanged", { changed: changedCount })}`
                 : ""}
             </p>
           </div>
 
-          <div className="hubGrid communeHubGrid">
-            {pagedMunicipalities.map((m: any) => {
-              const name = i18n.language === "fr" ? m.name_fr : m.name_ar;
-              return (
-                <HubTile
-                  key={m.code}
-                  to={officeCommuneEditorPath(sid, m.code, {
-                    rapportTypeId,
-                    rapportId: workspace?.rapport?.id,
-                  })}
-                  icon="communes"
-                  title={name}
-                  subtitle={m.filled ? t("communeFilled") : t("communeEmpty")}
-                  className={
-                    m.filled ? "communeHubTileFilled" : "communeHubTileEmpty"
-                  }
-                  badge={
-                    m.filled ? (
-                      <span className="badge badge-submitted communeHubBadge">
-                        {t("communeFilled")}
-                      </span>
-                    ) : null
-                  }
-                />
-              );
-            })}
-          </div>
-          {!municipalities.length ? (
+          {!municipalities.length && !dairas.length && !modiriyat.length ? (
             <p className="muted communeEmptyHint">{t("noResults")}</p>
           ) : null}
-          <TablePagination
-            page={page}
-            total={municipalities.length}
-            onPageChange={setPage}
-          />
+          {municipalities.length ? (
+            <>
+              {dairas.length || modiriyat.length ? (
+                <h2 className="entitySectionTitle">{t("entitySectionCommunes")}</h2>
+              ) : null}
+              {renderEntityGrid(municipalities, pagedMunicipalities)}
+            </>
+          ) : null}
+
+          {dairas.length ? (
+            <section className="entityListSection">
+              <h2 className="entitySectionTitle">{t("entitySectionDairas")}</h2>
+              {renderEntityGrid(dairas, paginateSlice(dairas, page, DEFAULT_PAGE_SIZE))}
+            </section>
+          ) : null}
+
+          {modiriyat.length ? (
+            <section className="entityListSection">
+              <h2 className="entitySectionTitle">{t("entitySectionModiriyat")}</h2>
+              {renderEntityGrid(
+                modiriyat,
+                paginateSlice(modiriyat, page, DEFAULT_PAGE_SIZE),
+              )}
+            </section>
+          ) : null}
 
           <WaliResponsesSection
+            chefResponses={workspace?.rapport?.chefResponses || []}
             responses={workspace?.rapport?.waliResponses || []}
           />
+          {workspace?.rapport?.id ? (
+            <RapportDiscussionSection
+              token={token}
+              rapportId={Number(workspace.rapport.id)}
+              mode="office"
+              enabled={isDiscussionEnabledByStatus(workspace.rapport.status)}
+            />
+          ) : null}
         </>
+      ) : null}
+
+      {inclusionOpen && workspace?.selection_catalog && workspace?.rapport?.id ? (
+        <EntityInclusionModal
+          catalog={workspace.selection_catalog}
+          initialKeys={workspace.included_entity_keys ?? null}
+          onClose={() => setInclusionOpen(false)}
+          onSave={async (keys) => {
+            await api.patchIncludedEntities(token, workspace.rapport.id, keys);
+            snack.show(t("save"), "success");
+            await loadWorkspace();
+          }}
+        />
       ) : null}
     </div>
   );

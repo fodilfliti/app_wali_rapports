@@ -124,7 +124,8 @@ Validation: `documentTemplateCreateSchema`, `documentTemplatePatchSchema`, `appl
 ### UI
 
 - Admin hub → **Schémas & types** → `/admin/schemas`
-- Office editor → service hub → **Configuration** → `/office/services/:id/config` — includes **Modèles de document** section (list, edit modal with bilingual editor, default flag, scope by type/kind)
+- Office editor → service hub → **Configuration** → `/office/services/:id/config` — **tabbed** UI (schemas | rapport types | document templates); one list visible at a time; document templates tab with bilingual editor, default flag, scope by type/kind
+- Office service hub (`manage` access): direct shortcuts **create schema**, **create rapport type**, **create document template** → `/office/services/:id/config?new=schema|type|template` (auto-opens the matching create modal); full **Configuration** link remains for list/edit
 - Office → service → hub tiles per content kind — **new document/fiche** opens template picker (default pre-selected, or blank)
 - Document editor → **Importer un modèle** (replace or append)
 

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { hasBilingualText } from '../utils/bilingual'
-import { AdminOrgTabs } from '../components/AdminOrgTabs'
 import { BackButton } from '../components/BackButton'
 import { ExpandableHelp } from '../components/ExpandableHelp'
 import { TablePagination } from '../components/TablePagination'
@@ -17,7 +15,6 @@ type Props = { token: string }
 type GrantRow = { user_id: number; access_level: 'view' | 'manage'; enabled: boolean }
 
 const emptyForm = () => ({
-  department_id: '',
   name_ar: '',
   name_fr: '',
   is_folder: false,
@@ -29,7 +26,6 @@ export function AdminServicesPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
   const [services, setServices] = useState<any[]>([])
-  const [departments, setDepartments] = useState<any[]>([])
   const [officeUsers, setOfficeUsers] = useState<any[]>([])
   const [createOpen, setCreateOpen] = useState(false)
   const [grantsOpen, setGrantsOpen] = useState(false)
@@ -40,20 +36,18 @@ export function AdminServicesPage({ token }: Props) {
   const [form, setForm] = useState(emptyForm())
   const [editOpen, setEditOpen] = useState(false)
   const [editingService, setEditingService] = useState<any>(null)
-  const [editForm, setEditForm] = useState({ name_ar: '', name_fr: '', department_id: '' })
+  const [editForm, setEditForm] = useState({ name_ar: '', name_fr: '' })
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [svcRes, usersRes, deptRes] = await Promise.all([
+      const [svcRes, usersRes] = await Promise.all([
         api.listAdminServices(token),
         api.listAdminOfficeUsers(token),
-        api.listAdminDepartments(token),
       ])
       setServices(svcRes.services)
       setOfficeUsers(usersRes.users)
-      setDepartments(deptRes.departments)
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -75,7 +69,7 @@ export function AdminServicesPage({ token }: Props) {
     }
     try {
       await api.createAdminService(token, {
-        department_id: form.department_id ? Number(form.department_id) : null,
+        department_id: null,
         name_ar: form.name_ar.trim() || form.name_fr.trim(),
         name_fr: form.name_fr.trim() || form.name_ar.trim(),
         is_folder: form.is_folder,
@@ -95,7 +89,6 @@ export function AdminServicesPage({ token }: Props) {
     setEditForm({
       name_ar: service.name_ar || '',
       name_fr: service.name_fr || '',
-      department_id: service.department_id ? String(service.department_id) : '',
     })
     setEditOpen(true)
   }
@@ -110,7 +103,7 @@ export function AdminServicesPage({ token }: Props) {
       await api.patchAdminService(token, editingService.id, {
         name_ar: editForm.name_ar.trim() || editForm.name_fr.trim(),
         name_fr: editForm.name_fr.trim() || editForm.name_ar.trim(),
-        department_id: editForm.department_id ? Number(editForm.department_id) : null,
+        department_id: null,
       })
       setEditOpen(false)
       load()
@@ -120,34 +113,21 @@ export function AdminServicesPage({ token }: Props) {
     }
   }
 
-  async function confirmDeleteService() {
-    if (!deleteTarget) return
-    setDeleting(true)
-    try {
-      await api.deleteAdminService(token, deleteTarget.id)
-      snack.show(t('deleteServiceDone'), 'success')
-      setDeleteTarget(null)
-      load()
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   async function openGrants(service: any) {
     setSelectedService(service)
+    setGrantPage(1)
     try {
       const res = await api.listServiceGrants(token, service.id)
-      const existing = new Map(res.grants.map((g: any) => [Number(g.user_id), g.access_level]))
+      const byUser = new Map(
+        (res.grants || []).map((g: any) => [Number(g.user_id), g.access_level as 'view' | 'manage']),
+      )
       setGrantRows(
         officeUsers.map((u) => ({
           user_id: Number(u.id),
-          access_level: (existing.get(Number(u.id)) as 'view' | 'manage') || 'view',
-          enabled: existing.has(Number(u.id)),
+          access_level: byUser.get(Number(u.id)) || 'view',
+          enabled: byUser.has(Number(u.id)),
         })),
       )
-      setGrantPage(1)
       setGrantsOpen(true)
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -161,14 +141,29 @@ export function AdminServicesPage({ token }: Props) {
         token,
         selectedService.id,
         grantRows
-          .filter((g) => g.enabled)
-          .map((g) => ({ user_id: Number(g.user_id), access_level: g.access_level })),
+          .filter((r) => r.enabled)
+          .map((r) => ({ user_id: r.user_id, access_level: r.access_level })),
       )
       setGrantsOpen(false)
       load()
       snack.show(t('save'), 'success')
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    }
+  }
+
+  async function confirmDeleteService() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.deleteAdminService(token, deleteTarget.id)
+      setDeleteTarget(null)
+      load()
+      snack.show(t('deleteServiceDone'), 'success')
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -186,8 +181,6 @@ export function AdminServicesPage({ token }: Props) {
         <BackButton fallbackTo="/" />
       </div>
 
-      <AdminOrgTabs />
-
       <p className="muted">{t('servicesShareHelp')}</p>
 
       <div className="schemasPageIntro card">
@@ -204,7 +197,6 @@ export function AdminServicesPage({ token }: Props) {
           <thead>
             <tr>
               <th>{t('rapportTitle')}</th>
-              <th>{t('department')}</th>
               <th>{t('serviceTypeLabel')}</th>
               <th>{t('serviceGrants')}</th>
               <th>{t('actions')}</th>
@@ -215,11 +207,6 @@ export function AdminServicesPage({ token }: Props) {
               pagedServices.map((s) => (
                 <tr key={s.id}>
                   <td>{localizedName(s, i18n.language)}</td>
-                  <td>
-                    {s.department
-                      ? localizedName(s.department, i18n.language)
-                      : <span className="muted">{t('serviceNoDepartment')}</span>}
-                  </td>
                   <td>{s.is_folder ? t('serviceFolder') : t('serviceLeaf')}</td>
                   <td>
                     {s.grant_count ?? 0}
@@ -252,7 +239,7 @@ export function AdminServicesPage({ token }: Props) {
               ))
             ) : (
               <tr>
-                <td colSpan={5} className="schemasEmptyRow muted">
+                <td colSpan={4} className="schemasEmptyRow muted">
                   {t('servicesEmpty')}
                 </td>
               </tr>
@@ -267,29 +254,6 @@ export function AdminServicesPage({ token }: Props) {
           <div className="modalCard">
             <h2>{t('createService')}</h2>
             <p className="muted small">{t('servicesCreateHint')}</p>
-
-            <label>
-              <span className="fieldLabel">{t('department')}</span>
-              <select value={form.department_id} onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
-                <option value="">{t('noDepartment')}</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {i18n.language === 'fr' ? d.name_fr : d.name_ar}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!departments.length ? (
-              <p className="muted small">
-                {t('servicesNoDepartmentsHint')}{' '}
-                <Link to="/admin/departments" className="inlineLink">
-                  {t('createDepartment')}
-                </Link>
-              </p>
-            ) : null}
-            <ExpandableHelp title={t('servicesDepartmentHelpTitle')} className="contentKindHelpExpand">
-              <p className="muted small">{t('servicesDepartmentHelp')}</p>
-            </ExpandableHelp>
 
             <label>
               <span className="fieldLabel">{t('municipalityNameAr')}</span>
@@ -362,20 +326,6 @@ export function AdminServicesPage({ token }: Props) {
               {t('editService')} — {localizedName(editingService, i18n.language)}
             </h2>
             <label>
-              <span className="fieldLabel">{t('department')}</span>
-              <select
-                value={editForm.department_id}
-                onChange={(e) => setEditForm({ ...editForm, department_id: e.target.value })}
-              >
-                <option value="">{t('noDepartment')}</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {i18n.language === 'fr' ? d.name_fr : d.name_ar}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
               <span className="fieldLabel">{t('municipalityNameAr')}</span>
               <input
                 value={editForm.name_ar}
@@ -442,7 +392,9 @@ export function AdminServicesPage({ token }: Props) {
                             onChange={(e) =>
                               setGrantRows((prev) =>
                                 prev.map((r, i) =>
-                                  i === idx ? { ...r, access_level: e.target.value as 'view' | 'manage' } : r,
+                                  i === idx
+                                    ? { ...r, access_level: e.target.value as 'view' | 'manage' }
+                                    : r,
                                 ),
                               )
                             }

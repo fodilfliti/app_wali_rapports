@@ -77,6 +77,7 @@ const rapportTypeCreateSchema = refineBilingualNames(
     content_kind: z.enum(["table_grid", "document_compose", "fiche_lecture", "commune_list"]),
     versioning_mode: z.enum(["versioned", "standalone"]).optional(),
     commune_content_kind: z.enum(["table", "complex"]).optional(),
+    entity_target_kinds: z.array(z.enum(["commune", "daira", "modiriya"])).min(1).max(3).optional(),
     table_schema_slug: z.string().trim().max(80).optional(),
     table_key: z.string().trim().max(80).optional(),
     default_blocks: z.array(z.record(z.unknown())).optional()
@@ -89,6 +90,7 @@ const rapportTypePatchSchema = z.object({
   name_fr: z.string().trim().max(200).optional(),
   versioning_mode: z.enum(["versioned", "standalone"]).optional(),
   commune_content_kind: z.enum(["table", "complex"]).optional(),
+  entity_target_kinds: z.array(z.enum(["commune", "daira", "modiriya"])).min(1).max(3).optional(),
   table_schema_slug: z.string().trim().max(80).optional(),
   table_key: z.string().trim().max(80).optional(),
   default_blocks: z.array(z.record(z.unknown())).optional()

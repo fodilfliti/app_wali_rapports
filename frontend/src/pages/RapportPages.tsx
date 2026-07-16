@@ -8,6 +8,7 @@ import { RapportTypeHideActions } from '../components/RapportTypeHideActions'
 import { RapportRowHideActions } from '../components/RapportRowHideActions'
 import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { DocumentTemplatePickModal } from '../components/DocumentTemplatePickModal'
+import { ENABLE_DOCUMENT_TEMPLATES } from '../config/features'
 import { TablePagination } from '../components/TablePagination'
 import { WaliRespondModal } from '../components/WaliRespondModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
@@ -15,7 +16,6 @@ import {
   canOfficeEditRapport,
   isDirectWorkspaceKind,
   localizedRapportTypeName,
-  officeContentKindPath,
   officeRapportTypeWorkspacePath,
   officeRapportWorkspacePath,
   type RapportTypeNav,
@@ -25,6 +25,8 @@ import {
   patchRapportUnread,
   rapportNeedsAttention,
   rapportStatusLabel,
+  chefCommentPreview,
+  chefResponseLabel,
   waliCommentPreview,
   waliResponseLabel,
 } from '../utils/officeRapportList'
@@ -34,6 +36,8 @@ import { backNavigationState } from '../utils/navigationBack'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
 import { localizedName } from '../utils/schemaColumns'
 import { RapportExportButtons } from '../components/ExportPdfButton'
+import { BusyButton } from '../components/BusyButton'
+import { PageLoading } from '../components/PageLoading'
 import { DEFAULT_PAGE_SIZE } from '../utils/pagination'
 
 type Props = { token: string }
@@ -52,7 +56,8 @@ function openOfficeRapport(
 }
 
 function OfficeRapportTitleCell({ r, t }: { r: any; t: (k: string) => string }) {
-  const comment = waliCommentPreview(r)
+  const chefComment = chefCommentPreview(r)
+  const waliComment = waliCommentPreview(r)
   return (
     <td className="rapportTitleCell">
       <div className="rapportRowTitleCell">
@@ -61,11 +66,18 @@ function OfficeRapportTitleCell({ r, t }: { r: any; t: (k: string) => string }) 
           <span className="badge badge-submitted rapportUnreadBadge">{t('unread')}</span>
         ) : null}
       </div>
-      {comment ? (
+      {chefComment || waliComment ? (
         <div className="rapportRowDetails">
-          <p className="rapportWaliCommentPreview">
-            <span className="rapportWaliCommentLabel">{t('waliResponseText')}:</span> {comment}
-          </p>
+          {chefComment ? (
+            <p className="rapportWaliCommentPreview">
+              <span className="rapportWaliCommentLabel">{t('chefResponseText')}:</span> {chefComment}
+            </p>
+          ) : null}
+          {waliComment ? (
+            <p className="rapportWaliCommentPreview">
+              <span className="rapportWaliCommentLabel">{t('waliResponseText')}:</span> {waliComment}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </td>
@@ -73,16 +85,24 @@ function OfficeRapportTitleCell({ r, t }: { r: any; t: (k: string) => string }) 
 }
 
 function OfficeRapportStatusCell({ r, t }: { r: any; t: (k: string) => string }) {
+  const chefLabel = chefResponseLabel(r, t)
+  const chefDecision = r.latest_chef_response?.decision
   const waliLabel = waliResponseLabel(r, t)
-  const decision = r.latest_wali_response?.decision
+  const waliDecision = r.latest_wali_response?.decision
   return (
     <td className="rapportStatusCell">
       <div className="rapportStatusStack">
         <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
-        {waliLabel && decision ? (
+        {chefLabel && chefDecision ? (
+          <p className="rapportWaliStatusNote muted small">
+            {t('chefResponseShort')}:{' '}
+            <span className={`badge badge-wali-${chefDecision} rapportWaliDecisionBadge`}>{chefLabel}</span>
+          </p>
+        ) : null}
+        {waliLabel && waliDecision ? (
           <p className="rapportWaliStatusNote muted small">
             {t('waliResponseShort')}:{' '}
-            <span className={`badge badge-wali-${decision} rapportWaliDecisionBadge`}>{waliLabel}</span>
+            <span className={`badge badge-wali-${waliDecision} rapportWaliDecisionBadge`}>{waliLabel}</span>
           </p>
         ) : null}
       </div>
@@ -99,14 +119,17 @@ export function OfficeRapportsListPage({ token }: Props) {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
   const [showHidden, setShowHidden] = useState(false)
+  const [submittingId, setSubmittingId] = useState<number | null>(null)
   const [importFor, setImportFor] = useState<{ rapportId: number; serviceId: number; typeId: number } | null>(
     null,
   )
 
   useEffect(() => {
     setPage(1)
-  }, [serviceId, showHidden])
+  }, [serviceId, showHidden, search])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -115,6 +138,7 @@ export function OfficeRapportsListPage({ token }: Props) {
         service_id: serviceId,
         page,
         pageSize: DEFAULT_PAGE_SIZE,
+        search: search || undefined,
         hidden_only: showHidden,
       })
       setRows(rapportsRes.rapports)
@@ -124,11 +148,16 @@ export function OfficeRapportsListPage({ token }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [token, serviceId, page, showHidden, snack, t])
+  }, [token, serviceId, page, search, showHidden, snack, t])
 
   useEffect(() => {
     load()
   }, [load])
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault()
+    setSearch(searchInput.trim())
+  }
 
   async function finishRapport(id: number) {
     try {
@@ -153,12 +182,15 @@ export function OfficeRapportsListPage({ token }: Props) {
   }
 
   async function submit(id: number) {
+    setSubmittingId(id)
     try {
       await api.submitRapport(token, id)
       notifyHubCountsRefresh()
       load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setSubmittingId(null)
     }
   }
 
@@ -172,11 +204,23 @@ export function OfficeRapportsListPage({ token }: Props) {
         <BackButton fallbackTo="/" />
       </div>
 
-      <div className="rapportListToolbar">
-        <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
-      </div>
+      <form className="rapportListToolbar rapportListSearchForm card" onSubmit={submitSearch}>
+        <label className="rapportListSearch">
+          <span className="fieldLabel">{t('search')}</span>
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('rapportTitle')}
+          />
+        </label>
+        <button type="submit" className="btn btn-secondary rapportListSearchBtn">
+          {t('search')}
+        </button>
+      </form>
 
-      {importFor ? (
+      {loading ? <PageLoading /> : null}
+
+      {ENABLE_DOCUMENT_TEMPLATES && importFor ? (
         <DocumentTemplatePickModal
           token={token}
           serviceId={importFor.serviceId}
@@ -231,7 +275,8 @@ export function OfficeRapportsListPage({ token }: Props) {
                       {canOfficeEditRapport(r.status) ? t('edit') : t('details')}
                     </Link>
                   ) : null}
-                  {isDocumentKind(r) &&
+                  {ENABLE_DOCUMENT_TEMPLATES &&
+                  isDocumentKind(r) &&
                   canOfficeEditRapport(r.status) &&
                   r.service_id &&
                   r.rapport_type_id ? (
@@ -250,9 +295,15 @@ export function OfficeRapportsListPage({ token }: Props) {
                     </button>
                   ) : null}
                   {canOfficeEditRapport(r.status) ? (
-                    <button type="button" className="btn btn-accent btn-sm" onClick={() => submit(r.id)}>
+                    <BusyButton
+                      type="button"
+                      className="btn btn-accent btn-sm"
+                      busy={submittingId === r.id}
+                      busyLabel={t('submitting')}
+                      onClick={() => submit(r.id)}
+                    >
                       {t('submitRapport')}
-                    </button>
+                    </BusyButton>
                   ) : null}
                   <RapportRowHideActions
                     rapport={r}
@@ -265,7 +316,7 @@ export function OfficeRapportsListPage({ token }: Props) {
                 </td>
               </tr>
             ))}
-            {!rows.length ? (
+            {!loading && !rows.length ? (
               <tr>
                 <td colSpan={3}>{t('noResults')}</td>
               </tr>
@@ -296,6 +347,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const [createPickOpen, setCreatePickOpen] = useState(false)
   const [importFor, setImportFor] = useState<{ rapportId: number; typeId: number } | null>(null)
   const [showHidden, setShowHidden] = useState(false)
+  const [submittingId, setSubmittingId] = useState<number | null>(null)
 
   useEffect(() => {
     setPage(1)
@@ -377,12 +429,15 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   }
 
   async function submit(id: number) {
+    setSubmittingId(id)
     try {
       await api.submitRapport(token, id)
       notifyHubCountsRefresh()
       load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setSubmittingId(null)
     }
   }
 
@@ -413,7 +468,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   if (loading) {
     return (
       <div className="page">
-        <p className="muted">{t('loading')}</p>
+        <PageLoading />
       </div>
     )
   }
@@ -431,7 +486,13 @@ export function OfficeServiceRapportListPage({ token }: Props) {
         </div>
         {hub?.accessLevel === 'view' ? <span className="badge">{t('accessView')}</span> : null}
         {canEdit && isDocKind ? (
-          <button type="button" className="btn btn-primary" onClick={() => setCreatePickOpen(true)}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() =>
+              ENABLE_DOCUMENT_TEMPLATES ? setCreatePickOpen(true) : createDoc(null, true)
+            }
+          >
             {t('createRapport')}
           </button>
         ) : null}
@@ -451,20 +512,14 @@ export function OfficeServiceRapportListPage({ token }: Props) {
             />
           </div>
         ) : null}
-        <BackButton
-          fallbackTo={
-            rapportType?.content_kind
-              ? officeContentKindPath(sid, rapportType.content_kind)
-              : `/office/services/${sid}`
-          }
-        />
+        <BackButton fallbackTo={`/office/services/${sid}`} />
       </div>
 
       <div className="rapportListToolbar">
         <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
       </div>
 
-      {createPickOpen && rapportType ? (
+      {ENABLE_DOCUMENT_TEMPLATES && createPickOpen && rapportType ? (
         <DocumentTemplatePickModal
           token={token}
           serviceId={sid}
@@ -479,7 +534,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
         />
       ) : null}
 
-      {importFor ? (
+      {ENABLE_DOCUMENT_TEMPLATES && importFor ? (
         <DocumentTemplatePickModal
           token={token}
           serviceId={sid}
@@ -534,7 +589,10 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                       {canOfficeEditRapport(r.status) ? t('edit') : t('details')}
                     </Link>
                   ) : null}
-                  {isDocumentKind(r) && canOfficeEditRapport(r.status) && canEdit ? (
+                  {ENABLE_DOCUMENT_TEMPLATES &&
+                  isDocumentKind(r) &&
+                  canOfficeEditRapport(r.status) &&
+                  canEdit ? (
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
@@ -549,9 +607,15 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                     </button>
                   ) : null}
                   {canOfficeEditRapport(r.status) && canEdit ? (
-                    <button type="button" className="btn btn-accent btn-sm" onClick={() => submit(r.id)}>
+                    <BusyButton
+                      type="button"
+                      className="btn btn-accent btn-sm"
+                      busy={submittingId === r.id}
+                      busyLabel={t('submitting')}
+                      onClick={() => submit(r.id)}
+                    >
                       {t('submitRapport')}
-                    </button>
+                    </BusyButton>
                   ) : null}
                   <RapportRowHideActions
                     rapport={r}
@@ -564,7 +628,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                 </td>
               </tr>
             ))}
-            {!rows.length ? (
+            {!loading && !rows.length ? (
               <tr>
                 <td colSpan={3}>{t('noResults')}</td>
               </tr>
@@ -579,28 +643,57 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   )
 }
 
-export function WaliRapportsInboxPage({ token }: Props) {
+export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { reviewer?: import('../utils/reviewerMode').ReviewerMode }) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
-  const inboxPath = '/wali/rapports'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const discussionView = searchParams.get('view') === 'discussion'
+  const base = reviewer === 'chef' ? '/chef' : '/wali'
+  const inboxPath = discussionView ? `${base}/rapports?view=discussion` : `${base}/rapports`
+  const hubPath = base
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
   const [respondId, setRespondId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, discussionView])
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
-      const res = await api.listWaliRapports(token, { page, pageSize: DEFAULT_PAGE_SIZE })
+      const listRapports = reviewer === 'chef' ? api.listChefRapports : api.listWaliRapports
+      const res = await listRapports(token, {
+        page,
+        pageSize: DEFAULT_PAGE_SIZE,
+        search: search || undefined,
+        unread_discussion: discussionView || undefined,
+      })
       setRows(res.rapports)
       setTotal(res.total ?? res.rapports.length)
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setLoading(false)
     }
-  }, [token, page, snack, t])
+  }, [token, page, search, snack, t, reviewer, discussionView])
 
   useEffect(() => {
     load()
   }, [load])
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault()
+    setSearch(searchInput.trim())
+  }
+
+  function setView(next: 'inbox' | 'discussion') {
+    setSearchParams(next === 'discussion' ? { view: 'discussion' } : {}, { replace: true })
+  }
 
   async function sendResponse(payload: {
     decision: string
@@ -609,7 +702,8 @@ export function WaliRapportsInboxPage({ token }: Props) {
   }) {
     if (!respondId) return
     try {
-      await api.waliRespond(token, respondId, payload)
+      const respond = reviewer === 'chef' ? api.chefRespond : api.waliRespond
+      await respond(token, respondId, payload)
       setRespondId(null)
       notifyHubCountsRefresh()
       load()
@@ -634,12 +728,52 @@ export function WaliRapportsInboxPage({ token }: Props) {
   return (
     <div className="page">
       <div className="pageHeader row">
-        <h1>{t('navInbox')}</h1>
-        <button type="button" className="btn btn-secondary" onClick={load}>
+        <h1>{discussionView ? t('navDiscussion') : t('navInbox')}</h1>
+        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
           {t('refresh')}
         </button>
-        <BackButton to="/wali" fallbackTo="/wali" />
+        <BackButton to={hubPath} fallbackTo={hubPath} />
       </div>
+
+      <div className="inboxViewTabs" role="tablist" aria-label={t('inboxViewTabs')}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!discussionView}
+          className={`inboxViewTab${!discussionView ? ' active' : ''}`}
+          onClick={() => setView('inbox')}
+        >
+          {t('navInbox')}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={discussionView}
+          className={`inboxViewTab${discussionView ? ' active' : ''}`}
+          onClick={() => setView('discussion')}
+        >
+          {t('navDiscussion')}
+        </button>
+      </div>
+      <p className="muted small inboxViewHint">
+        {discussionView ? t('discussionInboxHint') : t('actionInboxHint')}
+      </p>
+
+      <form className="rapportListToolbar rapportListSearchForm card" onSubmit={submitSearch}>
+        <label className="rapportListSearch">
+          <span className="fieldLabel">{t('search')}</span>
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('rapportTitle')}
+          />
+        </label>
+        <button type="submit" className="btn btn-secondary rapportListSearchBtn">
+          {t('search')}
+        </button>
+      </form>
+
+      {loading ? <PageLoading /> : null}
 
       <div className="card tableWrap">
         <table>
@@ -654,6 +788,8 @@ export function WaliRapportsInboxPage({ token }: Props) {
           </thead>
           <tbody>
             {rows.map((r) => {
+              const chefLabel = chefResponseLabel(r, t)
+              const chefDecision = r.latest_chef_response?.decision
               const waliLabel = waliResponseLabel(r, t)
               const decision = r.latest_wali_response?.decision
               return (
@@ -664,6 +800,9 @@ export function WaliRapportsInboxPage({ token }: Props) {
                       {r.is_inbox_new ? (
                         <span className="badge badge-submitted rapportUnreadBadge">{t('waliInboxNew')}</span>
                       ) : null}
+                      {discussionView ? (
+                        <span className="badge badge-submitted rapportUnreadBadge">{t('unreadDiscussionBadge')}</span>
+                      ) : null}
                     </div>
                   </td>
                   <td>{serviceLabel(r)}</td>
@@ -671,6 +810,14 @@ export function WaliRapportsInboxPage({ token }: Props) {
                   <td className="rapportStatusCell">
                     <div className="rapportStatusStack">
                       <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+                      {chefLabel && chefDecision ? (
+                        <p className="rapportWaliStatusNote muted small">
+                          {t('chefResponseShort')}:{' '}
+                          <span className={`badge badge-wali-${chefDecision} rapportWaliDecisionBadge`}>
+                            {chefLabel}
+                          </span>
+                        </p>
+                      ) : null}
                       {waliLabel && decision ? (
                         <p className="rapportWaliStatusNote muted small">
                           {t('waliResponseShort')}:{' '}
@@ -685,12 +832,15 @@ export function WaliRapportsInboxPage({ token }: Props) {
                     <div className="actionsCellInner">
                       <Link
                         className="btn btn-ghost"
-                        to={`/wali/rapports/${r.id}/view`}
+                        to={`${base}/rapports/${r.id}/view`}
                         state={backNavigationState(inboxPath)}
                       >
-                        {t('details')}
+                        {discussionView ? t('openDiscussion') : t('details')}
                       </Link>
-                      {waliCanRespondFromList(r.status) ? (
+                      {!discussionView &&
+                      (reviewer === 'chef'
+                        ? r.status === 'pending_chef'
+                        : waliCanRespondFromList(r.status)) ? (
                         <button
                           type="button"
                           className="btn btn-primary"
@@ -704,9 +854,9 @@ export function WaliRapportsInboxPage({ token }: Props) {
                 </tr>
               )
             })}
-            {!rows.length ? (
+            {!loading && !rows.length ? (
               <tr>
-                <td colSpan={5}>{t('noResults')}</td>
+                <td colSpan={5}>{discussionView ? t('discussionInboxEmpty') : t('noResults')}</td>
               </tr>
             ) : null}
           </tbody>
@@ -714,9 +864,14 @@ export function WaliRapportsInboxPage({ token }: Props) {
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
 
-      <RapportStatusFlowHelp variant="wali" />
+      {!discussionView ? <RapportStatusFlowHelp variant="wali" /> : null}
 
-      <WaliRespondModal open={!!respondId} onClose={() => setRespondId(null)} onSubmit={sendResponse} />
+      <WaliRespondModal
+        open={!!respondId}
+        onClose={() => setRespondId(null)}
+        onSubmit={sendResponse}
+        mode={reviewer === 'chef' ? 'chef' : 'wali'}
+      />
     </div>
   )
 }
@@ -730,7 +885,7 @@ export function AdminRapportsListPage({ token }: Props) {
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [showHidden, setShowHidden] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -804,8 +959,9 @@ export function AdminRapportsListPage({ token }: Props) {
         <button type="submit" className="btn btn-secondary rapportListSearchBtn">
           {t('search')}
         </button>
-        <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
       </form>
+
+      {loading ? <PageLoading /> : null}
 
       <div className="card tableWrap">
         <table>
@@ -846,7 +1002,7 @@ export function AdminRapportsListPage({ token }: Props) {
                 </td>
               </tr>
             ))}
-            {!rows.length ? (
+            {!loading && !rows.length ? (
               <tr>
                 <td colSpan={5} className="muted">
                   {t('noResults')}

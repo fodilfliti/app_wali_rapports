@@ -29,6 +29,7 @@ type ArchivePanelProps = {
   versions: RapportVersionRow[];
   liveCurrentVersionId?: number | null;
   wali?: boolean;
+  chef?: boolean;
   previewPath: string;
 };
 
@@ -39,6 +40,7 @@ export function RapportVersionsArchivePanel({
   versions,
   liveCurrentVersionId,
   wali = false,
+  chef = false,
   previewPath,
 }: ArchivePanelProps) {
   const { t, i18n } = useTranslation();
@@ -47,7 +49,7 @@ export function RapportVersionsArchivePanel({
     rapportStatus === "draft" || rapportStatus === "changes_requested";
 
   const viewPath = (versionId: number) =>
-    versionDetailPath(rapportId, versionId, wali);
+    versionDetailPath(rapportId, versionId, wali, chef);
 
   const sorted = [...versions].sort(
     (a, b) => b.version_number - a.version_number,
@@ -64,7 +66,7 @@ export function RapportVersionsArchivePanel({
           const isDraft = !v.submitted_at;
           const dateLabel = formatVersionDate(v.submitted_at, locale);
           const openEditor =
-            isCurrent && isDraft && editableRapport && !wali;
+            isCurrent && isDraft && editableRapport && !wali && !chef;
           const href = openEditor ? previewPath : viewPath(v.id);
 
           return (
@@ -111,10 +113,12 @@ export function RapportVersionsArchivePanel({
 function RapportVersionsArchiveListPage({
   token,
   wali,
+  chef = false,
   rid,
 }: {
   token: string;
   wali: boolean;
+  chef?: boolean;
   rid: number;
 }) {
   const { t } = useTranslation();
@@ -129,14 +133,18 @@ function RapportVersionsArchiveListPage({
     (async () => {
       setLoading(true);
       try {
-        const vRes = wali
-          ? await api.listWaliRapportVersions(token, rid)
-          : await api.listRapportVersions(token, rid);
-        const rRes = wali
-          ? await api.getWaliRapportView(token, rid, false)
-          : await api.getRapport(token, rid);
+        const vRes = chef
+          ? await api.listChefRapportVersions(token, rid)
+          : wali
+            ? await api.listWaliRapportVersions(token, rid)
+            : await api.listRapportVersions(token, rid);
+        const rRes = chef
+          ? await api.getChefRapportView(token, rid, false)
+          : wali
+            ? await api.getWaliRapportView(token, rid, false)
+            : await api.getRapport(token, rid);
         if (cancelled) return;
-        setRapport(rRes.rapport);
+        setRapport(rRes.rapport ?? rRes);
         setVersions(vRes.versions || []);
       } catch {
         if (!cancelled) snack.show(t("errorGeneric"), "error");
@@ -147,11 +155,11 @@ function RapportVersionsArchiveListPage({
     return () => {
       cancelled = true;
     };
-  }, [rid, token, wali, snack, t]);
+  }, [rid, token, wali, chef, snack, t]);
 
   const previewBack = useMemo(
-    () => rapportPreviewPath(rid, wali, rapport),
-    [rid, wali, rapport],
+    () => rapportPreviewPath(rid, wali, rapport, chef),
+    [rid, wali, rapport, chef],
   );
 
   return (
@@ -176,6 +184,7 @@ function RapportVersionsArchiveListPage({
             versions={versions}
             liveCurrentVersionId={rapport?.current_version_id}
             wali={wali}
+            chef={chef}
             previewPath={previewBack}
           />
         </div>
@@ -187,19 +196,21 @@ function RapportVersionsArchiveListPage({
 export function RapportVersionsArchivePage({
   token,
   wali = false,
+  chef = false,
 }: {
   token: string;
   wali?: boolean;
+  chef?: boolean;
 }) {
   const { rapportId, versionId } = useParams();
   const rid = Number(rapportId);
 
   if (versionId) {
-    return <RapportVersionDetail token={token} wali={wali} />;
+    return <RapportVersionDetail token={token} wali={wali} chef={chef} />;
   }
 
   return (
-    <RapportVersionsArchiveListPage token={token} wali={wali} rid={rid} />
+    <RapportVersionsArchiveListPage token={token} wali={wali} chef={chef} rid={rid} />
   );
 }
 

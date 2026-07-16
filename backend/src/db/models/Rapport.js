@@ -10,9 +10,22 @@ module.exports = (sequelize) =>
       title: { type: DataTypes.STRING(500), allowNull: false },
       reference_date: { type: DataTypes.DATEONLY, allowNull: true },
       status: {
-        type: DataTypes.ENUM("draft", "submitted", "under_review", "changes_requested", "acknowledged", "archived"),
+        type: DataTypes.ENUM(
+          "draft",
+          "pending_chef",
+          "submitted",
+          "under_review",
+          "changes_requested",
+          "acknowledged",
+          "archived"
+        ),
         allowNull: false,
         defaultValue: "draft"
+      },
+      chef_gate: {
+        type: DataTypes.ENUM("required", "bypass"),
+        allowNull: false,
+        defaultValue: "required"
       },
       current_version_id: { type: DataTypes.BIGINT, allowNull: true },
       created_by_user_id: { type: DataTypes.BIGINT, allowNull: false },

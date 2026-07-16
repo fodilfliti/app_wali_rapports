@@ -48,8 +48,9 @@ export function ConfirmActionModal({
             className={variant === 'danger' ? 'btn btn-accent' : 'btn btn-primary'}
             onClick={onConfirm}
             disabled={loading}
+            aria-busy={loading || undefined}
           >
-            {confirmLabel || t('confirm')}
+            {loading ? t('loading') : confirmLabel || t('confirm')}
           </button>
         </div>
       </div>

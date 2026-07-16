@@ -7,6 +7,7 @@ import { waliRespondSchema } from '../validation/schemas/forms'
 
 export type WaliFollowUpStatus = 'none' | 'pending' | 'completed'
 export type WaliDecision = 'accepted' | 'changes_requested' | 'viewed'
+export type RespondModalMode = 'wali' | 'chef'
 
 export type WaliRespondPayload = {
   decision: WaliDecision
@@ -18,11 +19,14 @@ type Props = {
   open: boolean
   onClose: () => void
   onSubmit: (payload: WaliRespondPayload) => Promise<void>
+  /** Chef: accept / changes_requested / viewed only — no Wali follow-up actions. */
+  mode?: RespondModalMode
 }
 
-export function WaliRespondModal({ open, onClose, onSubmit }: Props) {
+export function WaliRespondModal({ open, onClose, onSubmit, mode = 'wali' }: Props) {
   const { t } = useTranslation()
   const form = useZodForm(waliRespondSchema)
+  const isChef = mode === 'chef'
   const [decision, setDecision] = useState<WaliDecision>('accepted')
   const [followUpStatus, setFollowUpStatus] = useState<WaliFollowUpStatus>('none')
   const [bodyText, setBodyText] = useState('')
@@ -36,16 +40,21 @@ export function WaliRespondModal({ open, onClose, onSubmit }: Props) {
     form.clearErrors()
   }, [open])
 
-  const showFollowUp = decision === 'accepted'
+  const showFollowUp = !isChef && decision === 'accepted'
   const showNote = decision === 'changes_requested' || decision === 'accepted'
   const noteRequired = decision === 'changes_requested'
   const noteOptionalHint = decision === 'accepted'
 
   const decisionHelp = useMemo(() => {
+    if (isChef) {
+      if (decision === 'viewed') return t('chefDecisionHelp_viewed')
+      if (decision === 'changes_requested') return t('chefDecisionHelp_changes_requested')
+      return t('chefDecisionHelp_accepted')
+    }
     if (decision === 'viewed') return t('waliDecisionHelp_viewed')
     if (decision === 'changes_requested') return t('waliDecisionHelp_changes_requested')
     return t('waliDecisionHelp_accepted')
-  }, [decision, t])
+  }, [decision, isChef, t])
 
   if (!open) return null
 
@@ -53,7 +62,7 @@ export function WaliRespondModal({ open, onClose, onSubmit }: Props) {
     const payload: WaliRespondPayload = {
       decision,
       body_text: showNote ? bodyText.trim() || undefined : undefined,
-      follow_up_status: decision === 'accepted' ? followUpStatus : 'none',
+      follow_up_status: isChef ? 'none' : decision === 'accepted' ? followUpStatus : 'none',
     }
     if (!form.validate(payload, t, noteRequired ? ['body_text'] : [])) return
     setSubmitting(true)
@@ -81,9 +90,15 @@ export function WaliRespondModal({ open, onClose, onSubmit }: Props) {
               form.clearErrors()
             }}
           >
-            <option value="accepted">{t('waliDecision_accepted')}</option>
-            <option value="changes_requested">{t('waliDecision_changes_requested')}</option>
-            <option value="viewed">{t('waliDecision_viewed')}</option>
+            <option value="accepted">
+              {isChef ? t('chefDecision_accepted') : t('waliDecision_accepted')}
+            </option>
+            <option value="changes_requested">
+              {isChef ? t('chefDecision_changes_requested') : t('waliDecision_changes_requested')}
+            </option>
+            <option value="viewed">
+              {isChef ? t('chefDecision_viewed') : t('waliDecision_viewed')}
+            </option>
           </select>
         </label>
         <p className="muted small waliDecisionHelp">{decisionHelp}</p>
@@ -146,14 +161,26 @@ export function WaliRespondModal({ open, onClose, onSubmit }: Props) {
 
         {showNote ? (
           <label>
-            {noteRequired ? t('waliResponseText') : t('waliResponseOptional')}
+            {noteRequired
+              ? isChef
+                ? t('chefResponseText')
+                : t('waliResponseText')
+              : isChef
+                ? t('chefResponseOptional')
+                : t('waliResponseOptional')}
             <textarea
               id="body_text"
               className={form.hasFieldError('body_text') ? 'inputInvalid' : ''}
               rows={5}
               value={bodyText}
               onChange={(e) => setBodyText(e.target.value)}
-              placeholder={noteOptionalHint ? t('waliResponseOptionalPlaceholder') : undefined}
+              placeholder={
+                noteOptionalHint
+                  ? isChef
+                    ? t('chefResponseOptionalPlaceholder')
+                    : t('waliResponseOptionalPlaceholder')
+                  : undefined
+              }
             />
             <FieldErrorText text={form.fieldErrorText('body_text', t)} />
           </label>

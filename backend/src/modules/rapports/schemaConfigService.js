@@ -290,6 +290,12 @@ async function createRapportType(serviceId, data, actor, req) {
       data.versioning_mode ||
       (data.content_kind === "table_grid" ? "versioned" : "standalone"),
     commune_content_kind: data.commune_content_kind || "complex",
+    entity_target_kinds:
+      data.content_kind === "commune_list"
+        ? Array.isArray(data.entity_target_kinds) && data.entity_target_kinds.length
+          ? data.entity_target_kinds
+          : ["commune"]
+        : ["commune"],
     schema_json,
   });
   await audit(
@@ -325,6 +331,9 @@ async function updateRapportType(id, data, actor, req) {
     ...(data.versioning_mode ? { versioning_mode: data.versioning_mode } : {}),
     ...(data.commune_content_kind
       ? { commune_content_kind: data.commune_content_kind }
+      : {}),
+    ...(data.entity_target_kinds
+      ? { entity_target_kinds: data.entity_target_kinds }
       : {}),
     ...(schema_json !== undefined ? { schema_json } : {}),
   });

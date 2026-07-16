@@ -10,6 +10,7 @@ import { useOfficeHubCounts } from '../hooks/useHubCounts'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
 import { waliDecisionLabel } from '../utils/waliDecision'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
+import { isDedicatedNotificationKey } from '../utils/notificationKeys'
 
 type Props = { token: string }
 
@@ -82,7 +83,7 @@ export function OfficeNotificationsPage({ token }: Props) {
   const load = useCallback(async () => {
     try {
       const res = await api.listOfficeNotifications(token, false)
-      setRows(res.notifications)
+      setRows(res.notifications.filter((n) => !isDedicatedNotificationKey(n.message_key)))
     } catch {
       /* ignore */
     }
@@ -106,7 +107,7 @@ export function OfficeNotificationsPage({ token }: Props) {
   }
 
   function notificationBody(n: any) {
-    const wr = n.waliResponse
+    const wr = n.waliResponse || n.chefResponse
     if (!wr) return null
     const text = waliResponseBodyText(wr.body_text)
     if (text) return text
@@ -122,6 +123,10 @@ export function OfficeNotificationsPage({ token }: Props) {
     if (key === 'waliChangesRequested') return t('waliChangesRequested')
     if (key === 'waliBroadcast') return t('waliBroadcast')
     if (key === 'waliBroadcastReminder') return t('waliBroadcastReminder')
+    if (key === 'rapportComment') return t('rapportComment')
+    if (key === 'chefAccepted') return t('chefAccepted')
+    if (key === 'chefChangesRequested') return t('chefChangesRequested')
+    if (key === 'chefFeedback') return t('chefFeedback')
     return t('navNotifications')
   }
 
@@ -142,7 +147,7 @@ export function OfficeNotificationsPage({ token }: Props) {
       </div>
       <div className="card notificationPageCard">
         {!rows.length ? <p className="muted notificationPageEmpty">{t('noResults')}</p> : null}
-        <ul className="versionList notificationList">
+        <ul className="notificationList">
           {pagedRows.map((n) => {
             const body = notificationBody(n)
             return (

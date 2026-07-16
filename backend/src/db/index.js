@@ -5,6 +5,8 @@ const env = getEnv();
 const config = sequelizeConfig[env.nodeEnv];
 const sequelize = sequelizeConfig.createSequelize(config);
 
+const Daira = require("./models/Daira")(sequelize);
+const Modiriya = require("./models/Modiriya")(sequelize);
 const Municipality = require("./models/Municipality")(sequelize);
 const User = require("./models/User")(sequelize);
 const AuditLog = require("./models/AuditLog")(sequelize);
@@ -17,6 +19,7 @@ const RapportType = require("./models/RapportType")(sequelize);
 const Rapport = require("./models/Rapport")(sequelize);
 const RapportVersion = require("./models/RapportVersion")(sequelize);
 const WaliResponse = require("./models/WaliResponse")(sequelize);
+const ChefResponse = require("./models/ChefResponse")(sequelize);
 const RapportTableSchema = require("./models/RapportTableSchema")(sequelize);
 const RapportDocumentTemplate = require("./models/RapportDocumentTemplate")(sequelize);
 const Notification = require("./models/Notification")(sequelize);
@@ -27,6 +30,13 @@ const RapportView = require("./models/RapportView")(sequelize);
 const WaliBroadcast = require("./models/WaliBroadcast")(sequelize);
 const WaliBroadcastRecipient = require("./models/WaliBroadcastRecipient")(sequelize);
 const WaliBroadcastComment = require("./models/WaliBroadcastComment")(sequelize);
+const WaliInstruction = require("./models/WaliInstruction")(sequelize);
+const WaliInstructionFile = require("./models/WaliInstructionFile")(sequelize);
+const WaliInstructionRecipient = require("./models/WaliInstructionRecipient")(sequelize);
+const RapportComment = require("./models/RapportComment")(sequelize);
+
+Daira.hasMany(Municipality, { foreignKey: "daira_id", as: "municipalities" });
+Municipality.belongsTo(Daira, { foreignKey: "daira_id", as: "daira" });
 
 Department.hasMany(User, { foreignKey: "department_id", as: "users" });
 User.belongsTo(Department, { foreignKey: "department_id", as: "department" });
@@ -89,15 +99,26 @@ WaliResponse.belongsTo(RapportVersion, { foreignKey: "rapport_version_id", as: "
 User.hasMany(WaliResponse, { foreignKey: "created_by_user_id", as: "waliResponses" });
 WaliResponse.belongsTo(User, { foreignKey: "created_by_user_id", as: "createdByUser" });
 
+Rapport.hasMany(ChefResponse, { foreignKey: "rapport_id", as: "chefResponses" });
+ChefResponse.belongsTo(Rapport, { foreignKey: "rapport_id", as: "rapport" });
+RapportVersion.hasMany(ChefResponse, { foreignKey: "rapport_version_id", as: "chefResponses" });
+ChefResponse.belongsTo(RapportVersion, { foreignKey: "rapport_version_id", as: "rapportVersion" });
+User.hasMany(ChefResponse, { foreignKey: "created_by_user_id", as: "chefResponses" });
+ChefResponse.belongsTo(User, { foreignKey: "created_by_user_id", as: "createdByUser" });
+
 User.hasMany(Notification, { foreignKey: "user_id", as: "notifications" });
 Notification.belongsTo(User, { foreignKey: "user_id", as: "user" });
 Rapport.hasMany(Notification, { foreignKey: "rapport_id", as: "notifications" });
 Notification.belongsTo(Rapport, { foreignKey: "rapport_id", as: "rapport" });
 WaliResponse.hasMany(Notification, { foreignKey: "wali_response_id", as: "notifications" });
 Notification.belongsTo(WaliResponse, { foreignKey: "wali_response_id", as: "waliResponse" });
+ChefResponse.hasMany(Notification, { foreignKey: "chef_response_id", as: "notifications" });
+Notification.belongsTo(ChefResponse, { foreignKey: "chef_response_id", as: "chefResponse" });
 
 WaliBroadcast.hasMany(Notification, { foreignKey: "broadcast_id", as: "notifications" });
 Notification.belongsTo(WaliBroadcast, { foreignKey: "broadcast_id", as: "broadcast" });
+WaliInstruction.hasMany(Notification, { foreignKey: "instruction_id", as: "notifications" });
+Notification.belongsTo(WaliInstruction, { foreignKey: "instruction_id", as: "instruction" });
 
 Rapport.hasMany(UploadedFile, { foreignKey: "rapport_id", as: "uploadedFiles" });
 UploadedFile.belongsTo(Rapport, { foreignKey: "rapport_id", as: "rapport" });
@@ -129,6 +150,26 @@ WaliBroadcastComment.belongsTo(WaliBroadcast, { foreignKey: "broadcast_id", as: 
 User.hasMany(WaliBroadcastComment, { foreignKey: "user_id", as: "broadcastComments" });
 WaliBroadcastComment.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
+User.hasMany(WaliInstruction, { foreignKey: "created_by_user_id", as: "waliInstructions" });
+WaliInstruction.belongsTo(User, { foreignKey: "created_by_user_id", as: "createdByUser" });
+WaliInstruction.hasMany(WaliInstructionFile, { foreignKey: "instruction_id", as: "files" });
+WaliInstructionFile.belongsTo(WaliInstruction, { foreignKey: "instruction_id", as: "instruction" });
+WaliInstructionFile.belongsTo(UploadedFile, { foreignKey: "uploaded_file_id", as: "file" });
+UploadedFile.hasMany(WaliInstructionFile, { foreignKey: "uploaded_file_id", as: "instructionFiles" });
+WaliInstruction.hasMany(WaliInstructionRecipient, { foreignKey: "instruction_id", as: "recipients" });
+WaliInstructionRecipient.belongsTo(WaliInstruction, { foreignKey: "instruction_id", as: "instruction" });
+User.hasMany(WaliInstructionRecipient, { foreignKey: "user_id", as: "instructionRecipients" });
+WaliInstructionRecipient.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+Rapport.hasMany(RapportComment, { foreignKey: "rapport_id", as: "comments" });
+RapportComment.belongsTo(Rapport, { foreignKey: "rapport_id", as: "rapport" });
+User.hasMany(RapportComment, { foreignKey: "author_user_id", as: "rapportComments" });
+RapportComment.belongsTo(User, { foreignKey: "author_user_id", as: "author" });
+RapportVersion.hasMany(RapportComment, { foreignKey: "rapport_version_id", as: "comments" });
+RapportComment.belongsTo(RapportVersion, { foreignKey: "rapport_version_id", as: "rapportVersion" });
+RapportComment.hasMany(Notification, { foreignKey: "comment_id", as: "notifications" });
+Notification.belongsTo(RapportComment, { foreignKey: "comment_id", as: "comment" });
+
 User.hasMany(UserServiceGrant, { foreignKey: "user_id", as: "serviceGrants" });
 UserServiceGrant.belongsTo(User, { foreignKey: "user_id", as: "user" });
 Service.hasMany(UserServiceGrant, { foreignKey: "service_id", as: "userGrants" });
@@ -136,6 +177,8 @@ UserServiceGrant.belongsTo(Service, { foreignKey: "service_id", as: "service" })
 
 module.exports = {
   sequelize,
+  Daira,
+  Modiriya,
   Municipality,
   User,
   AuditLog,
@@ -148,6 +191,7 @@ module.exports = {
   Rapport,
   RapportVersion,
   WaliResponse,
+  ChefResponse,
   RapportTableSchema,
   RapportDocumentTemplate,
   Notification,
@@ -157,5 +201,9 @@ module.exports = {
   RapportView,
   WaliBroadcast,
   WaliBroadcastRecipient,
-  WaliBroadcastComment
+  WaliBroadcastComment,
+  WaliInstruction,
+  WaliInstructionFile,
+  WaliInstructionRecipient,
+  RapportComment
 };

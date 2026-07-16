@@ -14,6 +14,42 @@ export const municipalityFormSchema = z
       .min(1, V.municipalityCodeRequired)
       .max(32, V.maxLength)
       .regex(/^\d+$/, V.municipalityCodeDigitsOnly),
+    daira_id: z.coerce.number().int().positive(V.dairaRequired),
+  })
+  .superRefine((data, ctx) => {
+    if (!hasBilingualText(data.name_ar, data.name_fr)) {
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['name_ar'] })
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['name_fr'] })
+    }
+  })
+
+const orgCodeSchema = z
+  .string()
+  .trim()
+  .min(1, V.codeRequired)
+  .max(32, V.maxLength)
+
+const orgNameSchema = z
+  .object({
+    name_ar: z.string().trim().max(255, V.maxLength),
+    name_fr: z.string().trim().max(255, V.maxLength),
+    code: orgCodeSchema,
+  })
+  .superRefine((data, ctx) => {
+    if (!hasBilingualText(data.name_ar, data.name_fr)) {
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['name_ar'] })
+      ctx.addIssue({ code: 'custom', message: V.bilingualLabelRequired, path: ['name_fr'] })
+    }
+  })
+
+export const dairaFormSchema = orgNameSchema
+
+/** Modiriya UI no longer collects code; server/frontend auto-assigns on create. */
+export const modiriyaFormSchema = z
+  .object({
+    name_ar: z.string().trim().max(255, V.maxLength),
+    name_fr: z.string().trim().max(255, V.maxLength),
+    code: z.string().trim().max(32, V.maxLength).optional(),
   })
   .superRefine((data, ctx) => {
     if (!hasBilingualText(data.name_ar, data.name_fr)) {
@@ -30,7 +66,7 @@ export const userFormSchema = z.object({
     .max(120, V.maxLength)
     .refine((s) => USERNAME_RE.test(s), V.errorUsernameFormat),
   name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength),
-  role: z.enum(['ADMIN', 'OFFICE_USER', 'WALI'], { message: V.userRoleInvalid }),
+  role: z.enum(['ADMIN', 'OFFICE_USER', 'CHEF_CABINET', 'WALI'], { message: V.userRoleInvalid }),
   job_title: z.string().trim().max(120, V.maxLength).optional(),
 })
 

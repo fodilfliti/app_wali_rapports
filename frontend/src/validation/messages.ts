@@ -7,6 +7,8 @@ export const V = {
   bilingualLabelRequired: 'bilingualLabelRequired',
   municipalityCodeRequired: 'municipalityCodeRequired',
   municipalityCodeDigitsOnly: 'municipalityCodeDigitsOnly',
+  dairaRequired: 'dairaRequired',
+  codeRequired: 'codeRequired',
   usernameRequired: 'usernameRequired',
   errorUsernameFormat: 'errorUsernameFormat',
   userNameRequired: 'userNameRequired',

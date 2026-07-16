@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 
 import { BackButton } from '../components/BackButton'
+import { BusyButton } from '../components/BusyButton'
 
 import { TableSchemaEditorModal } from '../components/TableSchemaEditorModal'
 
@@ -42,6 +43,8 @@ import { useSnackbar } from '../snackbar/SnackbarContext'
 
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { hasBilingualText } from '../utils/bilingual'
+import { EntityTargetKindsField } from '../components/EntityTargetKindsField'
+import { defaultEntityTargetKinds } from '../utils/entityTargets'
 import { needsLinkedTableSchema } from '../utils/rapportTypeSchema'
 
 
@@ -103,11 +106,13 @@ export function AdminSchemasPage({ token }: Props) {
 
     commune_content_kind: 'complex',
 
+    entity_target_kinds: defaultEntityTargetKinds(),
+
     table_schema_slug: '',
 
   })
 
-
+  const [saving, setSaving] = useState(false)
 
   const loadSchemas = useCallback(async () => {
     if (!selectedServiceId) {
@@ -263,6 +268,8 @@ export function AdminSchemasPage({ token }: Props) {
 
       commune_content_kind: 'complex',
 
+      entity_target_kinds: defaultEntityTargetKinds(),
+
       table_schema_slug: '',
 
     })
@@ -309,6 +316,7 @@ export function AdminSchemasPage({ token }: Props) {
       ...(editingSchemaId ? {} : { service_id: Number(selectedServiceId) }),
     }
 
+    setSaving(true)
     try {
 
       if (editingSchemaId) {
@@ -331,6 +339,8 @@ export function AdminSchemasPage({ token }: Props) {
 
       snack.show(t('errorGeneric'), 'error')
 
+    } finally {
+      setSaving(false)
     }
 
   }
@@ -375,6 +385,7 @@ export function AdminSchemasPage({ token }: Props) {
 
     }
 
+    setSaving(true)
     try {
 
       await api.createRapportType(token, Number(selectedServiceId), {
@@ -389,6 +400,9 @@ export function AdminSchemasPage({ token }: Props) {
 
         commune_content_kind:
           typeForm.content_kind === 'commune_list' ? typeForm.commune_content_kind : undefined,
+
+        entity_target_kinds:
+          typeForm.content_kind === 'commune_list' ? typeForm.entity_target_kinds : undefined,
 
         table_schema_slug: needsLinkedTableSchema(typeForm.content_kind, typeForm.commune_content_kind)
           ? typeForm.table_schema_slug
@@ -406,6 +420,8 @@ export function AdminSchemasPage({ token }: Props) {
 
       snack.show(t('errorGeneric'), 'error')
 
+    } finally {
+      setSaving(false)
     }
 
   }
@@ -637,6 +653,8 @@ export function AdminSchemasPage({ token }: Props) {
 
           showDelete={Boolean(editingSchemaId && !editingIsSystem)}
 
+          saving={saving}
+
         />
 
       ) : null}
@@ -700,6 +718,7 @@ export function AdminSchemasPage({ token }: Props) {
             </ExpandableHelp>
 
             {typeForm.content_kind === 'commune_list' ? (
+              <>
               <label>
                 {t('communeContentKind')}
                 <select
@@ -712,6 +731,13 @@ export function AdminSchemasPage({ token }: Props) {
                   <option value="table">{t('communeContentKind_table')}</option>
                 </select>
               </label>
+              <EntityTargetKindsField
+                value={typeForm.entity_target_kinds}
+                onChange={(entity_target_kinds) =>
+                  setTypeForm({ ...typeForm, entity_target_kinds })
+                }
+              />
+              </>
             ) : null}
 
             {needsLinkedTableSchema(typeForm.content_kind, typeForm.commune_content_kind) ? (
@@ -741,13 +767,13 @@ export function AdminSchemasPage({ token }: Props) {
 
             <div className="modalActions">
 
-              <button type="button" className="btn btn-primary" onClick={saveRapportType}>
+              <BusyButton type="button" className="btn btn-primary" onClick={saveRapportType} busy={saving} busyLabel={t('saving')}>
 
                 {t('save')}
 
-              </button>
+              </BusyButton>
 
-              <button type="button" className="btn btn-secondary" onClick={() => setTypeModal(false)}>
+              <button type="button" className="btn btn-secondary" onClick={() => setTypeModal(false)} disabled={saving}>
 
                 {t('cancel')}
 

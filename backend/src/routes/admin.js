@@ -5,6 +5,10 @@ const { validateBody } = require("../middleware/validateBody");
 const {
   municipalityCreateSchema,
   municipalityPatchSchema,
+  dairaCreateSchema,
+  dairaPatchSchema,
+  modiriyaCreateSchema,
+  modiriyaPatchSchema,
   userCreateSchema,
   userPatchSchema
 } = require("../validation/schemas/adminCrud");
@@ -26,6 +30,78 @@ const { serviceCreateSchema, servicePatchSchema, serviceGrantsSchema, department
 
 const adminRouter = express.Router();
 adminRouter.use(requireAuth, attachUser, checkBlocked, requireRole("ADMIN"));
+
+adminRouter.get("/dairas", requirePermission("organization.municipalities.view", "view"), async (req, res, next) => {
+  try {
+    res.json(await org.listDairas(req.query));
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.post(
+  "/dairas",
+  requirePermission("organization.municipalities.manage", "manage"),
+  validateBody(dairaCreateSchema),
+  async (req, res, next) => {
+    try {
+      const daira = await org.createDaira(req.validatedBody, req.user, req);
+      res.json({ daira });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+adminRouter.patch(
+  "/dairas/:id",
+  requirePermission("organization.municipalities.manage", "manage"),
+  validateBody(dairaPatchSchema),
+  async (req, res, next) => {
+    try {
+      const daira = await org.updateDaira(req.params.id, req.validatedBody, req.user, req);
+      res.json({ daira });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+adminRouter.get("/modiriyat", requirePermission("organization.municipalities.view", "view"), async (req, res, next) => {
+  try {
+    res.json(await org.listModiriyat(req.query));
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.post(
+  "/modiriyat",
+  requirePermission("organization.municipalities.manage", "manage"),
+  validateBody(modiriyaCreateSchema),
+  async (req, res, next) => {
+    try {
+      const modiriya = await org.createModiriya(req.validatedBody, req.user, req);
+      res.json({ modiriya });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+adminRouter.patch(
+  "/modiriyat/:id",
+  requirePermission("organization.municipalities.manage", "manage"),
+  validateBody(modiriyaPatchSchema),
+  async (req, res, next) => {
+    try {
+      const modiriya = await org.updateModiriya(req.params.id, req.validatedBody, req.user, req);
+      res.json({ modiriya });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
 
 adminRouter.get("/municipalities", requirePermission("organization.municipalities.view", "view"), async (req, res, next) => {
   try {

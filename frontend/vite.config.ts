@@ -25,6 +25,7 @@ export default defineConfig({
       '/admin': spaAwareProxy(),
       '/office': spaAwareProxy(),
       '/wali': spaAwareProxy(),
+      '/chef': spaAwareProxy(),
       '/files': backend,
       '/health': backend,
     },

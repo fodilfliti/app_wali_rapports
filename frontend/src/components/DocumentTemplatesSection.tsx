@@ -14,9 +14,17 @@ type Props = {
   token: string
   serviceId: number
   rapportTypes: any[]
+  autoOpenCreate?: boolean
+  onAutoOpenHandled?: () => void
 }
 
-export function DocumentTemplatesSection({ token, serviceId, rapportTypes }: Props) {
+export function DocumentTemplatesSection({
+  token,
+  serviceId,
+  rapportTypes,
+  autoOpenCreate = false,
+  onAutoOpenHandled,
+}: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
   const navigate = useNavigate()
@@ -39,6 +47,15 @@ export function DocumentTemplatesSection({ token, serviceId, rapportTypes }: Pro
     setEditing(null)
     setEditOpen(true)
   }
+
+  useEffect(() => {
+    if (!autoOpenCreate) return
+    setEditing(null)
+    setEditOpen(true)
+    onAutoOpenHandled?.()
+    // Intentionally only react to autoOpenCreate; callback identity may change each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenCreate])
 
   function openEdit(tpl: any) {
     const c = tpl.content_json || {}
@@ -112,8 +129,6 @@ export function DocumentTemplatesSection({ token, serviceId, rapportTypes }: Pro
       .join(' · ')
   }
 
-  if (!documentTypes.length) return null
-
   const pagedTemplates = paginateSlice(templates, page, DEFAULT_PAGE_SIZE)
 
   async function createRapport(typeId: number, templateId: number | null) {
@@ -133,69 +148,87 @@ export function DocumentTemplatesSection({ token, serviceId, rapportTypes }: Pro
     <div className="section">
       <div className="pageHeader row">
         <h2>{t('documentTemplates')}</h2>
-        <button type="button" className="btn btn-primary" onClick={openCreate}>
-          {t('createDocumentTemplate')}
-        </button>
+        {documentTypes.length ? (
+          <button type="button" className="btn btn-primary" onClick={openCreate}>
+            {t('createDocumentTemplate')}
+          </button>
+        ) : null}
       </div>
       <p className="muted small">{t('documentTemplatesHelp')}</p>
 
-      <div className="documentTemplateCreateRow">
-        <span className="muted small">{t('documentTemplateCreateRapportHint')}</span>
-        <div className="documentTemplateCreateActions">
-          {documentTypes.map((rt) => (
-            <button
-              key={rt.id}
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setCreateForTypeId(rt.id)}
-            >
-              {t('createRapport')} — {localizedName(rt, i18n.language)}
-            </button>
-          ))}
-        </div>
-      </div>
+      {!documentTypes.length ? (
+        <p className="muted card schemasEmptyState">{t('documentTemplatesNeedTypes')}</p>
+      ) : (
+        <>
+          <div className="documentTemplateCreateRow">
+            <span className="muted small">{t('documentTemplateCreateRapportHint')}</span>
+            <div className="documentTemplateCreateActions">
+              {documentTypes.map((rt) => (
+                <button
+                  key={rt.id}
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setCreateForTypeId(rt.id)}
+                >
+                  {t('createRapport')} — {localizedName(rt, i18n.language)}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <div className="card tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>{t('rapportTitle')}</th>
-              <th>{t('status')}</th>
-              <th>{t('actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedTemplates.map((tpl) => (
-              <tr key={tpl.id}>
-                <td>
-                  {localizedName(tpl, i18n.language)}
-                  {tpl.is_default ? ` · ${t('documentTemplateDefault')}` : ''}
-                </td>
-                <td>
-                  {tpl.content_kind ? t(`contentKind_${tpl.content_kind}`) : t('documentTemplateScopeAll')}
-                  <div className="muted small">{typeLabels(tpl)}</div>
-                </td>
-                <td>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => openEdit(tpl)}>
-                    {t('edit')}
-                  </button>{' '}
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeTemplate(tpl.id)}>
-                    {t('delete')}
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!templates.length ? (
-              <tr>
-                <td colSpan={3} className="muted">
-                  {t('noResults')}
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-      <TablePagination page={page} total={templates.length} onPageChange={setPage} compact />
+          <div className="card tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('rapportTitle')}</th>
+                  <th>{t('status')}</th>
+                  <th>{t('actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedTemplates.map((tpl) => (
+                  <tr key={tpl.id}>
+                    <td>
+                      {localizedName(tpl, i18n.language)}
+                      {tpl.is_default ? ` · ${t('documentTemplateDefault')}` : ''}
+                    </td>
+                    <td>
+                      {tpl.content_kind
+                        ? t(`contentKind_${tpl.content_kind}`)
+                        : t('documentTemplateScopeAll')}
+                      <div className="muted small">{typeLabels(tpl)}</div>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => openEdit(tpl)}
+                      >
+                        {t('edit')}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => removeTemplate(tpl.id)}
+                      >
+                        {t('delete')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!templates.length ? (
+                  <tr>
+                    <td colSpan={3} className="muted">
+                      {t('noResults')}
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination page={page} total={templates.length} onPageChange={setPage} compact />
+        </>
+      )}
 
       <DocumentTemplateEditModal
         open={editOpen}

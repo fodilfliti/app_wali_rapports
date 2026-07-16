@@ -4,20 +4,29 @@ import { useTranslation } from 'react-i18next'
 type Props = {
   className?: string
   /**
-   * Explicit back target — use only to break loops (e.g. archive → editor).
-   * Normal parent navigation should rely on history + fallbackTo.
+   * Explicit structural parent — navigates with replace (never pushes over current page).
+   * Prefer history + fallbackTo for normal “previous page” behavior.
    */
   to?: string
   fallbackTo?: string
-  /** Replace history when using `to` (archive flows). Default false. */
+  /**
+   * When using `to`, whether to replace history. Defaults to true so Back never
+   * stacks the parent under the current page (list ↔ view bounce).
+   */
   replace?: boolean
+}
+
+function canGoBackInApp(): boolean {
+  const idx = (window.history.state as { idx?: number } | null)?.idx
+  if (typeof idx === 'number') return idx > 0
+  return window.history.length > 1
 }
 
 export function BackButton({
   className = 'btn btn-secondary',
   to,
   fallbackTo = '/',
-  replace = false,
+  replace = true,
 }: Props) {
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -32,7 +41,7 @@ export function BackButton({
           return
         }
 
-        if (window.history.length > 1) {
+        if (canGoBackInApp()) {
           navigate(-1)
           return
         }

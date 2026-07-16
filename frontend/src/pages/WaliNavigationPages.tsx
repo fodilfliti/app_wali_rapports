@@ -13,12 +13,13 @@ import {
   isDirectWorkspaceKind,
   localizedRapportTypeName,
   rapportTypesForContentKind,
-  waliContentKindPath,
-  waliRapportTypeListPath,
+  reviewerRapportTypeListPath,
   type RapportTypeNav,
 } from '../utils/rapportNavigation'
 import { rapportStatusLabel } from '../utils/officeRapportList'
-import { waliInboxRowClass, waliCanRespondFromList } from '../utils/waliInboxList'
+import { waliInboxRowClass } from '../utils/waliInboxList'
+import { chefCanRespondFromList, type ReviewerMode, reviewerHubPath, reviewerOfficeUsersPath, reviewerRapportViewPath, reviewerUserServicesPath } from '../utils/reviewerMode'
+import { waliCanRespondFromList } from '../utils/waliInboxList'
 import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
 import { WaliRespondModal } from '../components/WaliRespondModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
@@ -26,26 +27,37 @@ import { notifyHubCountsRefresh, HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCo
 import { backNavigationState, currentPath } from '../utils/navigationBack'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { findServiceNode, folderBackPath, serviceLabel } from '../utils/serviceTree'
+import { PageLoading } from '../components/PageLoading'
 
-type Props = { token: string }
+type Props = { token: string; reviewer?: ReviewerMode }
 
-export function WaliOfficeUsersPage({ token }: Props) {
+function canRespondFromList(reviewer: ReviewerMode, status?: string) {
+  return reviewer === 'chef' ? chefCanRespondFromList(status) : waliCanRespondFromList(status)
+}
+
+function respondApi(reviewer: ReviewerMode) {
+  return reviewer === 'chef' ? api.chefRespond : api.waliRespond
+}
+
+export function WaliOfficeUsersPage({ token, reviewer = 'wali' }: Props) {
   const { t } = useTranslation()
   const location = useLocation()
   const [users, setUsers] = useState<any[]>([])
   const [page, setPage] = useState(1)
+  const hub = reviewerHubPath(reviewer)
+  const listUsers = reviewer === 'chef' ? api.listChefOfficeUsers : api.listWaliOfficeUsers
 
   useEffect(() => {
-    api.listWaliOfficeUsers(token).then((r) => setUsers(r.officeUsers)).catch(() => {})
-  }, [token, location.pathname])
+    listUsers(token).then((r) => setUsers(r.officeUsers)).catch(() => {})
+  }, [token, location.pathname, listUsers])
 
   useEffect(() => {
     const refresh = () => {
-      api.listWaliOfficeUsers(token).then((r) => setUsers(r.officeUsers)).catch(() => {})
+      listUsers(token).then((r) => setUsers(r.officeUsers)).catch(() => {})
     }
     window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
     return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-  }, [token])
+  }, [token, listUsers])
 
   const pagedUsers = paginateSlice(users, page, DEFAULT_PAGE_SIZE)
 
@@ -53,13 +65,13 @@ export function WaliOfficeUsersPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navOfficeUsers')}</h1>
-        <BackButton to="/wali" fallbackTo="/wali" />
+        <BackButton to={hub} fallbackTo={hub} />
       </div>
       <div className="hubGrid">
         {pagedUsers.map((u) => (
           <HubTile
             key={u.id}
-            to={`/wali/office-users/${u.id}/services`}
+            to={`${reviewerUserServicesPath(reviewer, u.id)}`}
             icon="users"
             title={u.name || u.username}
             subtitle={u.job_title || undefined}
@@ -77,26 +89,27 @@ export function WaliOfficeUsersPage({ token }: Props) {
   )
 }
 
-export function WaliUserServicesPage({ token, userId }: Props & { userId: number }) {
+export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
   const { folderId } = useParams()
   const location = useLocation()
   const fid = folderId ? Number(folderId) : undefined
   const { t, i18n } = useTranslation()
   const [services, setServices] = useState<any[]>([])
   const [page, setPage] = useState(1)
-  const basePath = `/wali/office-users/${userId}/services`
+  const basePath = reviewerUserServicesPath(reviewer, userId)
+  const listServices = reviewer === 'chef' ? api.listChefUserServices : api.listWaliUserServices
 
   useEffect(() => {
-    api.listWaliUserServices(token, userId).then((r) => setServices(r.services)).catch(() => {})
-  }, [token, userId, location.pathname])
+    listServices(token, userId).then((r) => setServices(r.services)).catch(() => {})
+  }, [token, userId, location.pathname, listServices])
 
   useEffect(() => {
     const refresh = () => {
-      api.listWaliUserServices(token, userId).then((r) => setServices(r.services)).catch(() => {})
+      listServices(token, userId).then((r) => setServices(r.services)).catch(() => {})
     }
     window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
     return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-  }, [token, userId])
+  }, [token, userId, listServices])
 
   useEffect(() => {
     setPage(1)
@@ -106,7 +119,7 @@ export function WaliUserServicesPage({ token, userId }: Props & { userId: number
   const items = folder ? folder.children || [] : services
   const pagedItems = paginateSlice(items, page, DEFAULT_PAGE_SIZE)
   const pageTitle = folder ? serviceLabel(folder, i18n.language) : t('navServices')
-  const backTo = fid ? folderBackPath(services, fid, basePath) : `/wali/office-users`
+  const backTo = fid ? folderBackPath(services, fid, basePath) : reviewerOfficeUsersPath(reviewer)
 
   return (
     <div className="page">
@@ -139,15 +152,18 @@ export function WaliUserServicesPage({ token, userId }: Props & { userId: number
   )
 }
 
-export function WaliServiceRapportTypesPage({ token, userId }: Props & { userId: number }) {
+export function WaliServiceRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
   const { serviceId } = useParams()
   const sid = Number(serviceId)
   const [hub, setHub] = useState<any>(null)
-
   const loadHub = useCallback(() => {
     if (!sid) return
-    api.getWaliServiceContentHub(token, userId, sid).then(setHub).catch(() => {})
-  }, [token, userId, sid])
+    const load =
+      reviewer === 'chef'
+        ? api.getChefServiceContentHub(token, userId, sid)
+        : api.getWaliServiceContentHub(token, userId, sid)
+    load.then(setHub).catch(() => {})
+  }, [token, userId, sid, reviewer])
 
   useEffect(() => {
     loadHub()
@@ -161,7 +177,7 @@ export function WaliServiceRapportTypesPage({ token, userId }: Props & { userId:
   if (!hub?.service) {
     return (
       <div className="page">
-        <p className="muted">…</p>
+        <PageLoading />
       </div>
     )
   }
@@ -171,14 +187,14 @@ export function WaliServiceRapportTypesPage({ token, userId }: Props & { userId:
       service={hub.service}
       summaries={hub.contentKindSummaries || []}
       contentKinds={hub.contentKinds}
-      backTo={`/wali/office-users/${userId}/services`}
-      rapportTypePath={(rt) => waliRapportTypeListPath(userId, sid, rt)}
+      backTo={reviewerUserServicesPath(reviewer, userId)}
+      rapportTypePath={(rt) => reviewerRapportTypeListPath(reviewer, userId, sid, rt.id)}
       mode="wali"
     />
   )
 }
 
-export function WaliServiceKindRapportTypesPage({ token, userId }: Props & { userId: number }) {
+export function WaliServiceKindRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
   const { serviceId, contentKind } = useParams()
   const sid = Number(serviceId)
   const kind = contentKind || ''
@@ -187,8 +203,12 @@ export function WaliServiceKindRapportTypesPage({ token, userId }: Props & { use
 
   const loadHub = useCallback(() => {
     if (!sid) return
-    api.getWaliServiceContentHub(token, userId, sid).then(setHub).catch(() => {})
-  }, [token, userId, sid])
+    const load =
+      reviewer === 'chef'
+        ? api.getChefServiceContentHub(token, userId, sid)
+        : api.getWaliServiceContentHub(token, userId, sid)
+    load.then(setHub).catch(() => {})
+  }, [token, userId, sid, reviewer])
 
   useEffect(() => {
     loadHub()
@@ -202,7 +222,7 @@ export function WaliServiceKindRapportTypesPage({ token, userId }: Props & { use
   if (!hub?.service) {
     return (
       <div className="page">
-        <p className="muted">…</p>
+        <PageLoading />
       </div>
     )
   }
@@ -213,7 +233,7 @@ export function WaliServiceKindRapportTypesPage({ token, userId }: Props & { use
     <ServiceRapportTypesHub
       service={hub.service}
       rapportTypes={types}
-      backTo={`/wali/office-users/${userId}/services/${sid}`}
+      backTo={`${reviewerUserServicesPath(reviewer, userId)}/${sid}`}
       mode="wali"
       waliUserId={userId}
       pageTitle={t(`contentKind_${kind}`, { defaultValue: kind })}
@@ -221,7 +241,7 @@ export function WaliServiceKindRapportTypesPage({ token, userId }: Props & { use
   )
 }
 
-export function WaliServiceRapportListPage({ token, userId }: Props & { userId: number }) {
+export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
   const { serviceId, rapportTypeId } = useParams()
   const sid = Number(serviceId)
   const typeId = Number(rapportTypeId)
@@ -246,7 +266,10 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
     if (!sid || !typeId) return
     setLoading(true)
     try {
-      const svcRes = await api.listWaliUserServices(token, userId)
+      const svcRes =
+        reviewer === 'chef'
+          ? await api.listChefUserServices(token, userId)
+          : await api.listWaliUserServices(token, userId)
       const find = (nodes: any[]): any => {
         for (const n of nodes) {
           if (Number(n.id) === sid) return n
@@ -262,7 +285,9 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
       setService(svc)
       setRapportType(rt)
 
-      const rapRes = await api.listWaliRapports(token, {
+      const listRapports =
+        reviewer === 'chef' ? api.listChefRapports : api.listWaliRapports
+      const rapRes = await listRapports(token, {
         service_id: sid,
         rapport_type_id: typeId,
         page: listPage,
@@ -272,10 +297,8 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
       setListTotal(rapRes.total ?? rapRes.rapports.length)
 
       if (rt && isDirectWorkspaceKind(rt.content_kind) && listPage === 1 && rapRes.total === 1 && rapRes.rapports.length === 1) {
-        const backTo = rapportType?.content_kind
-          ? waliContentKindPath(userId, sid, rt.content_kind)
-          : `/wali/office-users/${userId}/services/${sid}`
-        navigate(`/wali/rapports/${rapRes.rapports[0].id}/view`, {
+        const backTo = `${reviewerUserServicesPath(reviewer, userId)}/${sid}`
+        navigate(reviewerRapportViewPath(reviewer, rapRes.rapports[0].id), {
           replace: true,
           state: backNavigationState(backTo),
         })
@@ -283,7 +306,7 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
     } finally {
       setLoading(false)
     }
-  }, [token, userId, sid, typeId, listPage, navigate])
+  }, [token, userId, sid, typeId, listPage, navigate, reviewer, rapportType?.content_kind])
 
   useEffect(() => {
     load()
@@ -296,7 +319,7 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
   }) {
     if (!respondId) return
     try {
-      await api.waliRespond(token, respondId, payload)
+      await respondApi(reviewer)(token, respondId, payload)
       setRespondId(null)
       notifyHubCountsRefresh()
       load()
@@ -317,7 +340,7 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
   if (loading) {
     return (
       <div className="page">
-        <p className="muted">…</p>
+        <PageLoading />
       </div>
     )
   }
@@ -327,16 +350,7 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
       <div className="pageHeader row">
         <h1>{pageTitle}</h1>
         <BackButton
-          to={
-            rapportType?.content_kind
-              ? waliContentKindPath(userId, sid, rapportType.content_kind)
-              : `/wali/office-users/${userId}/services/${sid}`
-          }
-          fallbackTo={
-            rapportType?.content_kind
-              ? waliContentKindPath(userId, sid, rapportType.content_kind)
-              : `/wali/office-users/${userId}/services/${sid}`
-          }
+          fallbackTo={`${reviewerUserServicesPath(reviewer, userId)}/${sid}`}
         />
       </div>
 
@@ -367,12 +381,12 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
                   <div className="actionsCellInner">
                     <Link
                       className="btn btn-ghost"
-                      to={`/wali/rapports/${r.id}/view`}
+                      to={reviewerRapportViewPath(reviewer, r.id)}
                       state={backNavigationState(listPath)}
                     >
                       {t('details')}
                     </Link>
-                    {waliCanRespondFromList(r.status) ? (
+                    {canRespondFromList(reviewer, r.status) ? (
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
@@ -397,7 +411,12 @@ export function WaliServiceRapportListPage({ token, userId }: Props & { userId: 
 
       <RapportStatusFlowHelp variant="wali" />
 
-      <WaliRespondModal open={!!respondId} onClose={() => setRespondId(null)} onSubmit={sendResponse} />
+      <WaliRespondModal
+        open={!!respondId}
+        onClose={() => setRespondId(null)}
+        onSubmit={sendResponse}
+        mode={reviewer === 'chef' ? 'chef' : 'wali'}
+      />
     </div>
   )
 }

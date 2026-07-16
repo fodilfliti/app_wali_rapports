@@ -7,7 +7,7 @@ const {
 } = require("../middleware/auth");
 const { requirePermission } = require("../middleware/requirePermission");
 const { validateBody } = require("../middleware/validateBody");
-const { waliRespondSchema } = require("../validation/schemas/adminCrud");
+const { waliRespondSchema, rapportCommentSchema } = require("../validation/schemas/adminCrud");
 const { singleUpload } = require("../middleware/upload");
 const rapportService = require("../modules/rapports/rapportService");
 const navigationService = require("../modules/rapports/navigationService");
@@ -15,6 +15,7 @@ const calendarEventService = require("../modules/rapports/calendarEventService")
 const rapportViewService = require("../modules/rapports/rapportViewService");
 const broadcastService = require("../modules/rapports/broadcastService");
 const hubCountsService = require("../modules/rapports/hubCountsService");
+const commentService = require("../modules/rapports/commentService");
 const { generateRapportPdf } = require("../services/rapportPdfService");
 const { generateRapportDocx } = require("../services/rapportDocxService");
 const { generateRapportExcel } = require("../services/rapportExcelService");
@@ -49,7 +50,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
-      res.json(await hubCountsService.getWaliHubCounts());
+      res.json(await hubCountsService.getWaliHubCounts(req.user.id));
     } catch (e) {
       next(e);
     }
@@ -103,6 +104,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const versionId = req.query.versionId
         ? Number(req.query.versionId)
@@ -143,6 +145,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       const versions = await rapportService.listRapportVersions(req.params.id);
       res.json({ versions });
     } catch (e) {
@@ -156,6 +159,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       const version = await rapportService.getRapportVersion(
         req.params.id,
         req.params.versionId,
@@ -172,10 +176,12 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       await rapportService.markUnderReview(req.params.id, req.user);
       await rapportViewService.recordView(req.params.id, req.user);
       const rapport = await rapportService.getRapportDetail(req.params.id);
       const views = await rapportViewService.listViewsForRapport(req.params.id);
+      await rapportService.markRapportNotificationsRead(req.params.id, req.user.id);
       res.json({ rapport, views });
     } catch (e) {
       next(e);
@@ -189,6 +195,7 @@ waliRouter.post(
   validateBody(waliRespondSchema),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       const rapport = await rapportService.waliRespond(
         req.params.id,
         req.validatedBody,
@@ -233,6 +240,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
       const versionId = req.query.versionId ? Number(req.query.versionId) : null;
@@ -261,6 +269,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
       const rowFilter = req.query.rowFilter;
@@ -294,6 +303,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToWali(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
       const versionId = req.query.versionId ? Number(req.query.versionId) : null;
@@ -422,6 +432,99 @@ waliRouter.get(
       const users = await broadcastService.listOfficeUsers();
       res.json({ users });
     } catch (e) {
+      next(e);
+    }
+  },
+);
+
+const instructionService = require("../modules/rapports/instructionService");
+const { multiUpload } = require("../middleware/upload");
+
+waliRouter.get(
+  "/instructions",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      res.json(await instructionService.listForWali(req.query));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+waliRouter.get(
+  "/instructions/:id",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      res.json({
+        instruction: await instructionService.getInstruction(req.params.id, { asWali: true }),
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+waliRouter.post(
+  "/instructions",
+  requirePermission("rapports.inbox.respond", "manage"),
+  multiUpload("files", 10),
+  async (req, res, next) => {
+    try {
+      let body = {};
+      try {
+        body = req.body.payload ? JSON.parse(req.body.payload) : req.body;
+      } catch {
+        body = req.body;
+      }
+      const instruction = await instructionService.createInstruction(
+        { files: req.files || [], body },
+        req.user,
+        req,
+      );
+      res.status(201).json({ instruction });
+    } catch (e) {
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+waliRouter.get(
+  "/rapports/:id/comments",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      res.json(
+        await commentService.listComments(req.params.id, req.user, req.query, {
+          asWali: true,
+        }),
+      );
+    } catch (e) {
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+waliRouter.post(
+  "/rapports/:id/comments",
+  requirePermission("rapports.inbox.respond", "manage"),
+  validateBody(rapportCommentSchema),
+  async (req, res, next) => {
+    try {
+      const comment = await commentService.createComment(
+        req.params.id,
+        req.validatedBody.body_text,
+        req.user,
+        req,
+        { asWali: true },
+      );
+      res.status(201).json({ comment });
+    } catch (e) {
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
   },

@@ -17,4 +17,8 @@ function singleUpload(fieldName = "file") {
   return upload.single(fieldName);
 }
 
-module.exports = { singleUpload };
+function multiUpload(fieldName = "files", maxCount = 10) {
+  return upload.array(fieldName, maxCount);
+}
+
+module.exports = { singleUpload, multiUpload };

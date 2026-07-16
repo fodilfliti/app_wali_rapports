@@ -17,16 +17,22 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
   - **Schema configuration (admin schemas + rapport types)**: `spec/modules/SCHEMA_CONFIGURATION.md`
   - **Service sharing (view / editor per office user)**: `spec/modules/SERVICE_SHARING.md`
   - **Media, calendar events & Wali sharing (image/video, calendars, broadcast)**: `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`
+  - **Chef Cabinet (رئيس الديوان — first validator)**: `spec/modules/CHEF_CABINET.md`
+  - **Wali instructions (تعليمات السيد الوالي)**: `spec/modules/WALI_INSTRUCTIONS.md`
+  - **Rapport discussion (مناقشة التقرير)**: `spec/modules/RAPPORT_DISCUSSION.md`
 
 ### Cross-cutting updates (initial)
 
-- **Three account types:** `ADMIN` (compte admin), `OFFICE_USER` (compte bureau), `WALI` (compte wali) — never show raw enums in UI.
-- **Communes:** reference rows only (`municipalities` table); no commune login accounts.
-- **Route prefixes:** `/admin/*`, `/office/*`, `/wali/*` + `POST /auth/login`.
+- **Four account types:** `ADMIN` (compte admin), `OFFICE_USER` (compte bureau), `WALI` (compte wali), `CHEF_CABINET` (رئيس الديوان) — never show raw enums in UI.
+- **Communes / dairas / modiriyat (Directions):** reference rows only; no login accounts for these. Communes belong to a daira; modiriyat are independent. UI path for modiriyat: `/directions` (labels المديريات / Directions). Service « départements / قطاعات » are hidden in admin UI.
+- **Route prefixes:** `/admin/*`, `/office/*`, `/wali/*`, `/chef/*` + `POST /auth/login`.
 - **Form validation:** mandatory Zod client + server on all create/edit flows — `spec/CORE.md`.
 - **Distinct UI theme:** teal/gold tokens in `frontend/src/theme/tokens.css` (not app_wilaya green).
-- **Rapport architecture (4 content kinds):** Wali navigates office user → service/sub-service tree; types table grid, document compose, fiche lecture, commune list — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
+- **Rapport architecture (4 content kinds):** Wali navigates office user → service/sub-service tree; types جدول / ملف مركّب / مذكرة استخلاصية / **قائمة** (`commune_list` with configurable commune / daira / modiriya targets) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
 - **Version archive + Wali notifications:** old versions for graphs/history; office notified on Wali note — `RAPPORT_SERVICE_TYPES.md`, `RAPPORTS.md`.
+- **Chef gate:** first submit goes to رئيس الديوان; after Wali demands changes, resubmit skips Chef (info notif only) — `CHEF_CABINET.md`.
+- **Wali instructions:** title + body + files to all/selected office users; Chef read-only — `WALI_INSTRUCTIONS.md`.
+- **Rapport discussion:** non-live comment thread after first Envoyer (office / Chef / Wali) — `RAPPORT_DISCUSSION.md`.
 
 ### Cross-cutting updates (2026-06)
 

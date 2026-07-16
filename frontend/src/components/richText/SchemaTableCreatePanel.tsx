@@ -145,7 +145,6 @@ export function SchemaTableCreatePanel({ token, serviceId, onCreated, onError, l
         onChange={setDraftColumns}
         headerGroups={draftHeaderGroups}
         onHeaderGroupsChange={setDraftHeaderGroups}
-        showPreview={false}
       />
 
       <div className="modalActions schemaTableCreateActions">

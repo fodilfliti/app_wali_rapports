@@ -2,7 +2,7 @@
 
 ### Purpose & constraints
 
-- Fine-grained permissions per account without replacing login role (`ADMIN` / `OFFICE_USER` / `WALI`).
+- Fine-grained permissions per account without replacing login role (`ADMIN` / `OFFICE_USER` / `CHEF_CABINET` / `WALI`).
 - Office users scoped by **rapport domain** keys (e.g. `rapports.investissement.manage`).
 - **View-only** profiles expressible via `view` level.
 
@@ -13,24 +13,29 @@
 | **Account role** (`users.role`) | JWT scope and route prefix |
 | **Access role template** | Permission matrix (`none` / `view` / `manage`) |
 
-- Template `account_scope` must match user role: `admin`, `office`, or `wali`.
+- Template `account_scope` must match user role: `admin`, `office`, `chef`, or `wali`.
 - Users without template: legacy **full manage** on applicable keys (seed admin uses template).
 
 ### Permission keys (initial catalog)
 
 - `hub.dashboard`
 - `organization.municipalities.view|manage`
+- `organization.dairas.view|manage`
+- `organization.modiriyat.view|manage`
 - `organization.users.view|manage`
 - `organization.access_roles.manage`
 - `rapports.investissement.view|manage|export`
 - `rapports.finance.view|manage|export`
 - `rapports.hydraulique.view|manage|export`
-- `rapports.inbox.view` (wali)
-- `rapports.inbox.respond` (wali)
+- `rapports.inbox.view` (wali / chef)
+- `rapports.inbox.respond` (wali / chef)
+- `rapports.instructions.view` (office / chef / wali)
+- `rapports.instructions.create` (wali only)
 
 Scope mapping:
 - `admin` scope → `ADMIN` only
 - `office` scope → `OFFICE_USER` only
+- `chef` scope → `CHEF_CABINET` only
 - `wali` scope → `WALI` only
 - `both` → any role
 
@@ -41,7 +46,8 @@ Same tables as app_wilaya pattern: `departments`, `access_role_templates`, `acce
 System templates (seeded):
 - `ADMIN_FULL` — admin scope, all manage
 - `OFFICE_STANDARD` — office scope, investissement manage + others view
-- `WALI_STANDARD` — wali scope, inbox view + respond
+- `WALI_STANDARD` — wali scope, inbox view + respond + instructions create
+- `CHEF_STANDARD` — chef scope, inbox view + respond + instructions view (no create)
 
 ### API endpoints
 

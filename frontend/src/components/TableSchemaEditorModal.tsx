@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { BusyButton } from './BusyButton'
 import { SchemaColumnsEditor, type DraftSchemaColumn } from './SchemaColumnsEditor'
 import type { DraftHeaderGroup } from '../utils/schemaHeaderGroups'
 import type { SchemaFormState } from '../utils/schemaEditorState'
@@ -17,6 +18,7 @@ type Props = {
   onDelete?: () => void
   showDelete?: boolean
   versionNote?: boolean
+  saving?: boolean
 }
 
 export function TableSchemaEditorModal({
@@ -33,6 +35,7 @@ export function TableSchemaEditorModal({
   onDelete,
   showDelete,
   versionNote = true,
+  saving = false,
 }: Props) {
   const { t } = useTranslation()
 
@@ -72,14 +75,14 @@ export function TableSchemaEditorModal({
         />
         <div className="modalActions">
           {showDelete && onDelete ? (
-            <button type="button" className="btn btn-danger schemaDeleteBtn" onClick={onDelete}>
+            <button type="button" className="btn btn-danger schemaDeleteBtn" onClick={onDelete} disabled={saving}>
               {t('deleteSchema')}
             </button>
           ) : null}
-          <button type="button" className="btn btn-primary" onClick={onSave}>
+          <BusyButton type="button" className="btn btn-primary" onClick={onSave} busy={saving} busyLabel={t('saving')}>
             {t('save')}
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={onCancel}>
+          </BusyButton>
+          <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={saving}>
             {t('cancel')}
           </button>
         </div>

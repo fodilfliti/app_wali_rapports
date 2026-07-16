@@ -9,6 +9,7 @@ const { authRouter } = require("./routes/auth");
 const { adminRouter } = require("./routes/admin");
 const { officeRouter } = require("./routes/office");
 const { waliRouter } = require("./routes/wali");
+const { chefRouter } = require("./routes/chef");
 const { requestContext } = require("./middleware/requestContext");
 const { errorHandler } = require("./middleware/errorHandler");
 const { getEnv } = require("./config/env");
@@ -86,6 +87,7 @@ api.use("/auth", authRouter);
 api.use("/admin", adminRouter);
 api.use("/office", officeRouter);
 api.use("/wali", waliRouter);
+api.use("/chef", chefRouter);
 
 app.use(apiBase, api);
 app.use(errorHandler);

@@ -21,6 +21,11 @@ module.exports = (sequelize) =>
         allowNull: false,
         defaultValue: "complex"
       },
+      entity_target_kinds: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: ["commune"]
+      },
       schema_json: { type: DataTypes.JSONB, allowNull: true },
       hidden_at: { type: DataTypes.DATE, allowNull: true },
     },

@@ -27,7 +27,7 @@ function serializeServiceNode(s, includeChildren = true) {
   return node;
 }
 
-async function listOfficeUsersForWali() {
+async function listOfficeUsersForWali(statusList = hubCountsService.WALI_INBOX_ACTION_STATUSES) {
   const users = await User.findAll({
     where: { role: "OFFICE_USER", is_blocked: false },
     order: [["name", "ASC"], ["id", "ASC"]],
@@ -41,7 +41,7 @@ async function listOfficeUsersForWali() {
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"]
     ],
     where: {
-      status: { [Op.in]: hubCountsService.WALI_INBOX_ACTION_STATUSES },
+      status: { [Op.in]: statusList },
       owner_office_user_id: { [Op.ne]: null },
       hidden_at: null,
     },
@@ -58,6 +58,10 @@ async function listOfficeUsersForWali() {
     department: u.department,
     pending_rapports_count: countByUser[u.id] || 0
   }));
+}
+
+async function listOfficeUsersForChef() {
+  return listOfficeUsersForWali(hubCountsService.CHEF_INBOX_ACTION_STATUSES);
 }
 
 async function loadFullServiceTree() {
@@ -79,7 +83,7 @@ async function loadFullServiceTree() {
   });
 }
 
-async function getServiceTreeForUser(userId, actorRole = "OFFICE_USER") {
+async function getServiceTreeForUser(userId, actorRole = "OFFICE_USER", opts = {}) {
   const services = await loadFullServiceTree();
 
   if (actorRole === "ADMIN") {
@@ -97,7 +101,9 @@ async function getServiceTreeForUser(userId, actorRole = "OFFICE_USER") {
   const accessMap = await getAccessMapForUser(targetUserId);
   const filtered = filterServiceTree(services, accessMap);
   const serialized = filtered.map((s) => serializeServiceNode(s));
-  const counts = await hubCountsService.getWaliServicePendingCounts(targetUserId);
+  const counts = opts.forChef
+    ? await hubCountsService.getChefServicePendingCounts(targetUserId)
+    : await hubCountsService.getWaliServicePendingCounts(targetUserId);
   return {
     office_user_id: targetUserId,
     services: hubCountsService.applyServiceActionCounts(serialized, counts.byService, counts.byType)
@@ -118,4 +124,9 @@ async function getOfficeServiceTree(user) {
   return { services: hubCountsService.applyServiceActionCounts(services, counts.byService, counts.byType) };
 }
 
-module.exports = { listOfficeUsersForWali, getServiceTreeForUser, getOfficeServiceTree };
+module.exports = {
+  listOfficeUsersForWali,
+  listOfficeUsersForChef,
+  getServiceTreeForUser,
+  getOfficeServiceTree,
+};

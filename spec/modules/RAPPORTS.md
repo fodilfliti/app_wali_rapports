@@ -67,7 +67,7 @@
 
 | `fiche_lecture` | Shared dated fiche; new file each time (all office users) |
 
-| `commune_list` | Commune list → per-commune table/inputs; versioned or standalone |
+| `commune_list` | **قائمة / Liste** — per-entity (commune / daira / modiriya) table/inputs; versioned or standalone |
 
 
 
@@ -160,9 +160,11 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 #### `notifications`
 
-- `id`, `user_id` (FK), `rapport_id` (FK, nullable), `broadcast_id` (FK, nullable), `wali_response_id` (FK, nullable), `message_key` (default `waliFeedback`), `read_at` (nullable), `created_at`
+- `id`, `user_id` (FK), `rapport_id` (FK, nullable), `broadcast_id` (FK, nullable), `instruction_id` / `chef_response_id` / `comment_id` (nullable FKs), `wali_response_id` (FK, nullable), `message_key` (default `waliFeedback`), `read_at` (nullable), `created_at`
 
+#### `rapport_comments`
 
+- Discussion thread — see **`RAPPORT_DISCUSSION.md`**.
 
 ### Versioning rules
 
@@ -209,6 +211,7 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 - Office: service tree, draft/save, version archive button, notification bell.
 
 - **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**.
+- **Global rapport lists** (`/admin/rapports`, `/office/rapports`, `/wali/rapports`, `/chef/rapports`): optional title **search** query param (`search`) filters by rapport title (`iLike`); same search field in UI across roles.
 
 - **Document/fiche editors:** export menu (preview + download), optional **import template** (replace or append); compact page header.
 

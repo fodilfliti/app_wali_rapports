@@ -18,7 +18,7 @@ import {
   withCommuneNameColumn,
 } from "../utils/communeBulkTable";
 import type { TableMeta } from "../utils/tableLayout";
-import { versionsListPath, rapportPreviewPath } from "../utils/rapportVersionsNav";
+import { versionsListPath } from "../utils/rapportVersionsNav";
 import { RapportExportButtons } from "../components/ExportPdfButton";
 import { CommuneListVersionView } from "../components/CommuneListVersionView";
 import type { MediaFile } from "../utils/media";
@@ -26,11 +26,13 @@ import type { MediaFile } from "../utils/media";
 type DetailProps = {
   token: string;
   wali?: boolean;
+  chef?: boolean;
 };
 
 export function RapportVersionDetail({
   token,
   wali = false,
+  chef = false,
 }: DetailProps) {
   const { rapportId, versionId } = useParams();
   const rid = Number(rapportId);
@@ -51,8 +53,7 @@ export function RapportVersionDetail({
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const previewBack = rapportPreviewPath(rid, wali, rapport);
-  const archiveListPath = versionsListPath(rid, wali);
+  const archiveListPath = versionsListPath(rid, wali, chef);
 
   useEffect(() => {
     if (!rid || !vid) return;
@@ -61,10 +62,16 @@ export function RapportVersionDetail({
       setLoading(true);
       try {
         const [rRes, vRes] = await Promise.all([
-          wali ? api.getWaliRapportView(token, rid, false) : api.getRapport(token, rid),
-          wali
-            ? api.getWaliRapportVersion(token, rid, vid)
-            : api.getRapportVersion(token, rid, vid),
+          chef
+            ? api.getChefRapportView(token, rid, false)
+            : wali
+              ? api.getWaliRapportView(token, rid, false)
+              : api.getRapport(token, rid),
+          chef
+            ? api.getChefRapportVersion(token, rid, vid)
+            : wali
+              ? api.getWaliRapportVersion(token, rid, vid)
+              : api.getRapportVersion(token, rid, vid),
         ]);
         if (cancelled) return;
         setRapport(rRes.rapport);
@@ -79,9 +86,11 @@ export function RapportVersionDetail({
           communeKind !== "table" &&
           rRes.rapport?.service_id
         ) {
-          if (wali) {
+          if (wali || chef) {
             try {
-              const viewRes = await api.getWaliRapportView(token, rid, false, vid);
+              const viewRes = chef
+                ? await api.getChefRapportView(token, rid, false, vid)
+                : await api.getWaliRapportView(token, rid, false, vid);
               if (!cancelled) {
                 setCommuneVersionView({
                   municipalities: viewRes.municipalities || [],
@@ -144,8 +153,10 @@ export function RapportVersionDetail({
           rRes.rapport?.service_id
         ) {
           try {
-            if (wali) {
-              const viewRes = await api.getWaliRapportView(token, rid, false, vid);
+            if (wali || chef) {
+              const viewRes = chef
+                ? await api.getChefRapportView(token, rid, false, vid)
+                : await api.getWaliRapportView(token, rid, false, vid);
               if (!cancelled) {
                 setSchema(viewRes.schema);
                 setMunicipalities(viewRes.municipalities || []);
@@ -172,7 +183,7 @@ export function RapportVersionDetail({
     return () => {
       cancelled = true;
     };
-  }, [rid, vid, token, wali, snack, t]);
+  }, [rid, vid, token, wali, chef, snack, t]);
 
   const kind = rapport?.rapportType?.content_kind;
   const data = version?.data_json || {};
@@ -254,10 +265,11 @@ export function RapportVersionDetail({
               token={token}
               rapportId={rid}
               wali={wali}
+              chef={chef}
               versionId={vid}
             />
           ) : null}
-          <BackButton to={previewBack} fallbackTo={archiveListPath} replace />
+          <BackButton to={archiveListPath} fallbackTo={archiveListPath} replace />
         </div>
       </div>
 

@@ -12,7 +12,8 @@ const municipalityCreateSchema = refineBilingualNames(
       .trim()
       .min(1, V.municipalityCodeRequired)
       .max(32, V.maxLength)
-      .regex(/^\d+$/, V.municipalityCodeDigitsOnly)
+      .regex(/^\d+$/, V.municipalityCodeDigitsOnly),
+    daira_id: z.number().int().positive({ message: V.dairaRequired })
   })
 );
 
@@ -26,7 +27,8 @@ const municipalityPatchSchema = z
       .min(1, V.municipalityCodeRequired)
       .max(32, V.maxLength)
       .regex(/^\d+$/, V.municipalityCodeDigitsOnly)
-      .optional()
+      .optional(),
+    daira_id: z.number().int().positive().optional()
   })
   .superRefine((data, ctx) => {
     if (data.name_ar !== undefined || data.name_fr !== undefined) {
@@ -37,6 +39,36 @@ const municipalityPatchSchema = z
     }
   });
 
+const dairaCreateSchema = refineBilingualNames(
+  z.object({
+    ...bilingualNameShape(255),
+    code: z.string().trim().min(1, V.codeRequired).max(50, V.maxLength)
+  })
+);
+
+const dairaPatchSchema = z
+  .object({
+    name_ar: z.string().trim().max(255, V.maxLength).optional(),
+    name_fr: z.string().trim().max(255, V.maxLength).optional(),
+    code: z.string().trim().min(1, V.codeRequired).max(50, V.maxLength).optional()
+  })
+  .superRefine((data, ctx) => {
+    if (data.name_ar !== undefined || data.name_fr !== undefined) {
+      if (!hasBilingualText(data.name_ar, data.name_fr)) {
+        ctx.addIssue({ code: "custom", message: V.bilingualLabelRequired, path: ["name_ar"] });
+        ctx.addIssue({ code: "custom", message: V.bilingualLabelRequired, path: ["name_fr"] });
+      }
+    }
+  });
+
+const modiriyaCreateSchema = refineBilingualNames(
+  z.object({
+    ...bilingualNameShape(255),
+    code: z.string().trim().max(50, V.maxLength).optional()
+  })
+);
+const modiriyaPatchSchema = dairaPatchSchema;
+
 const userCreateSchema = z.object({
   username: z
     .string()
@@ -45,7 +77,9 @@ const userCreateSchema = z.object({
     .max(120, V.maxLength)
     .refine((s) => USERNAME_RE.test(s), V.errorUsernameFormat),
   name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength),
-  role: z.enum(["ADMIN", "OFFICE_USER", "WALI"], { errorMap: () => ({ message: V.userRoleInvalid }) }),
+  role: z.enum(["ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"], {
+    errorMap: () => ({ message: V.userRoleInvalid })
+  }),
   department_id: z.number().int().positive().nullable().optional(),
   job_title: z.string().trim().max(120, V.maxLength).nullable().optional()
 });
@@ -87,12 +121,27 @@ const waliRespondSchema = z
     }
   });
 
+const rapportCommentSchema = z.object({
+  body_text: z.string().trim().min(1, V.required).max(5000, V.maxLength)
+});
+
+/** null = reset to all entities of the rapport type's target kinds */
+const includedEntitiesSchema = z.object({
+  keys: z.union([z.array(z.string().trim().min(1).max(64)).max(500), z.null()]),
+});
+
 module.exports = {
   municipalityCreateSchema,
   municipalityPatchSchema,
+  dairaCreateSchema,
+  dairaPatchSchema,
+  modiriyaCreateSchema,
+  modiriyaPatchSchema,
   userCreateSchema,
   userPatchSchema,
   rapportCreateSchema,
   rapportPatchSchema,
-  waliRespondSchema
+  waliRespondSchema,
+  rapportCommentSchema,
+  includedEntitiesSchema,
 };

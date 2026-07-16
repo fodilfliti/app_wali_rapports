@@ -12,7 +12,7 @@ import { HubCountBadge } from '../components/HubCountBadge'
 
 import { serviceHubIcon } from '../components/HubIcons'
 
-import { useOfficeHubCounts, useWaliHubCounts } from '../hooks/useHubCounts'
+import { useOfficeHubCounts, useWaliHubCounts, useChefHubCounts } from '../hooks/useHubCounts'
 
 import { findServiceNode, folderBackPath, serviceLabel } from '../utils/serviceTree'
 
@@ -21,6 +21,8 @@ import { TablePagination } from '../components/TablePagination'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 
 import { HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
+
+import { PageLoading } from '../components/PageLoading'
 
 import * as api from '../api'
 
@@ -44,11 +46,13 @@ export function AdminHubPage() {
 
         <HubTile to="/municipalities" icon="municipalities" title={t('navMunicipalities')} />
 
+        <HubTile to="/dairas" icon="folder" title={t('navDairas')} />
+
+        <HubTile to="/directions" icon="services" title={t('navModiriyat')} />
+
         <HubTile to="/users" icon="users" title={t('navUsers')} />
 
         <HubTile to="/admin/rapports" icon="rapports" title={t('navRapports')} />
-
-        <HubTile to="/admin/departments" icon="folder" title={t('departmentsSection')} />
 
         <HubTile to="/admin/services" icon="services" title={t('navServices')} />
 
@@ -114,6 +118,13 @@ export function OfficeHubPage({ token }: { token: string }) {
           badge={<HubCountBadge count={counts.unread_shared_files} />}
         />
 
+        <HubTile
+          to="/office/instructions"
+          icon="document"
+          title={t('navWaliInstructions')}
+          badge={<HubCountBadge count={counts.unread_instructions} />}
+        />
+
       </div>
 
     </div>
@@ -155,11 +166,78 @@ export function WaliHubPage({ token }: { token: string }) {
           icon="inbox"
           title={t('navInbox')}
           badge={<HubCountBadge count={counts.inbox_pending} />}
+          subtitle={t('actionInboxHintShort')}
+        />
+
+        <HubTile
+          to="/wali/rapports?view=discussion"
+          icon="notifications"
+          title={t('navDiscussion')}
+          badge={<HubCountBadge count={counts.unread_discussion || 0} />}
+          subtitle={t('discussionInboxHintShort')}
         />
 
         <HubTile to="/wali/calendar" icon="calendar" title={t('navCalendar')} />
 
         <HubTile to="/wali/shared" icon="shared" title={t('navSharedFiles')} />
+
+        <HubTile to="/wali/instructions" icon="document" title={t('navWaliInstructions')} />
+
+      </div>
+
+    </div>
+
+  )
+
+}
+
+
+
+export function ChefHubPage({ token }: { token: string }) {
+
+  const { t } = useTranslation()
+
+  const { counts } = useChefHubCounts(token)
+
+  return (
+
+    <div className="page">
+
+      <div className="pageHeader">
+
+        <h1>{t('hubChef')}</h1>
+
+      </div>
+
+      <div className="hubGrid">
+
+        <HubTile
+          to="/chef/office-users"
+          icon="officeUsers"
+          title={t('navOfficeUsers')}
+          badge={<HubCountBadge count={counts.office_users_pending} />}
+          subtitle={counts.office_users_pending > 0 ? t('waliHubOfficeUsersBadgeHint') : undefined}
+        />
+
+        <HubTile
+          to="/chef/rapports"
+          icon="inbox"
+          title={t('navInbox')}
+          badge={<HubCountBadge count={counts.inbox_pending} />}
+          subtitle={t('actionInboxHintShort')}
+        />
+
+        <HubTile
+          to="/chef/rapports?view=discussion"
+          icon="notifications"
+          title={t('navDiscussion')}
+          badge={<HubCountBadge count={counts.unread_discussion || 0} />}
+          subtitle={t('discussionInboxHintShort')}
+        />
+
+        <HubTile to="/chef/calendar" icon="calendar" title={t('navCalendar')} />
+
+        <HubTile to="/chef/instructions" icon="document" title={t('navWaliInstructions')} />
 
       </div>
 
@@ -211,12 +289,15 @@ export function OfficeServicesPage({ token }: { token: string }) {
 
   const [page, setPage] = useState(1)
 
-
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-
-    api.listOfficeServiceTree(token).then((r) => setServices(r.services)).catch(() => {})
-
+    setLoading(true)
+    api
+      .listOfficeServiceTree(token)
+      .then((r) => setServices(r.services))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [token, location.pathname])
 
   useEffect(() => {
@@ -262,6 +343,8 @@ export function OfficeServicesPage({ token }: { token: string }) {
         <BackButton to={backTo} fallbackTo={backTo} />
 
       </div>
+
+      {loading ? <PageLoading /> : null}
 
       <div className="hubGrid hubGridServices">
 

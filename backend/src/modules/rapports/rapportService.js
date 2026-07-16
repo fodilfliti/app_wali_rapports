@@ -7,6 +7,7 @@ const {
   Rapport,
   RapportVersion,
   WaliResponse,
+  ChefResponse,
   Notification,
   User,
   WaliBroadcast,
@@ -14,6 +15,7 @@ const {
 } = require("../../db");
 const { audit } = require("../../services/audit");
 const { loadSchemaBySlug } = require("./tableGridService");
+const { DEDICATED_NOTIFICATION_KEYS } = require("./notificationKeys");
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -54,6 +56,22 @@ async function listServices() {
   });
 }
 
+async function unreadDiscussionRapportIds(userId) {
+  if (!userId) return [];
+  const rows = await Notification.findAll({
+    where: {
+      user_id: userId,
+      message_key: "rapportComment",
+      read_at: null,
+      rapport_id: { [Op.ne]: null },
+    },
+    attributes: ["rapport_id"],
+    group: ["rapport_id"],
+    raw: true,
+  });
+  return rows.map((r) => Number(r.rapport_id)).filter(Boolean);
+}
+
 async function listRapports(query, opts = {}) {
   const { page, pageSize, offset, limit } = parsePagination(query);
   const where = {};
@@ -66,7 +84,31 @@ async function listRapports(query, opts = {}) {
   if (query.has_version === "1" || query.has_version === "true") {
     where.current_version_id = { [Op.ne]: null };
   }
-  if (opts.inboxOnly) {
+
+  const discussionOnly =
+    query.unread_discussion === "1" || query.unread_discussion === "true";
+  if (discussionOnly) {
+    const ids = await unreadDiscussionRapportIds(
+      opts.enrichForWaliUserId || opts.discussionUserId || null,
+    );
+    if (!ids.length) {
+      return { rapports: [], total: 0, page, pageSize };
+    }
+    where.id = { [Op.in]: ids };
+    where.hidden_at = null;
+    // Discussion can span statuses; Wali still never sees pending_chef
+    if (opts.inboxOnly) {
+      where.status = {
+        [Op.in]: [
+          "submitted",
+          "under_review",
+          "changes_requested",
+          "acknowledged",
+        ],
+      };
+    }
+  } else if (opts.inboxOnly) {
+    // Wali inbox / badges: never include pending_chef (Chef has not accepted yet)
     where.status = {
       [Op.in]: [
         "submitted",
@@ -226,12 +268,36 @@ async function listRapports(query, opts = {}) {
   };
 }
 
+function latestResponseMap(rows) {
+  const latestByRapport = new Map();
+  for (const row of rows) {
+    const rid = Number(row.rapport_id);
+    if (!latestByRapport.has(rid)) {
+      latestByRapport.set(rid, {
+        decision: row.decision,
+        follow_up_status: row.follow_up_status,
+        body_text: row.body_text,
+        created_at: row.created_at,
+      });
+    }
+  }
+  return latestByRapport;
+}
+
+const RESPONSE_LIST_ATTRS = [
+  "rapport_id",
+  "decision",
+  "follow_up_status",
+  "body_text",
+  "created_at",
+];
+
 async function enrichWaliRapportList(rapports, waliUserId) {
   if (!rapports?.length || !waliUserId) return rapports;
   const ids = rapports.map((r) => Number(r.id)).filter(Boolean);
   if (!ids.length) return rapports;
 
-  const [views, responses] = await Promise.all([
+  const [views, responses, chefResponses] = await Promise.all([
     RapportView.findAll({
       where: { rapport_id: ids, user_id: waliUserId },
       attributes: ["rapport_id"],
@@ -239,29 +305,18 @@ async function enrichWaliRapportList(rapports, waliUserId) {
     WaliResponse.findAll({
       where: { rapport_id: ids },
       order: [["created_at", "DESC"]],
-      attributes: [
-        "rapport_id",
-        "decision",
-        "follow_up_status",
-        "body_text",
-        "created_at",
-      ],
+      attributes: RESPONSE_LIST_ATTRS,
+    }),
+    ChefResponse.findAll({
+      where: { rapport_id: ids },
+      order: [["created_at", "DESC"]],
+      attributes: RESPONSE_LIST_ATTRS,
     }),
   ]);
 
   const viewedSet = new Set(views.map((v) => Number(v.rapport_id)));
-  const latestByRapport = new Map();
-  for (const wr of responses) {
-    const rid = Number(wr.rapport_id);
-    if (!latestByRapport.has(rid)) {
-      latestByRapport.set(rid, {
-        decision: wr.decision,
-        follow_up_status: wr.follow_up_status,
-        body_text: wr.body_text,
-        created_at: wr.created_at,
-      });
-    }
-  }
+  const latestByRapport = latestResponseMap(responses);
+  const latestChefByRapport = latestResponseMap(chefResponses);
 
   return rapports.map((r) => {
     const rid = Number(r.id);
@@ -271,6 +326,7 @@ async function enrichWaliRapportList(rapports, waliUserId) {
       wali_viewed,
       is_inbox_new: r.status === "submitted" && !wali_viewed,
       latest_wali_response: latestByRapport.get(rid) || null,
+      latest_chef_response: latestChefByRapport.get(rid) || null,
     };
   });
 }
@@ -280,17 +336,16 @@ async function enrichOfficeRapportList(rapports, userId) {
   const ids = rapports.map((r) => Number(r.id)).filter(Boolean);
   if (!ids.length) return rapports;
 
-  const [responses, unreadNotes] = await Promise.all([
+  const [responses, chefResponses, unreadNotes] = await Promise.all([
     WaliResponse.findAll({
       where: { rapport_id: ids },
       order: [["created_at", "DESC"]],
-      attributes: [
-        "rapport_id",
-        "decision",
-        "follow_up_status",
-        "body_text",
-        "created_at",
-      ],
+      attributes: RESPONSE_LIST_ATTRS,
+    }),
+    ChefResponse.findAll({
+      where: { rapport_id: ids },
+      order: [["created_at", "DESC"]],
+      attributes: RESPONSE_LIST_ATTRS,
     }),
     Notification.findAll({
       where: { user_id: userId, rapport_id: ids, read_at: null },
@@ -298,26 +353,34 @@ async function enrichOfficeRapportList(rapports, userId) {
     }),
   ]);
 
-  const latestByRapport = new Map();
-  for (const wr of responses) {
-    const rid = Number(wr.rapport_id);
-    if (!latestByRapport.has(rid)) {
-      latestByRapport.set(rid, {
-        decision: wr.decision,
-        follow_up_status: wr.follow_up_status,
-        body_text: wr.body_text,
-        created_at: wr.created_at,
-      });
-    }
-  }
-
+  const latestByRapport = latestResponseMap(responses);
+  const latestChefByRapport = latestResponseMap(chefResponses);
   const unreadSet = new Set(unreadNotes.map((n) => Number(n.rapport_id)));
 
   return rapports.map((r) => ({
     ...r,
     latest_wali_response: latestByRapport.get(Number(r.id)) || null,
+    latest_chef_response: latestChefByRapport.get(Number(r.id)) || null,
     has_unread_notification: unreadSet.has(Number(r.id)),
   }));
+}
+
+async function assertVisibleToWali(rapportOrId) {
+  const rapport =
+    typeof rapportOrId === "object" && rapportOrId?.status != null
+      ? rapportOrId
+      : await Rapport.findByPk(rapportOrId, { attributes: ["id", "status"] });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (rapport.status === "pending_chef" || rapport.status === "draft") {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  return rapport;
 }
 
 async function getRapportDetail(id, versionId = null) {
@@ -330,7 +393,20 @@ async function getRapportDetail(id, versionId = null) {
       {
         model: WaliResponse,
         as: "waliResponses",
+        separate: true,
         order: [["created_at", "DESC"]],
+        include: [
+          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+        ],
+      },
+      {
+        model: ChefResponse,
+        as: "chefResponses",
+        separate: true,
+        order: [["created_at", "DESC"]],
+        include: [
+          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+        ],
       },
       { model: User, as: "createdByUser", attributes: ["id", "name"] },
     ],
@@ -380,6 +456,7 @@ async function createRapport(data, actor, req) {
     title: data.title,
     reference_date: data.reference_date || null,
     status: "draft",
+    chef_gate: "required",
     created_by_user_id: actor.id,
     owner_office_user_id:
       rapportType.content_kind === "fiche_lecture"
@@ -605,16 +682,39 @@ async function submitRapport(id, actor, req) {
     { submitted_at: now },
     { where: { id: versionId } },
   );
+
+  const chefGate = rapport.chef_gate || "required";
+  const needsChef = chefGate === "required";
+  const nextStatus = needsChef ? "pending_chef" : "submitted";
+
   await rapport.update({
-    status: "submitted",
+    status: nextStatus,
     current_version_id: versionId,
     updated_at: now,
     owner_office_user_id: actor.id,
   });
+
+  if (!needsChef) {
+    // Notify all chef cabinet users (info only)
+    const chefs = await User.findAll({
+      where: { role: "CHEF_CABINET", is_blocked: false },
+      attributes: ["id"],
+    });
+    await Promise.all(
+      chefs.map((c) =>
+        Notification.create({
+          user_id: c.id,
+          rapport_id: rapport.id,
+          message_key: "rapportResubmittedBypass",
+        }),
+      ),
+    );
+  }
+
   await audit(
     actor.id,
-    "RAPPORT_SUBMIT",
-    { rapport_id: rapport.id, version_id: versionId },
+    needsChef ? "RAPPORT_SUBMIT_PENDING_CHEF" : "RAPPORT_SUBMIT",
+    { rapport_id: rapport.id, version_id: versionId, chef_gate: chefGate },
     { req },
   );
   return getRapportDetail(rapport.id);
@@ -685,9 +785,14 @@ async function waliRespond(id, data, actor, req) {
 
   if (data.decision === "changes_requested") {
     await reopenDraftAfterSubmit(rapport, actor);
+    await rapport.update({
+      status: "changes_requested",
+      chef_gate: "bypass",
+      updated_at: new Date(),
+    });
+  } else {
+    await rapport.update({ status: nextStatus, updated_at: new Date() });
   }
-
-  await rapport.update({ status: nextStatus, updated_at: new Date() });
 
   const notifyUserId =
     rapport.owner_office_user_id || rapport.created_by_user_id;
@@ -708,6 +813,20 @@ async function waliRespond(id, data, actor, req) {
       wali_response_id: response.id,
       message_key: "waliChangesRequested",
     });
+    const chefs = await User.findAll({
+      where: { role: "CHEF_CABINET", is_blocked: false },
+      attributes: ["id"],
+    });
+    await Promise.all(
+      chefs.map((c) =>
+        Notification.create({
+          user_id: c.id,
+          rapport_id: rapport.id,
+          wali_response_id: response.id,
+          message_key: "waliChangesRequested",
+        }),
+      ),
+    );
   } else if (notifyUserId && data.decision === "viewed" && bodyText) {
     await Notification.create({
       user_id: notifyUserId,
@@ -720,6 +839,97 @@ async function waliRespond(id, data, actor, req) {
   await audit(
     actor.id,
     "RAPPORT_WALI_RESPONSE",
+    { rapport_id: rapport.id, decision: data.decision },
+    { req },
+  );
+  return getRapportDetail(rapport.id);
+}
+
+async function chefRespond(id, data, actor, req) {
+  const rapport = await Rapport.findByPk(id, {
+    include: [{ model: RapportType, as: "rapportType" }],
+  });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (rapport.status !== "pending_chef") {
+    const err = new Error("Cannot respond");
+    err.status = 409;
+    throw err;
+  }
+  if (!rapport.current_version_id) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+  const bodyText =
+    data.decision === "viewed" ? "" : data.body_text?.trim() || "";
+  if (data.decision === "changes_requested" && !bodyText) {
+    const err = new Error("waliResponseRequired");
+    err.status = 400;
+    throw err;
+  }
+
+  const response = await ChefResponse.create({
+    rapport_id: rapport.id,
+    rapport_version_id: rapport.current_version_id,
+    decision: data.decision,
+    follow_up_status: "none",
+    body_text: bodyText,
+    scope: data.scope || "whole_rapport",
+    scope_id: data.scope_id || null,
+    created_by_user_id: actor.id,
+  });
+
+  const notifyUserId =
+    rapport.owner_office_user_id || rapport.created_by_user_id;
+
+  if (data.decision === "accepted") {
+    await rapport.update({
+      status: "submitted",
+      chef_gate: "required",
+      updated_at: new Date(),
+    });
+    if (notifyUserId) {
+      await Notification.create({
+        user_id: notifyUserId,
+        rapport_id: rapport.id,
+        chef_response_id: response.id,
+        message_key: "chefAccepted",
+      });
+    }
+  } else if (data.decision === "changes_requested") {
+    await reopenDraftAfterSubmit(rapport, actor);
+    await rapport.update({
+      status: "changes_requested",
+      chef_gate: "required",
+      updated_at: new Date(),
+    });
+    if (notifyUserId) {
+      await Notification.create({
+        user_id: notifyUserId,
+        rapport_id: rapport.id,
+        chef_response_id: response.id,
+        message_key: "chefChangesRequested",
+      });
+    }
+  } else {
+    await rapport.update({ status: "pending_chef", updated_at: new Date() });
+    if (notifyUserId && bodyText) {
+      await Notification.create({
+        user_id: notifyUserId,
+        rapport_id: rapport.id,
+        chef_response_id: response.id,
+        message_key: "chefFeedback",
+      });
+    }
+  }
+
+  await audit(
+    actor.id,
+    "CHEF_RESPOND",
     { rapport_id: rapport.id, decision: data.decision },
     { req },
   );
@@ -770,7 +980,10 @@ async function getRapportVersion(rapportId, versionId) {
 }
 
 async function listNotifications(userId, unreadOnly = false) {
-  const where = { user_id: userId };
+  const where = {
+    user_id: userId,
+    message_key: { [Op.notIn]: DEDICATED_NOTIFICATION_KEYS },
+  };
   if (unreadOnly) where.read_at = null;
   return Notification.findAll({
     where,
@@ -802,6 +1015,12 @@ async function listNotifications(userId, unreadOnly = false) {
         required: false,
       },
       {
+        model: ChefResponse,
+        as: "chefResponse",
+        attributes: ["decision", "follow_up_status", "body_text"],
+        required: false,
+      },
+      {
         model: WaliBroadcast,
         as: "broadcast",
         attributes: ["id", "title_ar", "title_fr"],
@@ -819,6 +1038,34 @@ async function markNotificationRead(id, userId) {
     throw err;
   }
   if (!n.read_at) await n.update({ read_at: new Date() });
+
+  const now = new Date();
+  if (n.instruction_id) {
+    const { WaliInstructionRecipient } = require("../../db");
+    await WaliInstructionRecipient.update(
+      { read_at: now },
+      {
+        where: {
+          instruction_id: n.instruction_id,
+          user_id: userId,
+          read_at: null,
+        },
+      },
+    );
+  }
+  if (n.broadcast_id) {
+    const { WaliBroadcastRecipient } = require("../../db");
+    await WaliBroadcastRecipient.update(
+      { read_at: now },
+      {
+        where: {
+          broadcast_id: n.broadcast_id,
+          user_id: userId,
+          read_at: null,
+        },
+      },
+    );
+  }
   return n;
 }
 
@@ -888,12 +1135,15 @@ async function deleteRapportPermanently(id, actor, req) {
 module.exports = {
   listServices,
   listRapports,
+  unreadDiscussionRapportIds,
   getRapportDetail,
+  assertVisibleToWali,
   createRapport,
   updateRapportDraft,
   submitRapport,
   markUnderReview,
   waliRespond,
+  chefRespond,
   listRapportVersions,
   getRapportVersion,
   listNotifications,
@@ -902,4 +1152,5 @@ module.exports = {
   hideRapport,
   restoreRapport,
   deleteRapportPermanently,
+  enrichOfficeRapportList,
 };

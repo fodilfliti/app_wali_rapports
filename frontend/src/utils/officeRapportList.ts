@@ -16,9 +16,17 @@ export function waliCommentPreview(r: { latest_wali_response?: { body_text?: str
   return text.length > 140 ? `${text.slice(0, 140)}…` : text
 }
 
+export function chefCommentPreview(r: { latest_chef_response?: { body_text?: string | null } | null }) {
+  const raw = r.latest_chef_response?.body_text
+  const text = String(raw || '').trim()
+  if (!text || text === '—') return null
+  return text.length > 140 ? `${text.slice(0, 140)}…` : text
+}
+
 export function rapportStatusLabel(status: string, t: (k: string) => string) {
   const map: Record<string, string> = {
     draft: 'statusDraft',
+    pending_chef: 'statusPendingChef',
     submitted: 'statusSubmitted',
     under_review: 'statusUnderReview',
     changes_requested: 'statusChangesRequested',
@@ -52,4 +60,13 @@ export function waliResponseLabel(
   const wr = r.latest_wali_response
   if (!wr?.decision) return null
   return waliDecisionLabel(wr.decision, t, wr.follow_up_status)
+}
+
+export function chefResponseLabel(
+  r: { latest_chef_response?: { decision?: string; follow_up_status?: string | null } | null },
+  t: (k: string) => string,
+) {
+  const cr = r.latest_chef_response
+  if (!cr?.decision) return null
+  return waliDecisionLabel(cr.decision, t, cr.follow_up_status)
 }

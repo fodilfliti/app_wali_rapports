@@ -4,7 +4,6 @@ import { TableMergeToolbar, TableWorkspace, TableTitleBlock } from '../TableGrid
 import type { EmbeddedTable } from '../../types/embeddedTable'
 import type { TableMeta } from '../../utils/tableLayout'
 import { emptyRowsForColumns } from '../../types/embeddedTable'
-import { countFinishedRows, type TableRowFilterMode } from '../../utils/tableRowMeta'
 import { reorderRowsArray } from '../../utils/tableRowReorder'
 
 type Props = {
@@ -17,7 +16,6 @@ export function SchemaTableEditModal({ table, onSave, onClose }: Props) {
   const { t } = useTranslation()
   const [rows, setRows] = useState(table.rows)
   const [tableMeta, setTableMeta] = useState<TableMeta>(table.table_meta || {})
-  const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>('active')
 
   useEffect(() => {
     setRows(table.rows?.length ? table.rows : emptyRowsForColumns(table.columns))
@@ -40,10 +38,6 @@ export function SchemaTableEditModal({ table, onSave, onClose }: Props) {
     )
   }
 
-  function setAllWaliVisible(visible: boolean) {
-    setRows((prev) => prev.map((r) => ({ ...r, _wali_visible: visible })))
-  }
-
   function addRow() {
     setRows((prev) => [...prev, ...emptyRowsForColumns(table.columns, 1)])
   }
@@ -57,7 +51,6 @@ export function SchemaTableEditModal({ table, onSave, onClose }: Props) {
   }
 
   const mergeKeys = tableMeta.merge_column_keys || []
-  const finishedRowCount = countFinishedRows(rows)
 
   return (
     <div className="modalOverlay schemaTableModalOverlay">
@@ -71,16 +64,16 @@ export function SchemaTableEditModal({ table, onSave, onClose }: Props) {
           layoutJson={table.layout_json}
           tableMeta={tableMeta}
           editable
-          showRowMeta
+          showRowMeta={false}
+          showRowFilters={false}
           onUpdateRow={updateRow}
-          onSetAllWaliVisible={setAllWaliVisible}
           onUpdateCellColor={updateCellColor}
           onDeleteRow={removeRow}
           onReorderRows={reorderRow}
           rowCount={rows.length}
-          finishedCount={finishedRowCount}
-          filterMode={rowFilterMode}
-          onFilterModeChange={setRowFilterMode}
+          finishedCount={0}
+          filterMode="all"
+          onFilterModeChange={() => {}}
           onAddRow={addRow}
         />
         <TableMergeToolbar

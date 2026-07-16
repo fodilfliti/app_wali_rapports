@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
+import { BusyButton } from '../components/BusyButton'
 import {
   BroadcastCommentBlock,
   BroadcastFileCard,
@@ -248,6 +249,7 @@ export function WaliBroadcastDetailPage({ token }: Props) {
   const [comment, setComment] = useState('')
   const [recipientPage, setRecipientPage] = useState(1)
   const [commentPage, setCommentPage] = useState(1)
+  const [postingComment, setPostingComment] = useState(false)
 
   const load = useCallback(async () => {
     if (!bid) return
@@ -273,12 +275,16 @@ export function WaliBroadcastDetailPage({ token }: Props) {
   }
 
   async function sendComment() {
+    if (!comment.trim() || postingComment) return
+    setPostingComment(true)
     try {
       await api.addWaliBroadcastComment(token, bid, comment)
       setComment('')
       load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setPostingComment(false)
     }
   }
 
@@ -348,9 +354,16 @@ export function WaliBroadcastDetailPage({ token }: Props) {
                 <textarea rows={4} value={comment} onChange={(e) => setComment(e.target.value)} />
               </label>
               <div className="broadcastCommentActions">
-                <button type="button" className="btn btn-primary" onClick={sendComment} disabled={!comment.trim()}>
+                <BusyButton
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={sendComment}
+                  busy={postingComment}
+                  busyLabel={t('submitting')}
+                  disabled={!comment.trim()}
+                >
                   {t('addComment')}
-                </button>
+                </BusyButton>
               </div>
             </div>
           </div>
@@ -411,6 +424,7 @@ export function OfficeSharedFileDetailPage({ token }: Props) {
   const [b, setB] = useState<any>(null)
   const [comment, setComment] = useState('')
   const [commentPage, setCommentPage] = useState(1)
+  const [postingComment, setPostingComment] = useState(false)
 
   const load = useCallback(async () => {
     if (!bid) return
@@ -431,12 +445,16 @@ export function OfficeSharedFileDetailPage({ token }: Props) {
   }, [load])
 
   async function sendComment() {
+    if (!comment.trim() || postingComment) return
+    setPostingComment(true)
     try {
       await api.addOfficeBroadcastComment(token, bid, comment)
       setComment('')
       load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setPostingComment(false)
     }
   }
 
@@ -484,9 +502,16 @@ export function OfficeSharedFileDetailPage({ token }: Props) {
                 <textarea rows={4} value={comment} onChange={(e) => setComment(e.target.value)} />
               </label>
               <div className="broadcastCommentActions">
-                <button type="button" className="btn btn-primary" onClick={sendComment} disabled={!comment.trim()}>
+                <BusyButton
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={sendComment}
+                  busy={postingComment}
+                  busyLabel={t('submitting')}
+                  disabled={!comment.trim()}
+                >
                   {t('addComment')}
-                </button>
+                </BusyButton>
               </div>
             </div>
           </div>

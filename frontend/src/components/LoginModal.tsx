@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
+import { BusyButton } from './BusyButton'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 
 type Props = {
@@ -52,10 +53,10 @@ export function LoginModal({ open, onClose, onSuccess }: Props) {
             />
           </label>
           <div className="modalActions">
-            <button type="submit" className="btn btn-primary" disabled={loading}>
+            <BusyButton type="submit" className="btn btn-primary" busy={loading} busyLabel={t('loading')}>
               {t('signIn')}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+            </BusyButton>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={loading}>
               {t('cancel')}
             </button>
           </div>

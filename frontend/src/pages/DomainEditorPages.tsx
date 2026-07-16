@@ -10,9 +10,14 @@ import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { ApiError } from "../api";
 import { DocumentTemplatePickModal } from "../components/DocumentTemplatePickModal";
+import { ENABLE_DOCUMENT_TEMPLATES } from "../config/features";
 import { BackButton } from "../components/BackButton";
 import { WaliRespondModal } from "../components/WaliRespondModal";
 import { WaliResponsesSection } from "../components/WaliResponsesSection";
+import {
+  RapportDiscussionSection,
+  isDiscussionEnabledByStatus,
+} from "../components/RapportDiscussionSection";
 import {
   TableGridView,
   TableMergeToolbar,
@@ -25,6 +30,8 @@ import {
   type TableRowFilterMode,
 } from "../utils/tableRowMeta";
 import { useSnackbar } from "../snackbar/SnackbarContext";
+import { BusyButton } from "../components/BusyButton";
+import { PageLoading } from "../components/PageLoading";
 import type { Column, LayoutJson, TableMeta } from "../utils/tableLayout";
 import {
   CalendarEventsEditor,
@@ -100,6 +107,7 @@ export function OfficeTableGridPage({ token }: Props) {
   const [title, setTitle] = useState("");
   const [tableMeta, setTableMeta] = useState<TableMeta>({});
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rowFilterMode, setRowFilterMode] =
@@ -193,6 +201,7 @@ export function OfficeTableGridPage({ token }: Props) {
 
   async function submit() {
     if (!workspace?.rapport?.id) return;
+    setSubmitting(true);
     try {
       await saveForPreview();
       await api.submitRapport(token, workspace.rapport.id);
@@ -205,6 +214,8 @@ export function OfficeTableGridPage({ token }: Props) {
           ? "rapportTitleRequired"
           : "errorGeneric";
       snack.show(t(msg), "error");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -308,17 +319,26 @@ export function OfficeTableGridPage({ token }: Props) {
         />
         {isEditable ? (
           <>
-            <button
+            <BusyButton
               type="button"
               className="btn btn-primary"
               onClick={save}
-              disabled={saving}
+              busy={saving}
+              busyLabel={t("saving")}
+              disabled={submitting}
             >
               {t("save")}
-            </button>
-            <button type="button" className="btn btn-accent" onClick={submit}>
+            </BusyButton>
+            <BusyButton
+              type="button"
+              className="btn btn-accent"
+              onClick={submit}
+              busy={submitting}
+              busyLabel={t("submitting")}
+              disabled={saving}
+            >
               {t("submitRapport")}
-            </button>
+            </BusyButton>
           </>
         ) : null}
         {workspace?.rapport?.id ? (
@@ -350,7 +370,7 @@ export function OfficeTableGridPage({ token }: Props) {
         <BackButton fallbackTo={editorBackPath} />
       </div>
 
-      {loading ? <p className="muted communeStatus">{t("loading")}</p> : null}
+      {loading ? <PageLoading className="communeStatus" /> : null}
       {loadError ? (
         <div className="communeError card">
           <p>
@@ -447,8 +467,17 @@ export function OfficeTableGridPage({ token }: Props) {
           />
 
           <WaliResponsesSection
+            chefResponses={workspace?.rapport?.chefResponses || []}
             responses={workspace?.rapport?.waliResponses || []}
           />
+          {workspace?.rapport?.id ? (
+            <RapportDiscussionSection
+              token={token}
+              rapportId={Number(workspace.rapport.id)}
+              mode="office"
+              enabled={isDiscussionEnabledByStatus(workspace.rapport.status)}
+            />
+          ) : null}
         </>
       ) : null}
     </div>
@@ -758,14 +787,18 @@ export function OfficeDocumentsPage({
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => setCreatePickOpen(true)}
+            onClick={() =>
+              ENABLE_DOCUMENT_TEMPLATES
+                ? setCreatePickOpen(true)
+                : createDoc(activeType.id, null, true)
+            }
           >
             {t("createRapport")}
           </button>
         </div>
       ) : null}
 
-      {createPickOpen && activeType ? (
+      {ENABLE_DOCUMENT_TEMPLATES && createPickOpen && activeType ? (
         <DocumentTemplatePickModal
           token={token}
           serviceId={sid}
@@ -780,7 +813,7 @@ export function OfficeDocumentsPage({
         />
       ) : null}
 
-      {importFor ? (
+      {ENABLE_DOCUMENT_TEMPLATES && importFor ? (
         <DocumentTemplatePickModal
           token={token}
           serviceId={sid}
@@ -837,7 +870,8 @@ export function OfficeDocumentsPage({
                     >
                       {canEdit ? t("edit") : t("details")}
                     </Link>
-                    {canEdit &&
+                    {ENABLE_DOCUMENT_TEMPLATES &&
+                    canEdit &&
                     ["draft", "changes_requested"].includes(r.status) ? (
                       <>
                         {" "}
@@ -909,6 +943,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const [waliResponses, setWaliResponses] = useState<any[]>([]);
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
   const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
 
@@ -975,6 +1011,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   }
 
   async function save() {
+    setSaving(true);
     try {
       await saveForPreview();
       snack.show(t("save"), "success");
@@ -984,10 +1021,13 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           ? "rapportTitleRequired"
           : "errorGeneric";
       snack.show(t(msg), "error");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function submit() {
+    setSubmitting(true);
     try {
       await saveForPreview();
       await api.submitRapport(token, rid);
@@ -1000,6 +1040,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           ? "rapportTitleRequired"
           : "errorGeneric";
       snack.show(t(msg), "error");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -1068,19 +1110,36 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         />
         {editable ? (
           <>
-            <button
+            {ENABLE_DOCUMENT_TEMPLATES ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setImportPickOpen(true)}
+                disabled={saving || submitting}
+              >
+                {t("documentTemplateImport")}
+              </button>
+            ) : null}
+            <BusyButton
               type="button"
-              className="btn btn-secondary"
-              onClick={() => setImportPickOpen(true)}
+              className="btn btn-primary"
+              onClick={save}
+              busy={saving}
+              busyLabel={t("saving")}
+              disabled={submitting}
             >
-              {t("documentTemplateImport")}
-            </button>
-            <button type="button" className="btn btn-primary" onClick={save}>
               {t("save")}
-            </button>
-            <button type="button" className="btn btn-accent" onClick={submit}>
+            </BusyButton>
+            <BusyButton
+              type="button"
+              className="btn btn-accent"
+              onClick={submit}
+              busy={submitting}
+              busyLabel={t("submitting")}
+              disabled={saving}
+            >
               {t("submitRapport")}
-            </button>
+            </BusyButton>
           </>
         ) : null}
         <RapportExportButtons
@@ -1141,7 +1200,10 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         <MediaRowsView rows={mediaRows} files={mediaFiles} token={token} />
       )}
 
-      {importPickOpen && rapport?.service_id && rapport?.rapport_type_id ? (
+      {ENABLE_DOCUMENT_TEMPLATES &&
+      importPickOpen &&
+      rapport?.service_id &&
+      rapport?.rapport_type_id ? (
         <DocumentTemplatePickModal
           token={token}
           serviceId={Number(rapport.service_id)}
@@ -1162,7 +1224,18 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         onChange={setCalendarEvents}
       />
 
-      <WaliResponsesSection responses={waliResponses} />
+      <WaliResponsesSection
+        chefResponses={rapport?.chefResponses || []}
+        responses={waliResponses}
+      />
+      {rid ? (
+        <RapportDiscussionSection
+          token={token}
+          rapportId={rid}
+          mode="office"
+          enabled={isDiscussionEnabledByStatus(rapport?.status)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1170,7 +1243,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
 export function WaliRapportViewPage({
   token,
   audience = "wali",
-}: Props & { audience?: "wali" | "admin" }) {
+}: Props & { audience?: "wali" | "admin" | "chef" }) {
   const { rapportId } = useParams();
   const rid = Number(rapportId);
   const { t, i18n } = useTranslation();
@@ -1183,22 +1256,26 @@ export function WaliRapportViewPage({
   const [waliCommuneViewMode, setWaliCommuneViewMode] = useState<"commune" | "all">("commune");
   const location = useLocation();
   const isWali = audience === "wali";
-  const listBack = isWali ? "/wali/rapports" : "/admin/rapports";
+  const isChef = audience === "chef";
+  const isReviewer = isWali || isChef;
+  const listBack = isChef ? "/chef/rapports" : isWali ? "/wali/rapports" : "/admin/rapports";
   const viewBackTarget = readBackTarget(location, listBack);
 
   const load = useCallback(async () => {
     if (!rid) return;
     try {
       setView(
-        isWali
-          ? await api.getWaliRapportView(token, rid, showHidden)
-          : await api.getAdminRapportView(token, rid, showHidden),
+        isChef
+          ? await api.getChefRapportView(token, rid, showHidden)
+          : isWali
+            ? await api.getWaliRapportView(token, rid, showHidden)
+            : await api.getAdminRapportView(token, rid, showHidden),
       );
-      if (isWali) notifyHubCountsRefresh();
+      if (isReviewer) notifyHubCountsRefresh();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
-  }, [token, rid, showHidden, snack, t, isWali]);
+  }, [token, rid, showHidden, snack, t, isWali, isChef, isReviewer]);
 
   useEffect(() => {
     load();
@@ -1210,7 +1287,8 @@ export function WaliRapportViewPage({
     body_text?: string;
   }) {
     try {
-      await api.waliRespond(token, rid, payload);
+      if (isChef) await api.chefRespond(token, rid, payload);
+      else await api.waliRespond(token, rid, payload);
       notifyHubCountsRefresh();
       load();
     } catch {
@@ -1246,6 +1324,7 @@ export function WaliRapportViewPage({
     DEFAULT_PAGE_SIZE,
   );
   const waliResponses = view?.waliResponses || [];
+  const chefResponses = view?.chefResponses || view?.rapport?.chefResponses || [];
   const documentDataJson = view?.rapport?.currentVersion?.data_json || {};
   const documentViewData = {
     rich_html_ar: documentDataJson.rich_html_ar,
@@ -1294,7 +1373,10 @@ export function WaliRapportViewPage({
               <ArchiveVersionsLink rapportId={rid} />
             )
           ) : null}
-          {isWali ? (
+          {isReviewer &&
+          (isChef
+            ? view?.rapport?.status === "pending_chef"
+            : ["submitted", "under_review"].includes(view?.rapport?.status)) ? (
             <button
               type="button"
               className="btn btn-primary"
@@ -1316,9 +1398,10 @@ export function WaliRapportViewPage({
             token={token}
             rapportId={rid}
             wali={isWali}
+            chef={isChef}
             showHidden={showHidden}
           />
-          <BackButton to={viewBackTarget} fallbackTo={viewBackTarget} />
+          <BackButton fallbackTo={viewBackTarget} />
         </div>
       </div>
 
@@ -1466,13 +1549,25 @@ export function WaliRapportViewPage({
 
       <CalendarEventsView events={view?.calendarEvents || []} />
 
-      {isWali ? <WaliResponsesSection responses={waliResponses} /> : null}
+      {isReviewer ? (
+        <WaliResponsesSection chefResponses={chefResponses} responses={waliResponses} />
+      ) : null}
 
-      {isWali ? (
+      {isReviewer && rid ? (
+        <RapportDiscussionSection
+          token={token}
+          rapportId={rid}
+          mode={isChef ? "chef" : "wali"}
+          enabled={isDiscussionEnabledByStatus(view?.rapport?.status)}
+        />
+      ) : null}
+
+      {isReviewer ? (
         <WaliRespondModal
           open={respondOpen}
           onClose={() => setRespondOpen(false)}
           onSubmit={sendResponse}
+          mode={isChef ? "chef" : "wali"}
         />
       ) : null}
     </div>

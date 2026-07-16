@@ -5,7 +5,7 @@ import { waliResponseBodyText } from './WaliRespondModal'
 import { waliDecisionLabel } from '../utils/waliDecision'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 
-export type WaliResponseRow = {
+export type ReviewResponseRow = {
   id: number
   decision: string
   follow_up_status?: string | null
@@ -14,11 +14,20 @@ export type WaliResponseRow = {
 }
 
 type Props = {
-  responses: WaliResponseRow[]
+  chefResponses?: ReviewResponseRow[]
+  responses: ReviewResponseRow[]
   className?: string
 }
 
-export function WaliResponsesSection({ responses, className }: Props) {
+function ResponseNotesList({
+  responses,
+  heading,
+  className,
+}: {
+  responses: ReviewResponseRow[]
+  heading: string
+  className?: string
+}) {
   const { t, i18n } = useTranslation()
   const [page, setPage] = useState(1)
   const list = responses || []
@@ -33,7 +42,7 @@ export function WaliResponsesSection({ responses, className }: Props) {
 
   return (
     <div className={`section waliResponsesSection${className ? ` ${className}` : ''}`}>
-      <h2>{t('waliResponseText')}</h2>
+      <h2>{heading}</h2>
       <div className="waliNotesList">
         {paged.map((w) => (
           <div key={w.id} className={`waliNote waliNote-${w.decision}`}>
@@ -57,3 +66,28 @@ export function WaliResponsesSection({ responses, className }: Props) {
     </div>
   )
 }
+
+export function WaliResponsesSection({ chefResponses, responses, className }: Props) {
+  const { t } = useTranslation()
+  const chefList = chefResponses || []
+  const waliList = responses || []
+
+  if (!chefList.length && !waliList.length) return null
+
+  return (
+    <>
+      <ResponseNotesList
+        responses={chefList}
+        heading={t('chefResponseText')}
+        className={className}
+      />
+      <ResponseNotesList
+        responses={waliList}
+        heading={t('waliResponseText')}
+        className={className}
+      />
+    </>
+  )
+}
+
+export type WaliResponseRow = ReviewResponseRow

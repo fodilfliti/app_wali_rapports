@@ -16,11 +16,12 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 
 | Internal enum | UI label | Scope |
 | ------------- | -------- | ----- |
-| `ADMIN` | compte admin | Users, communes, services, rapport types, access profiles |
+| `ADMIN` | compte admin | Users, communes, dairas, modiriyat, services, rapport types, access profiles |
 | `OFFICE_USER` | compte bureau | Create/edit/submit rapports in assigned domains |
-| `WALI` | compte wali | Read submitted rapports, respond, request changes |
+| `CHEF_CABINET` | رئيس الديوان | First-line validation before Wali; same review tools as Wali (no instruction/broadcast create) |
+| `WALI` | compte wali | Read validated rapports, respond, request changes, create instructions |
 
-- **Communes (`municipalities`)**: reference rows (`code`, `name_ar`, `name_fr`) used inside rapport grids — **not login accounts**.
+- **Reference geography/org:** `dairas`, `municipalities` (FK `daira_id`), `modiriyat` (flat) — **not login accounts**.
 - **User**: `username`, `name`, `role`, optional `department_id`, access role template.
 
 ### Authentication & Access Control
@@ -30,6 +31,7 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 - **Route prefixes** by role:
   - `/admin/*` → `ADMIN`
   - `/office/*` → `OFFICE_USER` or `ADMIN`
+  - `/chef/*` → `CHEF_CABINET` or `ADMIN`
   - `/wali/*` → `WALI` or `ADMIN`
 - **Granular permissions** via access role templates — `spec/modules/ACCESS_PROFILES.md`.
 - UI must not expose internal role enum names.
@@ -207,7 +209,12 @@ Shared: `backend/src/services/waliResponseExport.js`.
 - **Theme**: `frontend/src/theme/tokens.css` — primary teal `#0d4f4f`, accent gold `#c9a227`, rounded cards.
 - **Hub layout**: role-specific launcher tiles after login.
 - **BackButton** always last in action rows (`frontend/src/components/BackButton.tsx`).
-- **Async actions**: loading/disabled state; snackbar on failure — no silent `.catch`.
+  - Default: **history pop** (`navigate(-1)`) when in-app history exists; otherwise **`fallbackTo`** with `replace`.
+  - Explicit `to` (structural parent / archive escape) uses **`replace: true` by default** — never push the parent under the current page (avoids list ↔ view bounce loops).
+  - Pass `location.state.backTo` via `backNavigationState` for entry context; consume it as **fallback**, not as a push target.
+  - Do not send Back to obsolete intermediate routes (e.g. `/kinds/:contentKind`); prefer service hub / list parents.
+- **Async actions**: show loading and disable primary controls while pending (`BusyButton`, `PageLoading`, confirm-modal `loading`); snackbar on failure — no silent `.catch`. List/page fetch must show `PageLoading` before an empty “no results” state.
+- **Media upload** (rich text / media blocks): show `mediaUploading` and disable insert controls until the file is inserted.
 
 ### App Shell & Navigation
 

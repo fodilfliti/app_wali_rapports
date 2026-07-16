@@ -4,6 +4,7 @@ import { BackButton } from './BackButton'
 import { HubCountBadge } from './HubCountBadge'
 import { HubTileWithMenu } from './HubTileWithMenu'
 import { RapportListScopeFilter } from './RapportListScopeFilter'
+import { ENABLE_DOCUMENT_TEMPLATES } from '../config/features'
 import {
   CONTENT_KINDS_ORDER,
   localizedRapportTypeName,
@@ -61,9 +62,31 @@ export function ServiceContentKindsHub({
         <h1>{serviceLabel || t('navServices')}</h1>
         {mode === 'office' && accessLevel === 'view' ? <span className="badge">{t('accessView')}</span> : null}
         {mode === 'office' && showConfig ? (
-          <Link className="btn btn-secondary" to={`/office/services/${service.id}/config`}>
-            {t('serviceConfig')}
-          </Link>
+          <>
+            <Link
+              className="btn btn-primary"
+              to={`/office/services/${service.id}/config?new=schema`}
+            >
+              {t('createSchema')}
+            </Link>
+            <Link
+              className="btn btn-primary"
+              to={`/office/services/${service.id}/config?new=type`}
+            >
+              {t('createRapportType')}
+            </Link>
+            {ENABLE_DOCUMENT_TEMPLATES ? (
+              <Link
+                className="btn btn-primary"
+                to={`/office/services/${service.id}/config?new=template`}
+              >
+                {t('createDocumentTemplate')}
+              </Link>
+            ) : null}
+            <Link className="btn btn-secondary" to={`/office/services/${service.id}/config`}>
+              {t('serviceConfig')}
+            </Link>
+          </>
         ) : null}
         <BackButton to={backTo} fallbackTo={backTo} replace />
       </div>

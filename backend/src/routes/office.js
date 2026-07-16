@@ -600,6 +600,30 @@ officeRouter.patch("/rapports/:id/commune-data", async (req, res, next) => {
   }
 });
 
+officeRouter.patch(
+  "/rapports/:id/included-entities",
+  validateBody(
+    require("../validation/schemas/adminCrud").includedEntitiesSchema,
+  ),
+  async (req, res, next) => {
+    try {
+      const rapport = await workspaceService.saveIncludedEntities(
+        req.params.id,
+        req.validatedBody.keys,
+        req.user,
+        req,
+      );
+      res.json({ rapport });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      next(e);
+    }
+  },
+);
+
 officeRouter.get("/services", async (req, res, next) => {
   try {
     const services = await rapportService.listServices();
@@ -641,11 +665,46 @@ officeRouter.get("/rapports/:id", async (req, res, next) => {
     const accessLevel = await resolveAccessLevel(req.user, rapport.service_id);
     if (accessLevel === "none")
       return res.status(403).json({ error: "Forbidden" });
+    const commentService = require("../modules/rapports/commentService");
+    await commentService.markCommentNotificationsRead(req.params.id, req.user.id);
     res.json({ rapport, accessLevel });
   } catch (e) {
     next(e);
   }
 });
+
+officeRouter.get("/rapports/:id/comments", async (req, res, next) => {
+  try {
+    const commentService = require("../modules/rapports/commentService");
+    res.json(await commentService.listComments(req.params.id, req.user, req.query));
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
+officeRouter.post(
+  "/rapports/:id/comments",
+  validateBody(require("../validation/schemas/adminCrud").rapportCommentSchema),
+  async (req, res, next) => {
+    try {
+      const commentService = require("../modules/rapports/commentService");
+      const comment = await commentService.createComment(
+        req.params.id,
+        req.validatedBody.body_text,
+        req.user,
+        req,
+      );
+      res.status(201).json({ comment });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
 
 officeRouter.post(
   "/rapports/:id/mark-notifications-read",
@@ -946,6 +1005,28 @@ officeRouter.post("/broadcasts/:id/comments", async (req, res, next) => {
     res.json({ broadcast });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: e.message });
+    next(e);
+  }
+});
+
+const instructionService = require("../modules/rapports/instructionService");
+
+officeRouter.get("/instructions", async (req, res, next) => {
+  try {
+    res.json(await instructionService.listForOffice(req.user.id, req.query));
+  } catch (e) {
+    next(e);
+  }
+});
+
+officeRouter.get("/instructions/:id", async (req, res, next) => {
+  try {
+    res.json({
+      instruction: await instructionService.getInstruction(req.params.id, {
+        userId: req.user.id,
+      }),
+    });
+  } catch (e) {
     next(e);
   }
 });

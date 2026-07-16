@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { ApiError } from "../api";
 import { BackButton } from "../components/BackButton";
+import { BusyButton } from "../components/BusyButton";
 import { TableSchemaEditorModal } from "../components/TableSchemaEditorModal";
 import { DocumentTemplatesSection } from "../components/DocumentTemplatesSection";
+import { ENABLE_DOCUMENT_TEMPLATES } from "../config/features";
 import { ExpandableHelp } from "../components/ExpandableHelp";
 import { TablePagination } from "../components/TablePagination";
 import {
@@ -27,9 +29,13 @@ import {
 import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
 import { hasBilingualText } from "../utils/bilingual";
 import { useSnackbar } from "../snackbar/SnackbarContext";
+import { EntityTargetKindsField } from "../components/EntityTargetKindsField";
+import { defaultEntityTargetKinds } from "../utils/entityTargets";
 import { needsLinkedTableSchema } from "../utils/rapportTypeSchema";
 
 type Props = { token: string };
+
+type ConfigPanel = "schemas" | "rapportTypes" | "templates";
 
 const CONTENT_KINDS = ["table_grid", "document_compose", "commune_list"];
 
@@ -40,15 +46,18 @@ function linkedSchemaSlug(rt: any) {
 export function OfficeServiceConfigPage({ token }: Props) {
   const { serviceId } = useParams();
   const sid = Number(serviceId);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const [schemas, setSchemas] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [rapportTypes, setRapportTypes] = useState<any[]>([]);
   const [service, setService] = useState<any>(null);
+  const [activePanel, setActivePanel] = useState<ConfigPanel>("schemas");
   const [schemaModal, setSchemaModal] = useState(false);
   const [editingSchemaId, setEditingSchemaId] = useState<number | null>(null);
   const [typeModal, setTypeModal] = useState(false);
+  const [autoOpenTemplate, setAutoOpenTemplate] = useState(false);
   const [editTypeModal, setEditTypeModal] = useState(false);
   const [editingType, setEditingType] = useState<any>(null);
   const [editTypeSchemaSlug, setEditTypeSchemaSlug] = useState("");
@@ -69,11 +78,13 @@ export function OfficeServiceConfigPage({ token }: Props) {
     content_kind: "table_grid",
     versioning_mode: "versioned",
     commune_content_kind: "complex",
+    entity_target_kinds: defaultEntityTargetKinds(),
     table_schema_slug: "",
   });
   const [dupForm, setDupForm] = useState({ source_schema_id: "" });
   const [schemaPage, setSchemaPage] = useState(1);
   const [typePage, setTypePage] = useState(1);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!sid) return;
@@ -122,6 +133,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       draftColumns,
       draftHeaderGroups,
     );
+    setSaving(true);
     try {
       if (editingSchemaId) {
         await api.patchOfficeSchema(token, editingSchemaId, body);
@@ -133,6 +145,8 @@ export function OfficeServiceConfigPage({ token }: Props) {
       snack.show(t("save"), "success");
     } catch {
       snack.show(t("errorGeneric"), "error");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -144,6 +158,28 @@ export function OfficeServiceConfigPage({ token }: Props) {
     setDraftHeaderGroups(empty.draftHeaderGroups);
     setSchemaModal(true);
   }
+
+  useEffect(() => {
+    const createNew = searchParams.get("new");
+    if (!createNew || !sid || !service) return;
+    if (createNew === "schema") {
+      setActivePanel("schemas");
+      openSchemaModal();
+    } else if (createNew === "type") {
+      setActivePanel("rapportTypes");
+      setTypeModal(true);
+    } else if (createNew === "template") {
+      if (ENABLE_DOCUMENT_TEMPLATES) {
+        setActivePanel("templates");
+        setAutoOpenTemplate(true);
+      }
+    } else {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, sid, service, setSearchParams]);
 
   function openEditSchemaModal(schema: any) {
     const loaded = loadSchemaEditorState(schema);
@@ -159,6 +195,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       snack.show(t("bilingualLabelRequired"), "error");
       return;
     }
+    setSaving(true);
     try {
       await api.createOfficeServiceRapportType(token, sid, {
         name_ar: typeForm.name_ar.trim() || typeForm.name_fr.trim(),
@@ -168,6 +205,10 @@ export function OfficeServiceConfigPage({ token }: Props) {
         commune_content_kind:
           typeForm.content_kind === "commune_list"
             ? typeForm.commune_content_kind
+            : undefined,
+        entity_target_kinds:
+          typeForm.content_kind === "commune_list"
+            ? typeForm.entity_target_kinds
             : undefined,
         table_schema_slug: needsLinkedTableSchema(
           typeForm.content_kind,
@@ -182,6 +223,8 @@ export function OfficeServiceConfigPage({ token }: Props) {
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
       snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -197,6 +240,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       snack.show(t("tableSchemaSlugRequired"), "error");
       return;
     }
+    setSaving(true);
     try {
       await api.patchOfficeRapportType(token, editingType.id, {
         table_schema_slug: editTypeSchemaSlug,
@@ -208,6 +252,8 @@ export function OfficeServiceConfigPage({ token }: Props) {
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
       snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -244,135 +290,205 @@ export function OfficeServiceConfigPage({ token }: Props) {
         <BackButton fallbackTo={`/office/services/${sid}`} />
       </div>
       <p className="muted">{t("officeConfigHelp")}</p>
+      <ol className="schemasPageSteps muted small">
+        <li>{t("serviceConfigStep1")}</li>
+        <li>{t("serviceConfigStep2")}</li>
+        <li>{t("serviceConfigStep3")}</li>
+      </ol>
 
-      <div className="section">
-        <div className="pageHeader row">
-          <h2>{t("tableSchemas")}</h2>
+      <div className="schemasPanelTabs" role="tablist" aria-label={t("serviceConfig")}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activePanel === "schemas"}
+          className={`schemasPanelTab${activePanel === "schemas" ? " active" : ""}`}
+          onClick={() => setActivePanel("schemas")}
+        >
+          {t("schemasTabSchemas")}
+          {schemas.length ? (
+            <span className="serviceConfigTabCount"> {schemas.length}</span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activePanel === "rapportTypes"}
+          className={`schemasPanelTab${activePanel === "rapportTypes" ? " active" : ""}`}
+          onClick={() => setActivePanel("rapportTypes")}
+        >
+          {t("schemasTabRapportTypes")}
+          {rapportTypes.length ? (
+            <span className="serviceConfigTabCount"> {rapportTypes.length}</span>
+          ) : null}
+        </button>
+        {ENABLE_DOCUMENT_TEMPLATES ? (
           <button
             type="button"
-            className="btn btn-primary"
-            onClick={openSchemaModal}
+            role="tab"
+            aria-selected={activePanel === "templates"}
+            className={`schemasPanelTab${activePanel === "templates" ? " active" : ""}`}
+            onClick={() => setActivePanel("templates")}
           >
-            {t("createSchema")}
+            {t("documentTemplates")}
           </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => setDuplicateModal(true)}
-          >
-            {t("duplicateTemplate")}
-          </button>
-        </div>
-        <p className="muted small">{t("schemaClickToEdit")}</p>
-        <div className="card tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>{t("rapportTitle")}</th>
-                <th>{t("columnsCount")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedSchemas.map((s) => (
-                <tr
-                  key={s.id}
-                  className="clickableRow"
-                  onClick={() => openEditSchemaModal(s)}
-                >
-                  <td>{localizedName(s, i18n.language)}</td>
-                  <td>{(s.columns_json || []).length}</td>
-                </tr>
-              ))}
-              {!schemas.length ? (
-                <tr>
-                  <td colSpan={2} className="muted">
-                    {t("noResults")}
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-        <TablePagination
-          page={schemaPage}
-          total={schemas.length}
-          onPageChange={setSchemaPage}
-          compact
-        />
+        ) : null}
       </div>
 
-      <div className="section">
-        <div className="pageHeader row">
-          <h2>{t("rapportTypes")}</h2>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setTypeModal(true)}
-          >
-            {t("createRapportType")}
-          </button>
-        </div>
-        <div className="card tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>{t("rapportTitle")}</th>
-                <th>{t("status")}</th>
-                <th>{t("linkedSchema")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {pagedRapportTypes.map((rt) => {
-                const slug = linkedSchemaSlug(rt);
-                const missingSchema =
-                  needsLinkedTableSchema(rt.content_kind, rt.commune_content_kind) && !slug;
-                return (
-                  <tr key={rt.id}>
-                    <td>{localizedName(rt, i18n.language)}</td>
-                    <td>{t(`contentKind_${rt.content_kind}`)}</td>
-                    <td className={missingSchema ? "muted" : undefined}>
-                      {needsLinkedTableSchema(rt.content_kind, rt.commune_content_kind)
-                        ? slug
-                          ? allSchemas.find((s) => s.slug === slug)
-                            ? localizedName(
-                                allSchemas.find((s) => s.slug === slug),
-                                i18n.language,
-                              )
-                            : slug
-                          : t("tableSchemaNotConfigured")
-                        : "—"}
-                    </td>
-                    <td>
-                      {needsLinkedTableSchema(rt.content_kind, rt.commune_content_kind) ? (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => openEditTypeModal(rt)}
-                        >
-                          {t("edit")}
-                        </button>
-                      ) : null}
+      {activePanel === "schemas" ? (
+        <div className="section schemasPanelSection">
+          <div className="pageHeader row">
+            <h2>{t("tableSchemas")}</h2>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={openSchemaModal}
+            >
+              {t("createSchema")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setDuplicateModal(true)}
+            >
+              {t("duplicateTemplate")}
+            </button>
+          </div>
+          <p className="muted small">{t("schemaClickToEdit")}</p>
+          <div className="card tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("rapportTitle")}</th>
+                  <th>{t("columnsCount")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedSchemas.map((s) => (
+                  <tr
+                    key={s.id}
+                    className="clickableRow"
+                    onClick={() => openEditSchemaModal(s)}
+                  >
+                    <td>{localizedName(s, i18n.language)}</td>
+                    <td>{(s.columns_json || []).length}</td>
+                  </tr>
+                ))}
+                {!schemas.length ? (
+                  <tr>
+                    <td colSpan={2} className="muted">
+                      {t("noResults")}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination
+            page={schemaPage}
+            total={schemas.length}
+            onPageChange={setSchemaPage}
+            compact
+          />
         </div>
-        <TablePagination
-          page={typePage}
-          total={rapportTypes.length}
-          onPageChange={setTypePage}
-          compact
-        />
-      </div>
+      ) : null}
 
-      <DocumentTemplatesSection
-        token={token}
-        serviceId={sid}
-        rapportTypes={rapportTypes}
-      />
+      {activePanel === "rapportTypes" ? (
+        <div className="section schemasPanelSection">
+          <div className="pageHeader row">
+            <h2>{t("rapportTypes")}</h2>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setTypeModal(true)}
+            >
+              {t("createRapportType")}
+            </button>
+          </div>
+          <p className="muted small">{t("serviceConfigTypesHelp")}</p>
+          <div className="card tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("rapportTitle")}</th>
+                  <th>{t("status")}</th>
+                  <th>{t("linkedSchema")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {pagedRapportTypes.map((rt) => {
+                  const slug = linkedSchemaSlug(rt);
+                  const missingSchema =
+                    needsLinkedTableSchema(
+                      rt.content_kind,
+                      rt.commune_content_kind,
+                    ) && !slug;
+                  return (
+                    <tr key={rt.id}>
+                      <td>{localizedName(rt, i18n.language)}</td>
+                      <td>{t(`contentKind_${rt.content_kind}`)}</td>
+                      <td className={missingSchema ? "muted" : undefined}>
+                        {needsLinkedTableSchema(
+                          rt.content_kind,
+                          rt.commune_content_kind,
+                        )
+                          ? slug
+                            ? allSchemas.find((s) => s.slug === slug)
+                              ? localizedName(
+                                  allSchemas.find((s) => s.slug === slug),
+                                  i18n.language,
+                                )
+                              : slug
+                            : t("tableSchemaNotConfigured")
+                          : "—"}
+                      </td>
+                      <td>
+                        {needsLinkedTableSchema(
+                          rt.content_kind,
+                          rt.commune_content_kind,
+                        ) ? (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => openEditTypeModal(rt)}
+                          >
+                            {t("edit")}
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!rapportTypes.length ? (
+                  <tr>
+                    <td colSpan={4} className="muted">
+                      {t("noResults")}
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination
+            page={typePage}
+            total={rapportTypes.length}
+            onPageChange={setTypePage}
+            compact
+          />
+        </div>
+      ) : null}
+
+      {ENABLE_DOCUMENT_TEMPLATES && activePanel === "templates" ? (
+        <div className="schemasPanelSection">
+          <DocumentTemplatesSection
+            token={token}
+            serviceId={sid}
+            rapportTypes={rapportTypes}
+            autoOpenCreate={autoOpenTemplate}
+            onAutoOpenHandled={() => setAutoOpenTemplate(false)}
+          />
+        </div>
+      ) : null}
 
       {schemaModal ? (
         <TableSchemaEditorModal
@@ -386,6 +502,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
           onDraftHeaderGroupsChange={setDraftHeaderGroups}
           onSave={saveSchema}
           onCancel={closeSchemaModal}
+          saving={saving}
         />
       ) : null}
 
@@ -476,6 +593,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
               </p>
             </ExpandableHelp>
             {typeForm.content_kind === "commune_list" ? (
+              <>
               <label>
                 {t("communeContentKind")}
                 <select
@@ -493,6 +611,13 @@ export function OfficeServiceConfigPage({ token }: Props) {
                   <option value="table">{t("communeContentKind_table")}</option>
                 </select>
               </label>
+              <EntityTargetKindsField
+                value={typeForm.entity_target_kinds}
+                onChange={(entity_target_kinds) =>
+                  setTypeForm({ ...typeForm, entity_target_kinds })
+                }
+              />
+              </>
             ) : null}
             {needsLinkedTableSchema(typeForm.content_kind, typeForm.commune_content_kind) ? (
               <label>
@@ -516,17 +641,20 @@ export function OfficeServiceConfigPage({ token }: Props) {
               </label>
             ) : null}
             <div className="modalActions">
-              <button
+              <BusyButton
                 type="button"
                 className="btn btn-primary"
                 onClick={saveRapportType}
+                busy={saving}
+                busyLabel={t("saving")}
               >
                 {t("save")}
-              </button>
+              </BusyButton>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setTypeModal(false)}
+                disabled={saving}
               >
                 {t("cancel")}
               </button>
@@ -555,13 +683,15 @@ export function OfficeServiceConfigPage({ token }: Props) {
               </select>
             </label>
             <div className="modalActions">
-              <button
+              <BusyButton
                 type="button"
                 className="btn btn-primary"
                 onClick={saveEditTypeSchema}
+                busy={saving}
+                busyLabel={t("saving")}
               >
                 {t("save")}
-              </button>
+              </BusyButton>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -569,6 +699,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
                   setEditTypeModal(false);
                   setEditingType(null);
                 }}
+                disabled={saving}
               >
                 {t("cancel")}
               </button>
