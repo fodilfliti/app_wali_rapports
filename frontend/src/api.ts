@@ -140,6 +140,61 @@ export function changePassword(
   });
 }
 
+export type NotificationPreferences = {
+  enabled: boolean
+  push_enabled: boolean
+  rapport_inbox: boolean
+  rapport_feedback: boolean
+  discussion: boolean
+  instructions: boolean
+  broadcasts: boolean
+  calendar: boolean
+}
+
+export function getNotificationPreferences(token: string) {
+  return request<{ preferences: NotificationPreferences }>(
+    "/auth/me/notification-preferences",
+    { token },
+  )
+}
+
+export function updateNotificationPreferences(
+  token: string,
+  body: Partial<NotificationPreferences>,
+) {
+  return request<{ preferences: NotificationPreferences }>(
+    "/auth/me/notification-preferences",
+    {
+      method: "PUT",
+      token,
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export function getVapidPublicKey(token: string) {
+  return request<{ publicKey: string }>("/auth/push/vapid-public-key", { token })
+}
+
+export function subscribePush(
+  token: string,
+  body: { endpoint: string; keys: { p256dh: string; auth: string } },
+) {
+  return request<{ ok: boolean }>("/auth/push/subscribe", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  })
+}
+
+export function unsubscribePush(token: string, endpoint: string) {
+  return request<{ ok: boolean }>("/auth/push/subscribe", {
+    method: "DELETE",
+    token,
+    body: JSON.stringify({ endpoint }),
+  })
+}
+
 export function listMunicipalities(
   token: string,
   params: { page?: number; q?: string; hidden_only?: boolean } = {},
@@ -490,7 +545,13 @@ export function listOfficeServices(token: string) {
 
 export function createRapport(
   token: string,
-  body: { service_id: number; rapport_type_id: number; title: string },
+  body: {
+    service_id: number;
+    rapport_type_id: number;
+    title: string;
+    reference_date?: string | null;
+    data_json?: Record<string, unknown>;
+  },
 ) {
   return request<{ rapport: any }>("/office/rapports", {
     method: "POST",
@@ -1096,7 +1157,13 @@ export function createDocument(
   token: string,
   serviceId: number,
   rapportTypeId: number,
-  opts?: { templateId?: number | null; skipDefault?: boolean },
+  opts?: {
+    templateId?: number | null;
+    skipDefault?: boolean;
+    title?: string;
+    reference_date?: string | null;
+    data_json?: Record<string, unknown>;
+  },
 ) {
   return request<{ rapport: any }>(`/office/services/${serviceId}/documents`, {
     method: "POST",
@@ -1105,8 +1172,33 @@ export function createDocument(
       rapport_type_id: rapportTypeId,
       template_id: opts?.templateId ?? undefined,
       skip_default: opts?.skipDefault ?? false,
+      title: opts?.title ?? undefined,
+      reference_date: opts?.reference_date ?? undefined,
+      data_json: opts?.data_json ?? undefined,
     }),
   });
+}
+
+export function previewDocumentCreate(
+  token: string,
+  serviceId: number,
+  opts: {
+    rapportTypeId: number;
+    templateId?: number | null;
+    skipDefault?: boolean;
+  },
+) {
+  const q = new URLSearchParams({
+    rapport_type_id: String(opts.rapportTypeId),
+  });
+  if (opts.templateId != null) q.set("template_id", String(opts.templateId));
+  if (opts.skipDefault) q.set("skip_default", "1");
+  return request<{
+    service: any;
+    rapportType: any;
+    suggestedTitle: string;
+    data_json: any;
+  }>(`/office/services/${serviceId}/documents/draft-init?${q}`, { token });
 }
 
 export function listOfficeDocumentTemplates(token: string, serviceId: number) {

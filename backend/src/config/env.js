@@ -26,6 +26,9 @@ const EnvSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().optional(),
   API_BASE_PATH: z.string().optional(),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
 });
 
 function normalizeApiBasePath(value) {
@@ -70,6 +73,9 @@ function getEnv() {
     rateLimitWindowMs: e.RATE_LIMIT_WINDOW_MS || 60_000,
     rateLimitMax: e.RATE_LIMIT_MAX || 300,
     apiBasePath: normalizeApiBasePath(e.API_BASE_PATH),
+    vapidPublicKey: e.VAPID_PUBLIC_KEY || "",
+    vapidPrivateKey: e.VAPID_PRIVATE_KEY || "",
+    vapidSubject: e.VAPID_SUBJECT || "mailto:admin@cabinet.wilaya-tlemcen.dz",
   };
 }
 

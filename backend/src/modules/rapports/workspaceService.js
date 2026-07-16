@@ -308,7 +308,12 @@ async function getServiceContentHub(serviceId, user, options = {}) {
     if (hiddenTypesOnly) {
       visibleTypes = visibleTypes.filter((t) => t.hidden_at);
     } else if (!includeHiddenTypes) {
-      visibleTypes = visibleTypes.filter((t) => !t.hidden_at);
+      // Keep soft-hidden types that still need action so badges remain clickable
+      visibleTypes = visibleTypes.filter(
+        (t) =>
+          !t.hidden_at ||
+          Number(byType[`${sid}:${Number(t.id)}`]) > 0,
+      );
     }
   }
 
@@ -428,86 +433,48 @@ async function getServiceWorkspace(
       });
     }
 
-    const statusEditable =
-      rapport && ["draft", "changes_requested"].includes(rapport.status);
-
     if (!rapport) {
-      if (accessLevel !== "manage") {
-        return {
-          service: {
-            id: service.id,
-            slug: service.slug,
-            name_ar: service.name_ar,
-            name_fr: service.name_fr,
-          },
-          rapportType: {
-            id: rapportType.id,
-            name_ar: rapportType.name_ar,
-            name_fr: rapportType.name_fr,
-            content_kind: rapportType.content_kind,
-            versioning_mode: rapportType.versioning_mode,
-          },
-          schema: {
-            slug: schema.slug,
-            name_ar: schema.name_ar,
-            name_fr: schema.name_fr,
-            columns,
-            layout_json: layoutJson,
-          },
-          rapport: null,
-          tableData: {
-            tables: [{ key: meta.table_key || "main", ...tableMeta, rows: [] }],
-          },
-          versions: [],
-          editable: false,
-          accessLevel,
-        };
-      }
-      const title = `${service.name_ar} — ${new Date().toISOString().slice(0, 10)}`;
-      const rows = await buildDefaultTableRows(columns);
-      const created = await rapportService.createRapport(
-        {
-          service_id: service.id,
-          rapport_type_id: rapportType.id,
-          title,
-          data_json: {
-            tables: [{ key: meta.table_key || "main", ...tableMeta, rows }],
-          },
+      const defaultRows =
+        accessLevel === "manage" ? await buildDefaultTableRows(columns) : [];
+      return {
+        service: {
+          id: service.id,
+          slug: service.slug,
+          name_ar: service.name_ar,
+          name_fr: service.name_fr,
         },
-        actor,
-        req,
-      );
-      rapport = created;
-    } else if (statusEditable && accessLevel === "manage") {
-      const detail = await rapportService.getRapportDetail(rapport.id);
-      const version = detail.currentVersion || detail.versions?.[0];
-      const rows = version?.data_json?.tables?.[0]?.rows;
-      if (
-        !rows?.length &&
-        ["draft", "changes_requested"].includes(detail.status)
-      ) {
-        const defaultRows = await buildDefaultTableRows(columns);
-        await rapportService.updateRapportDraft(
-          rapport.id,
-          {
-            data_json: {
-              tables: [
-                {
-                  key: meta.table_key || "main",
-                  ...tableMeta,
-                  rows: defaultRows,
-                },
-              ],
+        rapportType: {
+          id: rapportType.id,
+          name_ar: rapportType.name_ar,
+          name_fr: rapportType.name_fr,
+          content_kind: rapportType.content_kind,
+          versioning_mode: rapportType.versioning_mode,
+        },
+        schema: {
+          slug: schema.slug,
+          name_ar: schema.name_ar,
+          name_fr: schema.name_fr,
+          columns,
+          layout_json: layoutJson,
+        },
+        rapport: null,
+        tableData: {
+          tables: [
+            {
+              key: meta.table_key || "main",
+              ...tableMeta,
+              rows: defaultRows,
             },
-          },
-          actor,
-          req,
-        );
-      }
-      rapport = await rapportService.getRapportDetail(rapport.id);
-    } else {
-      rapport = await rapportService.getRapportDetail(rapport.id);
+          ],
+        },
+        versions: [],
+        editable: accessLevel === "manage",
+        accessLevel,
+        suggestedTitle: `${service.name_ar} — ${new Date().toISOString().slice(0, 10)}`,
+      };
     }
+
+    rapport = await rapportService.getRapportDetail(rapport.id);
   }
 
   const schema = await resolveTableSchema(rapportType, serviceId);
@@ -522,11 +489,29 @@ async function getServiceWorkspace(
   const current =
     rapport.currentVersion ||
     rapport.versions?.find((v) => v.id === rapport.current_version_id);
-  const tableData = normalizeTablePayload(
+  let tableData = normalizeTablePayload(
     current?.data_json || {},
     columns,
     layoutJson,
   );
+  if (
+    isEditable &&
+    !(tableData?.tables?.[0]?.rows?.length) &&
+    accessLevel === "manage"
+  ) {
+    const meta = rapportType.schema_json || {};
+    const tableMeta = buildDefaultTableMeta(layoutJson, columns);
+    const defaultRows = await buildDefaultTableRows(columns);
+    tableData = {
+      tables: [
+        {
+          key: meta.table_key || "main",
+          ...tableMeta,
+          rows: defaultRows,
+        },
+      ],
+    };
+  }
 
   return {
     service: {
@@ -752,13 +737,16 @@ async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
 
   const localeDate = new Date().toISOString().slice(0, 10);
   const title =
-    rapportType.content_kind === "fiche_lecture"
+    opts.title?.trim() ||
+    (rapportType.content_kind === "fiche_lecture"
       ? `${rapportType.name_ar} — ${localeDate}`
-      : `${rapportType.name_ar} — ${localeDate}`;
+      : `${rapportType.name_ar} — ${localeDate}`);
 
   const documentTemplateService = require("./documentTemplateService");
   let dataJson;
-  if (opts.template_id) {
+  if (opts.data_json && typeof opts.data_json === "object") {
+    dataJson = opts.data_json;
+  } else if (opts.template_id) {
     dataJson = await documentTemplateService.resolveInitialDataJson(
       serviceId,
       rapportType,
@@ -789,12 +777,65 @@ async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
       service_id: serviceId,
       rapport_type_id: rapportType.id,
       title,
-      reference_date: localeDate,
+      reference_date: opts.reference_date || localeDate,
       data_json: dataJson,
     },
     actor,
     req,
   );
+}
+
+/** Resolve initial document content without creating a rapport row. */
+async function previewDocumentCreate(
+  serviceId,
+  rapportTypeId,
+  actor,
+  opts = {},
+) {
+  await assertServiceAccess(actor, serviceId, "manage");
+  const service = await Service.findByPk(serviceId, {
+    include: [{ model: RapportType, as: "rapportTypes" }],
+  });
+  const rapportType = service?.rapportTypes?.find(
+    (t) => Number(t.id) === Number(rapportTypeId),
+  );
+  if (!rapportType || !DOCUMENT_KINDS.has(rapportType.content_kind)) {
+    const err = new Error("Invalid document type");
+    err.status = 400;
+    throw err;
+  }
+
+  const localeDate = new Date().toISOString().slice(0, 10);
+  const suggestedTitle = `${rapportType.name_ar} — ${localeDate}`;
+  const documentTemplateService = require("./documentTemplateService");
+  let data_json;
+  if (opts.skip_default) {
+    data_json = { rich_html_ar: "<p></p>", rich_html_fr: "<p></p>" };
+  } else {
+    data_json = await documentTemplateService.resolveInitialDataJson(
+      serviceId,
+      rapportType,
+      opts.template_id || null,
+    );
+  }
+
+  return {
+    service: {
+      id: service.id,
+      slug: service.slug,
+      name_ar: service.name_ar,
+      name_fr: service.name_fr,
+    },
+    rapportType: {
+      id: rapportType.id,
+      name_ar: rapportType.name_ar,
+      name_fr: rapportType.name_fr,
+      content_kind: rapportType.content_kind,
+      versioning_mode: rapportType.versioning_mode,
+    },
+    suggestedTitle,
+    data_json,
+  };
 }
 
 async function saveDocumentBlocks(rapportId, payload, actor, req) {
@@ -994,36 +1035,9 @@ async function getCommuneListWorkspace(
       });
     }
 
-    if (!rapport && accessLevel === "manage") {
-      const title = `${service.name_ar} — ${new Date().toISOString().slice(0, 10)}`;
-      const { getIncludedEntityKeys } = require("./entityKeys");
-      let data_json = { communes: {}, entities: {} };
-      const prevFinished = await Rapport.findOne({
-        where: {
-          service_id: service.id,
-          rapport_type_id: rapportType.id,
-          hidden_at: { [Op.ne]: null },
-        },
-        order: [["updated_at", "DESC"]],
-        include: [{ model: RapportVersion, as: "currentVersion" }],
-      });
-      const inherited = getIncludedEntityKeys(
-        prevFinished?.currentVersion?.data_json || {},
-      );
-      if (inherited) {
-        data_json = { ...data_json, included_entity_keys: inherited };
-      }
-      rapport = await rapportService.createRapport(
-        {
-          service_id: service.id,
-          rapport_type_id: rapportType.id,
-          title,
-          data_json,
-        },
-        actor,
-        req,
-      );
-    } else if (rapport) {
+    if (!rapport) {
+      // No create on GET — first Enregistrer creates the draft.
+    } else {
       rapport = await rapportService.getRapportDetail(rapport.id);
     }
   }
@@ -1042,7 +1056,27 @@ async function getCommuneListWorkspace(
     rapportType.entity_target_kinds || ["commune"],
   );
 
-  const dataJson = ensureEntitiesMap(rapport?.currentVersion?.data_json || {});
+  let dataJson = ensureEntitiesMap(rapport?.currentVersion?.data_json || {});
+  let suggestedTitle = null;
+  if (!rapport && accessLevel === "manage") {
+    suggestedTitle = `${service.name_ar} — ${new Date().toISOString().slice(0, 10)}`;
+    const prevFinished = await Rapport.findOne({
+      where: {
+        service_id: service.id,
+        rapport_type_id: rapportType.id,
+        hidden_at: { [Op.ne]: null },
+      },
+      order: [["updated_at", "DESC"]],
+      include: [{ model: RapportVersion, as: "currentVersion" }],
+    });
+    const inherited = getIncludedEntityKeys(
+      prevFinished?.currentVersion?.data_json || {},
+    );
+    if (inherited) {
+      dataJson = { ...dataJson, included_entity_keys: inherited };
+    }
+  }
+
   const entitiesData = getEntitiesMap(dataJson);
   const communesData = dataJson.communes || {};
   const includedEntityKeys = getIncludedEntityKeys(dataJson);
@@ -1113,8 +1147,7 @@ async function getCommuneListWorkspace(
 
   const editable =
     accessLevel === "manage" &&
-    rapport &&
-    ["draft", "changes_requested"].includes(rapport.status);
+    (!rapport || ["draft", "changes_requested"].includes(rapport.status));
 
   function catalogItems(rows, kind) {
     return rows
@@ -1171,6 +1204,7 @@ async function getCommuneListWorkspace(
       : null,
     accessLevel,
     editable,
+    suggestedTitle,
   };
 }
 
@@ -1188,10 +1222,9 @@ async function getCommuneBulkWorkspace(
     rapportTypeId,
     rapportId,
   );
-  const rapport = ws.rapport;
-  if (!rapport) return ws;
 
   if (!ws.schema) {
+    if (!ws.rapport) return { ...ws, tableData: { tables: [{ key: "bulk", rows: [] }] } };
     const err = new Error("tableSchemaNotConfigured");
     err.status = 400;
     throw err;
@@ -1202,7 +1235,7 @@ async function getCommuneBulkWorkspace(
   const communesData = ws.communesData || {};
 
   const allRows = [];
-  for (const m of ws.municipalities) {
+  for (const m of ws.municipalities || []) {
     const entry = communesData[m.code] || {};
     let rows = entry.rows || [];
     if (!rows.length) {
@@ -1781,6 +1814,7 @@ module.exports = {
   saveTableData,
   getDocumentList,
   createDocument,
+  previewDocumentCreate,
   saveDocumentBlocks,
   getWaliTableView,
   getWaliDocumentView,

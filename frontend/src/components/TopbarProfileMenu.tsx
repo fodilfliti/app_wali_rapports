@@ -7,6 +7,7 @@ type Props = {
   lang: 'ar' | 'fr'
   onSetLang: (lang: 'ar' | 'fr') => void
   onEditProfile: () => void
+  onNotificationSettings: () => void
   onChangeCode: () => void
   onLogout: () => void
 }
@@ -37,6 +38,7 @@ export function TopbarProfileMenu({
   lang,
   onSetLang,
   onEditProfile,
+  onNotificationSettings,
   onChangeCode,
   onLogout,
 }: Props) {
@@ -90,6 +92,19 @@ export function TopbarProfileMenu({
           >
             {t('editProfile')}
           </button>
+          {user.role !== 'ADMIN' ? (
+            <button
+              type="button"
+              className="topbarProfileItem"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                onNotificationSettings()
+              }}
+            >
+              {t('notifSettingsTitle')}
+            </button>
+          ) : null}
           <button
             type="button"
             className="topbarProfileItem"

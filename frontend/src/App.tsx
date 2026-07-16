@@ -20,6 +20,7 @@ import "./App.css";
 import { GuestLoginPage } from "./components/GuestLoginPage";
 import { ChangeCodeModal } from "./components/ChangeCodeModal";
 import { EditProfileModal } from "./components/EditProfileModal";
+import { NotificationSettingsModal } from "./components/NotificationSettingsModal";
 import { TopbarProfileMenu } from "./components/TopbarProfileMenu";
 import { SnackbarProvider, useSnackbar } from "./snackbar/SnackbarContext";
 import { AdminMunicipalitiesListPage } from "./pages/AdminMunicipalitiesListPage";
@@ -173,6 +174,7 @@ function AppShell() {
 
   const [changeCodeOpen, setChangeCodeOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [notifSettingsOpen, setNotifSettingsOpen] = useState(false);
 
   useEffect(() => {
     localStorage.removeItem("token");
@@ -227,6 +229,48 @@ function AppShell() {
         /* 401 handled by request() → notifySessionExpired */
       });
   }, [token, sessionReady]);
+
+  useEffect(() => {
+    if (!token || !sessionReady || !me || me.role === "ADMIN") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { registerAppServiceWorker, ensurePushSubscription } = await import(
+          "./utils/webPush"
+        );
+        await registerAppServiceWorker();
+        const prefs = await api.getNotificationPreferences(token);
+        if (cancelled || !prefs.preferences.enabled || !prefs.preferences.push_enabled)
+          return;
+        if (Notification.permission === "granted") {
+          await ensurePushSubscription(token);
+        }
+      } catch {
+        /* soft-fail: push optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, sessionReady, me?.id, me?.role]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+      if (data.type === "hub-counts-refresh") {
+        import("./utils/hubCountsRefresh").then(({ notifyHubCountsRefresh }) =>
+          notifyHubCountsRefresh(),
+        );
+      }
+      if (data.type === "navigate" && typeof data.url === "string") {
+        navigate(data.url);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [navigate]);
 
   function onLoginSuccess(res: api.LoginResponse) {
     setAccessToken(res.token);
@@ -300,6 +344,7 @@ function AppShell() {
             lang={lang}
             onSetLang={setLang}
             onEditProfile={() => setEditProfileOpen(true)}
+            onNotificationSettings={() => setNotifSettingsOpen(true)}
             onChangeCode={() => setChangeCodeOpen(true)}
             onLogout={logout}
           />
@@ -314,6 +359,12 @@ function AppShell() {
           setMe(user);
           localStorage.setItem("me", JSON.stringify(user));
         }}
+      />
+      <NotificationSettingsModal
+        token={token}
+        open={notifSettingsOpen}
+        user={me}
+        onClose={() => setNotifSettingsOpen(false)}
       />
       <ChangeCodeModal
         token={token}
@@ -409,6 +460,10 @@ function AppShell() {
               <Route
                 path="/office/services/:serviceId/documents"
                 element={<OfficeDocumentsPage token={token} />}
+              />
+              <Route
+                path="/office/services/:serviceId/documents/new"
+                element={<OfficeDocumentEditorPage token={token} />}
               />
               <Route
                 path="/office/services/:serviceId/fiches"

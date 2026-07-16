@@ -68,10 +68,14 @@ Office return-to-draft (while pending_chef | submitted | under_review, before Wa
 
 | message_key | Recipient |
 | ----------- | --------- |
+| `rapportPendingChef` | Chef — office Envoyer lands in `pending_chef` (device + in-app; **not** Wali) |
+| `rapportPendingWali` | Wali — after Chef accept → `submitted` |
 | `chefAccepted`, `chefChangesRequested`, `chefFeedback` | Office |
 | `rapportResubmittedBypass`, `waliChangesRequested` (info) | Chef |
 | `rapportComment` | Office / Chef / Wali (fanout — `RAPPORT_DISCUSSION.md`) |
 | Existing wali\* keys | Office (unchanged) |
+
+Device push + preference filtering: `DEVICE_NOTIFICATIONS.md`.
 
 ### Audit events
 

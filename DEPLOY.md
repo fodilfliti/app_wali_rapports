@@ -130,9 +130,13 @@ FILE_STORAGE_ROOT=/home/<CPANEL_USER>/wali-storage
 CORS_ORIGIN=https://cabinet.wilaya-tlemcen.dz
 LOG_LEVEL=info
 TRUST_PROXY=true
+# Device notifications (Web Push) — generate once with: npx web-push generate-vapid-keys
+VAPID_PUBLIC_KEY=<public key>
+VAPID_PRIVATE_KEY=<private key>
+VAPID_SUBJECT=mailto:admin@cabinet.wilaya-tlemcen.dz
 ```
 
-4. **Restart** the Node app.
+Keep the VAPID key pair stable across deploys (rotating it forces every user to re-subscribe). If unset, in-app notifications still work; browser/phone toasts are skipped.
 
 The API already supports Passenger (`PhusionPassenger` in `backend/src/server.js`).
 

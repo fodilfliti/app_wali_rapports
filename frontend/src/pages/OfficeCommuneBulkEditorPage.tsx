@@ -89,11 +89,13 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
       });
       setWorkspace(ws);
       applyTableData(ws.tableData, ws.municipalities);
-      setTitle(ws.rapport?.title || "");
+      setTitle(ws.rapport?.title || ws.suggestedTitle || "");
       if (ws.rapport?.id) {
         void markOfficeRapportOpened(token, ws.rapport.id);
         const vRes = await api.listRapportVersions(token, ws.rapport.id);
         setVersions(vRes.versions);
+      } else {
+        setVersions([]);
       }
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
@@ -108,14 +110,41 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
     load();
   }, [load]);
 
+  async function ensureCommuneRapportId(): Promise<number> {
+    if (workspace?.rapport?.id) return workspace.rapport.id;
+    if (!workspace?.rapportType?.id) {
+      throw new Error("errorGeneric");
+    }
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error("rapportTitleRequired");
+    }
+    const data_json: Record<string, unknown> = {
+      communes: {},
+      entities: {},
+    };
+    if (workspace.included_entity_keys?.length) {
+      data_json.included_entity_keys = workspace.included_entity_keys;
+    }
+    const { rapport } = await api.createRapport(token, {
+      service_id: sid,
+      rapport_type_id: workspace.rapportType.id,
+      title: trimmed,
+      data_json,
+    });
+    setWorkspace((prev: any) => (prev ? { ...prev, rapport } : prev));
+    return rapport.id as number;
+  }
+
   async function save() {
-    if (!workspace?.rapport?.id) return;
+    if (!workspace?.editable) return;
     setSaving(true);
     try {
-      const patched = await patchRapportTitle(token, workspace.rapport.id, title);
+      const rid = await ensureCommuneRapportId();
+      const patched = await patchRapportTitle(token, rid, title);
       setTitle(patched.title);
       const cleanedRows = rows.map(stripCommuneDisplayFields);
-      await api.saveCommuneBulkData(token, workspace.rapport.id, {
+      await api.saveCommuneBulkData(token, rid, {
         tables: [
           {
             key: "bulk",

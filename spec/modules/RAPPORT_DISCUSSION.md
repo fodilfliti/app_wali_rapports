@@ -63,6 +63,7 @@ Comment thread pagination: `page`, `pageSize` (default 20, max 100). Order: `cre
 - Thread + composer; role-colored rows using teal/gold tokens
 - Office notifications list: show `rapportComment` with link to rapport
 - Office / Chef / Wali hub: `unread_discussion` badge = **distinct rapports** with unread `rapportComment` (not raw notification row count). For Wali, exclude `pending_chef` / draft so the badge matches inbox visibility.
+- Office discussion list scope = rapports the user owns/created/commented on **or** any non-draft rapport in a service they can access (so the top-bar badge matches a clickable inbox row).
 
 #### Discussion inbox (office / Chef / Wali)
 

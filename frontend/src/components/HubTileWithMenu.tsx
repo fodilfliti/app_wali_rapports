@@ -19,6 +19,7 @@ export function HubTileWithMenu({
   onRestoreType,
   dimmed,
   badgeOverlay,
+  badge,
   ...tileProps
 }: Props) {
   const showActions =
@@ -28,10 +29,23 @@ export function HubTileWithMenu({
     onRestoreType &&
     (rapportType.hidden_at || rapportType.content_kind !== 'fiche_lecture')
 
+  const countBadge = badgeOverlay ?? badge
+
   return (
-    <div className={`hubTileCard${dimmed ? ' hubTileCard--dimmed' : ''}${showActions ? ' hubTileCard--hasMenu' : ''}`}>
+    <div
+      className={`hubTileCard${dimmed ? ' hubTileCard--dimmed' : ''}${
+        showActions ? ' hubTileCard--hasMenu' : ''
+      }`}
+    >
+      {/* Badge lives on the card so it is not covered by the ⋯ menu */}
       <HubTile {...tileProps} className={`hubTileCardLink ${tileProps.className || ''}`.trim()} />
-      {badgeOverlay}
+      {countBadge ? (
+        <span
+          className={`hubTileCardBadge${showActions ? ' hubTileCardBadge--start' : ''}`}
+        >
+          {countBadge}
+        </span>
+      ) : null}
       {showActions ? (
         <div
           className="hubTileCardMenu"

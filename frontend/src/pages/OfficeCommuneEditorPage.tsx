@@ -89,11 +89,58 @@ export function OfficeCommuneEditorPage({ token }: Props) {
         rapportId: rapportIdParam,
       });
       setWorkspace(ws);
-      setTitle(ws.rapport?.title || "");
+      setTitle(ws.rapport?.title || ws.suggestedTitle || "");
+      setEditable(ws.editable === true);
+
+      const entity =
+        (ws.entities || []).find(
+          (e: any) =>
+            e.entity_key === code ||
+            e.code === code ||
+            `commune:${e.code}` === code,
+        ) || null;
+      setMunicipality(
+        entity || {
+          code,
+          name_ar: code,
+          name_fr: code,
+        },
+      );
+
       if (!ws.rapport?.id) {
-        setLoadError("communeWorkspaceError");
+        setVersions([]);
+        setContent({ rich_html_ar: "", rich_html_fr: "" });
+        setEmbeddedTables([]);
+        setCalendarEvents([]);
+        setMediaRows([]);
+        setMediaFiles({});
+        const cols = ws.schema?.columns || [];
+        if (ws.rapportType?.commune_content_kind === "table" && cols.length) {
+          setRows(
+            cols.length
+              ? [
+                  {
+                    municipality_code: entity?.code || code,
+                    _highlight: "none",
+                    _row_finished: false,
+                    _wali_visible: true,
+                    _cell_colors: {},
+                    ...Object.fromEntries(
+                      cols.map((c: any) => [
+                        c.key,
+                        c.type === "number" || c.type === "formula" ? null : "",
+                      ]),
+                    ),
+                  },
+                ]
+              : [],
+          );
+        } else {
+          setRows([]);
+        }
         return;
       }
+
       void markOfficeRapportOpened(token, ws.rapport.id);
       const vRes = await api.listRapportVersions(token, ws.rapport.id);
       setVersions(vRes.versions);
@@ -128,13 +175,40 @@ export function OfficeCommuneEditorPage({ token }: Props) {
     load();
   }, [load]);
 
+  async function ensureCommuneRapportId(): Promise<number> {
+    if (workspace?.rapport?.id) return workspace.rapport.id;
+    if (!workspace?.rapportType?.id) {
+      throw new Error("errorGeneric");
+    }
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error("rapportTitleRequired");
+    }
+    const data_json: Record<string, unknown> = {
+      communes: {},
+      entities: {},
+    };
+    if (workspace.included_entity_keys?.length) {
+      data_json.included_entity_keys = workspace.included_entity_keys;
+    }
+    const { rapport } = await api.createRapport(token, {
+      service_id: sid,
+      rapport_type_id: workspace.rapportType.id,
+      title: trimmed,
+      data_json,
+    });
+    setWorkspace((prev: any) => (prev ? { ...prev, rapport } : prev));
+    return rapport.id as number;
+  }
+
   async function save() {
-    if (!rapportId || !code) return;
+    if (!code || !editable) return;
     setSaving(true);
     try {
-      const patched = await patchRapportTitle(token, rapportId, title);
+      const rid = await ensureCommuneRapportId();
+      const patched = await patchRapportTitle(token, rid, title);
       setTitle(patched.title);
-      await api.saveCommuneData(token, rapportId, {
+      await api.saveCommuneData(token, rid, {
         municipality_code: code,
         rich_html_ar: content.rich_html_ar,
         rich_html_fr: content.rich_html_fr,
@@ -280,7 +354,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
         </div>
       ) : null}
 
-      {!loading && !loadError && rapportId ? (
+      {!loading && !loadError && workspace ? (
         <>
           <RapportOfficeStatusBanner
             rapport={workspace?.rapport}
@@ -293,9 +367,9 @@ export function OfficeCommuneEditorPage({ token }: Props) {
           {workspace?.rapportType?.commune_content_kind === "table" ? (
             <>
               <TableWorkspace
-                columns={workspace.schema.columns}
+                columns={workspace.schema?.columns || []}
                 rows={rows}
-                layoutJson={workspace.schema.layout_json}
+                layoutJson={workspace.schema?.layout_json}
                 tableMeta={tableMeta}
                 editable={isEditable}
                 showRowMeta
@@ -311,7 +385,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
                 onAddRow={isEditable ? addRow : undefined}
               />
               <TableMergeToolbar
-                columns={workspace.schema.columns}
+                columns={workspace.schema?.columns || []}
                 mergeKeys={mergeKeys}
                 editable={isEditable}
                 onMergeToggle={(colKey, checked) =>
@@ -341,7 +415,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
             />
           )}
           {workspace?.rapportType?.commune_content_kind !== "table" ? (
-            isEditable ? (
+            isEditable && rapportId ? (
               <MediaRowsEditor
                 rows={mediaRows}
                 files={mediaFiles}

@@ -35,20 +35,32 @@ async function listOfficeUsersForWali(statusList = hubCountsService.WALI_INBOX_A
     include: [{ model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] }]
   });
 
-  const counts = await Rapport.findAll({
+  const rows = await Rapport.findAll({
     attributes: [
       "owner_office_user_id",
+      "created_by_user_id",
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"]
     ],
     where: {
       status: { [Op.in]: statusList },
-      owner_office_user_id: { [Op.ne]: null },
       hidden_at: null,
+      [Op.or]: [
+        { owner_office_user_id: { [Op.ne]: null } },
+        { created_by_user_id: { [Op.ne]: null } },
+      ],
     },
-    group: ["owner_office_user_id"],
+    group: ["owner_office_user_id", "created_by_user_id"],
     raw: true
   });
-  const countByUser = Object.fromEntries(counts.map((c) => [c.owner_office_user_id, Number(c.pending_count)]));
+  const countByUser = {};
+  for (const c of rows) {
+    const n = Number(c.pending_count) || 0;
+    const oid = c.owner_office_user_id != null ? Number(c.owner_office_user_id) : null;
+    const cid = c.created_by_user_id != null ? Number(c.created_by_user_id) : null;
+    const uid = oid || cid;
+    if (!uid) continue;
+    countByUser[uid] = (countByUser[uid] || 0) + n;
+  }
 
   return users.map((u) => ({
     id: u.id,

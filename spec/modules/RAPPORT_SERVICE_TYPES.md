@@ -33,7 +33,8 @@ flowchart TD
 ### Office navigation (mirror)
 
 - Office hub → **Mes services** (same tree, filtered to own permissions).
-- Draft work → **Enregistrer brouillon** → **Envoyer au wali** (creates submission; versioned types increment version).
+- Draft work → **Enregistrer brouillon** (first save creates `draft`) → **Envoyer au wali** (creates submission; versioned types increment version).
+- **Office service badges** (`action_count` / `services_action_count`): count `changes_requested` rapports in services the user can access (any owner). Soft-hidden rapport types that still have a pending action remain visible on the service hub so the badge is clickable.
 
 ---
 
@@ -157,7 +158,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 - Collection of data for selected **entity kinds** in the Wilaya (not communes-only).
 - **`entity_target_kinds`** on `rapport_types`: JSON array subset of `commune` | `daira` | `direction` (at least one). Default `["commune"]` for backward compatibility.
-- **Per-rapport membership** (`data_json.included_entity_keys`): optional non-empty array of prefixed keys (`daira:1301`, …). Absent / null = **all** entities of the type’s kinds. Office can narrow or expand the set while the rapport is `draft` / `changes_requested` (hub **Choisir la liste**). Removing a key hides it from the hub without deleting stored entity data (re-adding restores content). New draft after finish **inherits** the previous finished rapport’s `included_entity_keys` when auto-created.
+- **Per-rapport membership** (`data_json.included_entity_keys`): optional non-empty array of prefixed keys (`daira:1301`, …). Absent / null = **all** entities of the type’s kinds. Office can narrow or expand the set while the rapport is `draft` / `changes_requested` (hub **Choisir la liste**). Removing a key hides it from the hub without deleting stored entity data (re-adding restores content). After finish (soft-hide), the next draft is created only on **first Enregistrer** and **inherits** the previous finished rapport’s `included_entity_keys`.
 - **Office view**: Hub grouped by kind (only included entities); progress counter sums filled across all kinds with kind-aware unit wording (بلدية / دائرة / مديرية / عنصر). Click one entity to edit **or** **Bulk Entry** (table mode) across selected kinds.
 - **Modes** (`commune_content_kind` on `rapport_types`):
   - **`complex`**: Rich text document per entity (like type 2). **No linked table schema** required at create time.
@@ -208,6 +209,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - `user_id` (office recipient), `rapport_id` (nullable FK), `broadcast_id` (nullable FK to `wali_broadcasts`), `wali_response_id` (nullable FK), `message_key` (e.g. `waliFeedback` or `waliBroadcast`), `read_at`, `created_at`
 - Office hub badge + list **Notifications du wali** (`unread_notifications`): feedback / chef replies / discussion only — **excludes** `waliInstruction`, `waliBroadcast`, `waliBroadcastReminder` (those use `unread_instructions` / `unread_shared_files`). List API applies the same exclusion.
 - Mark read when user opens rapport; generic notification mark-read also clears linked broadcast/instruction recipient rows.
+- Web Push, preference filtering, Chef/Wali pending keys, calendar reminders: **`DEVICE_NOTIFICATIONS.md`**.
 
 ### Optional comment
 
@@ -220,7 +222,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 - **`rapport_table_schemas`**: reusable column definitions — **admin creates/edits via `/admin/schemas`** (not hardcoded per domain).
 - Each **`rapport_type`** with `content_kind = table_grid` links to a schema via `schema_json.table_schema_slug`.
 - Type-2 document composer: insert embedded tables (empty schema → fill, create with live preview, import from rapport); **document templates** for full HTML starters — `SCHEMA_CONFIGURATION.md`.
-- **Demo seeds:** `npm run db:seed-demo` (`backend/scripts/seed-demo-presentation.js`) resets domain rapports/services and loads a **presentation dataset** (Hydraulique + Investissement) with table grids (grouped headers, formulas, colors, media, versions, Wali responses), document compose, commune list (table + complex modes), and rich **fiche lecture** (embedded tables, photos from `storage/uploads`). Logins: `office1`, `wali1` — password from `TEST_USER_PASSWORD` env or default `Test1234!`. Sample data only — add real services/schemas through admin UI.
+- **Demo seeds:** `npm run db:seed-demo` (`backend/scripts/seed-demo-presentation.js`) resets domain rapports/services and loads a **presentation dataset** (Hydraulique + Investissement) covering all four content kinds, Chef gate / bypass, discussions, instructions, broadcasts (office + Chef), guide videos, soft-hide samples, and commune/daira/direction liste targets. Logins: `admin`, `office1` (manage), `office2` (view), `chef1`, `wali1` — password from `TEST_USER_PASSWORD` or default `Test1234!`. Full inventory: `spec/ARCHITECTURE_CONTEXT.md` § Demo data. Sample data only — add real services/schemas through admin UI.
 
 See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
 

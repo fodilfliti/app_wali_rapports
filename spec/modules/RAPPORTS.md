@@ -160,7 +160,8 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 #### `notifications`
 
-- `id`, `user_id` (FK), `rapport_id` (FK, nullable), `broadcast_id` (FK, nullable), `instruction_id` / `chef_response_id` / `comment_id` (nullable FKs), `wali_response_id` (FK, nullable), `message_key` (default `waliFeedback`), `read_at` (nullable), `created_at`
+- `id`, `user_id` (FK), `rapport_id` (FK, nullable), `broadcast_id` (FK, nullable), `instruction_id` / `chef_response_id` / `comment_id` / `calendar_event_id` (nullable FKs), `wali_response_id` (FK, nullable), `message_key` (default `waliFeedback`), `read_at` (nullable), `created_at`
+- Device push + per-type preferences: **`DEVICE_NOTIFICATIONS.md`**.
 
 #### `rapport_comments`
 
@@ -180,9 +181,9 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 
 
-1. Office edits → **brouillon**.
+1. Office opens a table / liste / document editor — **no `rapports` row yet**. Editing stays in the client until **Enregistrer** (brouillon). First Enregistrer **creates** a `draft` (or updates an existing editable draft for that type). Leaving without Enregistrer creates nothing.
 
-2. **Envoyer au wali** → `pending_chef` (chef gate required) or `submitted` + version snapshot (`submitted_at` on current version).
+2. **Envoyer au wali** → `pending_chef` (chef gate required) or `submitted` + version snapshot (`submitted_at` on current version). Requires a persisted draft (at least one Enregistrer).
 
 3. Wali opens → under_review; may **confirmer**, **demander modification**, or **lu sans commentaire**.
 
@@ -221,7 +222,7 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 - Wali: office user list → service tree → content by kind; presentation like Excel/Word.
 
-- Office: service tree, draft/save, version archive button, notification bell; **Modifier après envoi** on awaiting Chef/Wali banner (confirm → draft).
+- Office: service tree, draft/save (first Enregistrer creates the row), version archive button, notification bell; **Modifier après envoi** on awaiting Chef/Wali banner (confirm → draft).
 
 - **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**. Discussion inbox: `?view=discussion` (New / All) — see **`RAPPORT_DISCUSSION.md`**.
 - **Global rapport lists** (`/admin/rapports`, `/office/rapports`, `/wali/rapports`, `/chef/rapports`): optional title **search** query param (`search`) filters by rapport title (`iLike`); same search field in UI across roles.

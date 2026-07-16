@@ -16,6 +16,7 @@ module.exports = (sequelize) =>
       access_role_template_id: { type: DataTypes.BIGINT, allowNull: true },
       use_custom_permissions: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       is_blocked: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      calendar_reminders_checked_on: { type: DataTypes.DATEONLY, allowNull: true },
       created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
     },
     {

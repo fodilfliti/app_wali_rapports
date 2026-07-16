@@ -23,6 +23,17 @@ const ROLES = [
     ),
   },
   {
+    key: 'chef',
+    labelKey: 'guestFeatureChefLabel',
+    descKey: 'guestFeatureChefDesc',
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 11l3 3 5-6" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 3l7 4v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7l7-4z" fill="none" stroke="currentColor" strokeWidth="1.75" />
+      </svg>
+    ),
+  },
+  {
     key: 'wali',
     labelKey: 'guestFeatureWaliLabel',
     descKey: 'guestFeatureWaliDesc',
@@ -30,17 +41,6 @@ const ROLES = [
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 3l7 4v10l-7 4-7-4V7l7-4z" fill="none" stroke="currentColor" strokeWidth="1.75" />
         <path d="M12 12l7-4M12 12v9M12 12L5 8" fill="none" stroke="currentColor" strokeWidth="1.75" />
-      </svg>
-    ),
-  },
-  {
-    key: 'admin',
-    labelKey: 'guestFeatureAdminLabel',
-    descKey: 'guestFeatureAdminDesc',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" strokeWidth="1.75" />
-        <path d="M5 20c.8-3.2 3.4-5 7-5s6.2 1.8 7 5" fill="none" stroke="currentColor" strokeWidth="1.75" />
       </svg>
     ),
   },

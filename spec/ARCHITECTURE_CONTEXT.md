@@ -88,7 +88,7 @@ erDiagram
 3. **Shared Context & Extensions**
    - `uploaded_files`: Tracks attachments (`image`, `video`, `file`) uploaded via rapport fields or Wali broadcasts.
    - `rapport_calendar_events`: Events linked to reports displayed on the Wali's calendar interface.
-   - `notifications`: Alerts dispatched to office users on Wali feedback or shared broadcasts (`message_key = 'waliFeedback'` or `'waliBroadcast'`).
+   - `notifications`: Alerts on Wali/Chef feedback, discussion, broadcasts, pending inbox, calendar reminders — plus Web Push via `web_push_subscriptions` and prefs in `user_notification_preferences` (`DEVICE_NOTIFICATIONS.md`).
    - `wali_broadcasts`: System bulletins created by the Wali to share documents globally or with select recipients. Comments are tracked in `wali_broadcast_comments` and read markers in `wali_broadcast_recipients`.
 
 ---
@@ -97,7 +97,7 @@ erDiagram
 
 Routes are partitioned by role security barriers under the prefix `/api`:
 
-- **Public / auth**: `POST /auth/login`, `POST /auth/refresh` (HttpOnly refresh cookie), `POST /auth/logout` — access JWT 15m HS256; refresh 7d — `spec/modules/AUTH.md`.
+- **Public / auth**: `POST /auth/login`, `POST /auth/refresh` (HttpOnly refresh cookie), `POST /auth/logout` — access JWT 15m HS256; refresh 7d — `spec/modules/AUTH.md`. Also notification prefs + Web Push subscribe under `/auth/me/notification-preferences` and `/auth/push/*`.
 - **Admin Routing (`/admin/*`)**:
   - Bound to `requireRole('ADMIN')`.
   - Admin handles municipalities (`/admin/municipalities`), users (`/admin/users`), services (`/admin/services`), schemas (`/admin/table-schemas`), and departments.
@@ -163,12 +163,26 @@ When creating a new report within a service content hub:
 | `npm run db:seed-demo` | `backend/scripts/seed-demo-presentation.js` | Full presentation reset + seed (Hydraulique + Investissement) |
 | `npm run db:seed-test` | `backend/scripts/seed-test-fixtures.js` | Minimal automated-test fixtures |
 
-**Demo seed (`db:seed-demo`)** clears domain rapports/services (not admin users/communes) and creates:
+**Demo seed (`db:seed-demo`)** — each run **wipes then reseeds** (safe while iterating):
+
+Clears: departments/services, all rapports & related tables, grants, instructions, broadcasts, guide videos, refresh tokens, audit logs, permission overrides, **all non-admin users**, **all directions**, and soft-hide flags on dairas/communes.
+
+Keeps: `ADMIN` account(s), Tlemcen dairas/communes (`db:seed-dev`), access role templates.
+
+Then creates:
 
 - Two departments/services: **Hydraulique**, **Investissement**
 - All four `content_kind` examples: table grid, document compose, fiche lecture, commune list (table + complex)
-- Rich fiches with `rich_html`, embedded tables, images from `backend/storage/uploads/`
-- Sample Wali responses, notifications, calendar events, version history
-- Test logins: **`office1`**, **`wali1`** — password `TEST_USER_PASSWORD` or default **`Test1234!`**
+- Liste **targets** mixing commune / daira / direction + `changed_entity_keys` across versions
+- Rich fiches with `rich_html`, embedded tables; media/broadcast/guide files reuse `backend/storage/uploads/` when present
+- Lifecycle samples: `draft`, `pending_chef`, `submitted`, `under_review`, `changes_requested` (`chef_gate=bypass`), `acknowledged`, plus soft-hidden rapport/type and org refs
+- Chef responses, rapport discussion comments, Wali instructions, Wali broadcast (office + Chef), guide videos (all audiences including Admin-secret)
+- Document templates, calendar events, notifications
+- Fresh demo logins (password `TEST_USER_PASSWORD` or default **`Test1234!`**):
+  - **`admin`** (from `db:seed-dev`) — compte admin
+  - **`office1`** — Éditeur (manage both services)
+  - **`office2`** — Lecture (view Hydraulique only)
+  - **`chef1`** — رئيس الديوان
+  - **`wali1`** — compte wali
 
 Re-run anytime during demos: `cd backend && npm run db:seed-demo`.

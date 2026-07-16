@@ -14,8 +14,23 @@ const {
 } = require("../modules/auth/refreshTokenService");
 const { requireAuth, attachUser, checkBlocked } = require("../middleware/auth");
 const { validateBody } = require("../middleware/validateBody");
-const { changeCodeSchema, profilePatchSchema } = require("../validation/schemas/auth");
+const {
+  changeCodeSchema,
+  profilePatchSchema,
+  notificationPrefsSchema,
+  pushSubscribeSchema,
+  pushUnsubscribeSchema,
+} = require("../validation/schemas/auth");
 const { getEnv } = require("../config/env");
+const {
+  getPreferences,
+  upsertPreferences,
+} = require("../modules/notifications/preferenceService");
+const {
+  getVapidPublicKey,
+  upsertSubscription,
+  removeSubscription,
+} = require("../modules/notifications/pushService");
 
 const authRouter = express.Router();
 
@@ -165,6 +180,109 @@ authRouter.post(
       next(e);
     }
   }
+);
+
+authRouter.get(
+  "/me/notification-preferences",
+  requireAuth,
+  attachUser,
+  checkBlocked,
+  async (req, res, next) => {
+    try {
+      res.json({ preferences: await getPreferences(req.user.id) });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+authRouter.put(
+  "/me/notification-preferences",
+  requireAuth,
+  attachUser,
+  checkBlocked,
+  validateBody(notificationPrefsSchema),
+  async (req, res, next) => {
+    try {
+      const preferences = await upsertPreferences(req.user.id, req.validatedBody);
+      await audit(
+        req.user.id,
+        "NOTIFICATION_PREFS_UPDATE",
+        { user_id: req.user.id, fields: Object.keys(req.validatedBody) },
+        { req },
+      );
+      res.json({ preferences });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+authRouter.get(
+  "/push/vapid-public-key",
+  requireAuth,
+  attachUser,
+  checkBlocked,
+  async (req, res, next) => {
+    try {
+      const key = getVapidPublicKey();
+      if (!key) return res.status(503).json({ error: "pushNotConfigured" });
+      res.json({ publicKey: key });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+authRouter.post(
+  "/push/subscribe",
+  requireAuth,
+  attachUser,
+  checkBlocked,
+  validateBody(pushSubscribeSchema),
+  async (req, res, next) => {
+    try {
+      if (req.user.role === "ADMIN") {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const sub = await upsertSubscription(
+        req.user.id,
+        req.validatedBody,
+        req.headers["user-agent"],
+      );
+      await audit(
+        req.user.id,
+        "PUSH_SUBSCRIBE",
+        { subscription_id: sub.id },
+        { req },
+      );
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+authRouter.delete(
+  "/push/subscribe",
+  requireAuth,
+  attachUser,
+  checkBlocked,
+  validateBody(pushUnsubscribeSchema),
+  async (req, res, next) => {
+    try {
+      await removeSubscription(req.user.id, req.validatedBody.endpoint);
+      await audit(
+        req.user.id,
+        "PUSH_UNSUBSCRIBE",
+        { endpoint: String(req.validatedBody.endpoint).slice(0, 120) },
+        { req },
+      );
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  },
 );
 
 module.exports = { authRouter };

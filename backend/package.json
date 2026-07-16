@@ -34,6 +34,7 @@
     "pino-http": "^10.5.0",
     "sequelize": "^6.37.3",
     "sequelize-cli": "^6.6.2",
+    "web-push": "^3.6.7",
     "zod": "^3.25.76"
   },
   "devDependencies": {

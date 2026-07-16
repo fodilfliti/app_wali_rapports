@@ -633,6 +633,34 @@ body {
   line-height: 1.2;
 }
 
+.hubCountBadge--inline {
+  position: static;
+  inset: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.hubTileCardBadge {
+  position: absolute;
+  top: 0.45rem;
+  inset-inline-end: 0.45rem;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.hubTileCardBadge .hubCountBadge {
+  position: static;
+  inset: auto;
+}
+
+.hubTileCardBadge--start,
+.hubTileCard--hasMenu .hubTileCardBadge {
+  inset-inline-end: auto;
+  inset-inline-start: 0.45rem;
+}
+
 .card {
   background: var(--color-surface);
   border-radius: var(--radius-card);
@@ -1136,6 +1164,207 @@ label {
   width: min(480px, 100%);
   max-height: 90vh;
   overflow: auto;
+}
+
+.modalCardWide {
+  width: min(520px, 100%);
+}
+
+.notifSettingsModal h2 {
+  margin-bottom: 0.35rem;
+}
+
+.notifSettingsLead {
+  margin: 0 0 1rem;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.notifSettingsBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.notifSettingsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.notifSettingsSection--dimmed {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.notifSettingsSectionTitle {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--color-primary);
+}
+
+.notifSettingsBanner {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(180, 35, 24, 0.08);
+  border: 1px solid rgba(180, 35, 24, 0.2);
+  color: var(--color-danger);
+  font-size: 0.88rem;
+}
+
+.notifTypeCards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.notifSwitchCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  text-align: start;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease;
+  font: inherit;
+  color: inherit;
+  min-height: 3.25rem;
+}
+
+.notifSwitchCard:hover:not(:disabled) {
+  border-color: var(--color-primary-light);
+  box-shadow: var(--shadow-card);
+}
+
+.notifSwitchCard:active:not(:disabled) {
+  transform: scale(0.992);
+}
+
+.notifSwitchCard:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.notifSwitchCard--on {
+  border-color: rgba(13, 79, 79, 0.35);
+  background: rgba(13, 79, 79, 0.06);
+}
+
+.notifSwitchCard--device {
+  background: var(--color-accent-soft);
+  border-color: rgba(201, 162, 39, 0.45);
+}
+
+.notifSwitchCard--device.notifSwitchCard--on {
+  background: linear-gradient(
+    135deg,
+    rgba(13, 79, 79, 0.1),
+    var(--color-accent-soft)
+  );
+  border-color: var(--color-primary-light);
+}
+
+.notifSwitchCard--disabled,
+.notifSwitchCard:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.notifSwitchCard--busy {
+  opacity: 0.75;
+}
+
+.notifSwitchCardText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.notifSwitchCardTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  line-height: 1.35;
+}
+
+.notifSwitchCardHelp {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  line-height: 1.4;
+}
+
+.notifStatusChip {
+  display: inline-flex;
+  margin-top: 0.25rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.notifStatusChip--on {
+  background: rgba(6, 118, 71, 0.12);
+  color: var(--color-success);
+}
+
+.notifStatusChip--off {
+  background: rgba(90, 112, 112, 0.12);
+  color: var(--color-muted);
+}
+
+.notifSwitchTrack {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: #c5d4d4;
+  transition: background 0.18s ease;
+}
+
+.notifSwitchCard--on .notifSwitchTrack {
+  background: var(--color-primary);
+}
+
+.notifSwitchThumb {
+  position: absolute;
+  top: 0.18rem;
+  inset-inline-start: 0.18rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.18s ease;
+}
+
+.notifSwitchCard--on .notifSwitchThumb {
+  transform: translateX(1.2rem);
+}
+
+[dir="rtl"] .notifSwitchCard--on .notifSwitchThumb {
+  transform: translateX(-1.2rem);
 }
 
 .modalActions {
@@ -3801,6 +4030,17 @@ label {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+.serviceActionHint {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: var(--color-accent-soft);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .serviceRapportSectionTitle {

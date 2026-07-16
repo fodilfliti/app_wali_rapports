@@ -9,6 +9,7 @@ const {
 const { saveUploadedBuffer, serializeFile } = require("../../services/uploadService");
 const { audit } = require("../../services/audit");
 const { Op } = require("sequelize");
+const { notifyUsers } = require("../notifications/notifyService");
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -105,14 +106,11 @@ async function createInstruction({ files = [], body }, actor, req) {
     }))
   );
 
-  await Notification.bulkCreate(
-    recipientIds.map((user_id) => ({
-      user_id,
-      instruction_id: instruction.id,
-      message_key: "waliInstruction",
-      rapport_id: null
-    }))
-  );
+  await notifyUsers({
+    userIds: recipientIds,
+    instruction_id: instruction.id,
+    message_key: "waliInstruction",
+  });
 
   await audit(actor.id, "WALI_INSTRUCTION_CREATE", { instruction_id: instruction.id }, { req });
   return getInstruction(instruction.id, { asWali: true });

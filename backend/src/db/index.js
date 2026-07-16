@@ -36,6 +36,8 @@ const WaliInstructionRecipient = require("./models/WaliInstructionRecipient")(se
 const RapportComment = require("./models/RapportComment")(sequelize);
 const GuideVideo = require("./models/GuideVideo")(sequelize);
 const RefreshToken = require("./models/RefreshToken")(sequelize);
+const UserNotificationPreference = require("./models/UserNotificationPreference")(sequelize);
+const WebPushSubscription = require("./models/WebPushSubscription")(sequelize);
 
 Daira.hasMany(Municipality, { foreignKey: "daira_id", as: "municipalities" });
 Municipality.belongsTo(Daira, { foreignKey: "daira_id", as: "daira" });
@@ -45,6 +47,11 @@ User.belongsTo(Department, { foreignKey: "department_id", as: "department" });
 
 User.hasMany(RefreshToken, { foreignKey: "user_id", as: "refreshTokens" });
 RefreshToken.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+User.hasOne(UserNotificationPreference, { foreignKey: "user_id", as: "notificationPreferences" });
+UserNotificationPreference.belongsTo(User, { foreignKey: "user_id", as: "user" });
+User.hasMany(WebPushSubscription, { foreignKey: "user_id", as: "pushSubscriptions" });
+WebPushSubscription.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 AccessRoleTemplate.hasMany(AccessRoleTemplatePermission, { foreignKey: "role_template_id", as: "permissions" });
 AccessRoleTemplatePermission.belongsTo(AccessRoleTemplate, { foreignKey: "role_template_id" });
@@ -174,6 +181,8 @@ RapportVersion.hasMany(RapportComment, { foreignKey: "rapport_version_id", as: "
 RapportComment.belongsTo(RapportVersion, { foreignKey: "rapport_version_id", as: "rapportVersion" });
 RapportComment.hasMany(Notification, { foreignKey: "comment_id", as: "notifications" });
 Notification.belongsTo(RapportComment, { foreignKey: "comment_id", as: "comment" });
+RapportCalendarEvent.hasMany(Notification, { foreignKey: "calendar_event_id", as: "notifications" });
+Notification.belongsTo(RapportCalendarEvent, { foreignKey: "calendar_event_id", as: "calendarEvent" });
 
 GuideVideo.belongsTo(UploadedFile, { foreignKey: "uploaded_file_id", as: "file" });
 UploadedFile.hasMany(GuideVideo, { foreignKey: "uploaded_file_id", as: "guideVideos" });
@@ -217,5 +226,7 @@ module.exports = {
   WaliInstructionRecipient,
   RapportComment,
   GuideVideo,
-  RefreshToken
+  RefreshToken,
+  UserNotificationPreference,
+  WebPushSubscription
 };

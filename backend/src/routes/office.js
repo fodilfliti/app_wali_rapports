@@ -107,6 +107,7 @@ const {
 const { singleUpload } = require("../middleware/upload");
 const {
   assertRapportAccess,
+  assertServiceAccess,
   resolveAccessLevel,
 } = require("../modules/rapports/serviceAccessService");
 const documentTemplateService = require("../modules/rapports/documentTemplateService");
@@ -476,6 +477,32 @@ officeRouter.get("/services/:serviceId/documents", async (req, res, next) => {
   }
 });
 
+officeRouter.get(
+  "/services/:serviceId/documents/draft-init",
+  async (req, res, next) => {
+    try {
+      const preview = await workspaceService.previewDocumentCreate(
+        req.params.serviceId,
+        req.query.rapport_type_id,
+        req.user,
+        {
+          template_id: req.query.template_id
+            ? Number(req.query.template_id)
+            : null,
+          skip_default:
+            req.query.skip_default === "1" ||
+            req.query.skip_default === "true",
+        },
+      );
+      res.json(preview);
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
 officeRouter.post("/services/:serviceId/documents", async (req, res, next) => {
   try {
     const rapport = await workspaceService.createDocument(
@@ -486,6 +513,9 @@ officeRouter.post("/services/:serviceId/documents", async (req, res, next) => {
       {
         template_id: req.body?.template_id || null,
         skip_default: !!req.body?.skip_default,
+        title: req.body?.title || null,
+        reference_date: req.body?.reference_date || null,
+        data_json: req.body?.data_json || null,
       },
     );
     res.status(201).json({ rapport });
@@ -736,6 +766,11 @@ officeRouter.post(
   validateBody(rapportCreateSchema),
   async (req, res, next) => {
     try {
+      await assertServiceAccess(
+        req.user,
+        req.validatedBody.service_id,
+        "manage",
+      );
       const rapport = await rapportService.createRapport(
         req.validatedBody,
         req.user,
@@ -743,6 +778,7 @@ officeRouter.post(
       );
       res.status(201).json({ rapport });
     } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
       next(e);
     }
   },

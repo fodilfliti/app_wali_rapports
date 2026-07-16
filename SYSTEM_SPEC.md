@@ -23,6 +23,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
   - **Rapport discussion (مناقشة التقرير)**: `spec/modules/RAPPORT_DISCUSSION.md`
   - **Guide videos (فيديوهات الدليل)**: `spec/modules/GUIDE_VIDEOS.md`
   - **Authentication & sessions (access JWT + refresh cookie)**: `spec/modules/AUTH.md`
+  - **Device notifications (Web Push + prefs + calendar reminders)**: `spec/modules/DEVICE_NOTIFICATIONS.md`
 
 ### Cross-cutting updates (initial)
 
@@ -67,7 +68,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **PDF pagination fix:** no blank intermediate pages; tables that fit on the current portrait page stay there — `spec/CORE.md`.
 - **Wali fiche export block:** bordered « رد الوالي » section after fiche body (PDF + Word) — `spec/CORE.md`, `spec/modules/RAPPORT_SERVICE_TYPES.md`.
 - **Wali inbox UI:** status row colors, legend, « جديد » badge, service/type columns; **single inbox counter** in top bar (`WaliInboxBell`) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
-- **Demo presentation seed:** `npm run db:seed-demo` — Hydraulique + Investissement with rich fiches, embedded tables, storage media — `spec/ARCHITECTURE_CONTEXT.md` § Demo data.
+- **Demo presentation seed:** `npm run db:seed-demo` — wipe-then-reseed (domain + non-admin users + directions); Hydraulique + Investissement, all 4 content kinds, Chef gate / bypass, discussions, instructions, broadcasts (incl. Chef), guide videos, soft-hide samples, commune/daira/direction liste targets — `spec/ARCHITECTURE_CONTEXT.md` § Demo data.
 
 ### Cross-cutting updates (2026-07)
 
@@ -80,6 +81,8 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Readable backend logs:** pino short access lines + level by status; 5xx stack / 4xx warn; `LOG_LEVEL=info` day-to-day — `spec/CORE.md` § App / console logging.
 - **Refresh sessions:** 15m access JWT + 7d HttpOnly refresh cookie (rotation, reuse detection, revoke on logout/block/password) — `spec/modules/AUTH.md`.
 - **Org ref soft-hide:** admin hide/restore for dairas (cascade communes), communes, directions via `hidden_at` — no hard delete; new entity catalogs exclude hidden — `ORGANIZATION.md`, `RAPPORT_SERVICE_TYPES.md`.
+- **Explicit draft create:** workspace GET / “Nouveau rapport” navigation never inserts a `rapports` row; first **Enregistrer** creates `draft` (leave without save = nothing) — `RAPPORTS.md`, `RAPPORT_SERVICE_TYPES.md`.
+- **Device notifications:** Web Push + per-type user prefs; Chef notified on `pending_chef`, Wali only after Chef accept; optimistic today/tomorrow calendar reminders (no polling) — `spec/modules/DEVICE_NOTIFICATIONS.md`.
 
 ### What to do when adding a new feature
 

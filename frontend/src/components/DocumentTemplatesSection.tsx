@@ -9,6 +9,7 @@ import { TablePagination } from './TablePagination'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
+import { officeNewDocumentPath } from '../utils/rapportNavigation'
 
 type Props = {
   token: string
@@ -133,16 +134,14 @@ export function DocumentTemplatesSection({
   const pagedTemplates = paginateSlice(templates, page, DEFAULT_PAGE_SIZE)
 
   async function createRapport(typeId: number, templateId: number | null) {
-    try {
-      const res = await api.createDocument(token, serviceId, typeId, {
-        templateId: templateId ?? undefined,
+    setCreateForTypeId(null)
+    navigate(
+      officeNewDocumentPath(serviceId, {
+        rapportTypeId: typeId,
+        templateId,
         skipDefault: templateId == null,
-      })
-      setCreateForTypeId(null)
-      navigate(`/office/rapports/${res.rapport.id}/document`)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    }
+      }),
+    )
   }
 
   return (

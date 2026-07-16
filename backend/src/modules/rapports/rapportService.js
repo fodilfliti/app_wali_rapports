@@ -16,7 +16,12 @@ const {
 } = require("../../db");
 const { audit } = require("../../services/audit");
 const { loadSchemaBySlug } = require("./tableGridService");
-const { DEDICATED_NOTIFICATION_KEYS } = require("./notificationKeys");
+const {
+  DEDICATED_NOTIFICATION_KEYS,
+  disabledMessageKeys,
+} = require("./notificationKeys");
+const { notifyUsers, notifyActiveRole } = require("../notifications/notifyService");
+const { getPreferences } = require("../notifications/preferenceService");
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -87,7 +92,13 @@ const WALI_INBOX_STATUSES = [
  */
 async function officeDiscussionScopeIds(userId) {
   if (!userId) return new Set();
-  const [ownedRows, commentRows] = await Promise.all([
+  const { getAccessMapForUser } = require("./serviceAccessService");
+  const accessMap = await getAccessMapForUser(userId);
+  const serviceIds = Object.keys(accessMap)
+    .map(Number)
+    .filter(Boolean);
+
+  const [ownedRows, commentRows, serviceRows] = await Promise.all([
     Rapport.findAll({
       where: {
         [Op.or]: [
@@ -104,6 +115,17 @@ async function officeDiscussionScopeIds(userId) {
       group: ["rapport_id"],
       raw: true,
     }),
+    serviceIds.length
+      ? Rapport.findAll({
+          where: {
+            service_id: { [Op.in]: serviceIds },
+            hidden_at: null,
+            status: { [Op.ne]: "draft" },
+          },
+          attributes: ["id"],
+          raw: true,
+        })
+      : Promise.resolve([]),
   ]);
   const ids = new Set();
   for (const row of ownedRows) {
@@ -112,6 +134,10 @@ async function officeDiscussionScopeIds(userId) {
   }
   for (const row of commentRows) {
     const id = Number(row.rapport_id);
+    if (id) ids.add(id);
+  }
+  for (const row of serviceRows) {
+    const id = Number(row.id);
     if (id) ids.add(id);
   }
   return ids;
@@ -285,7 +311,11 @@ async function listRapports(query, opts = {}) {
       where.status = { [Op.in]: WALI_INBOX_STATUSES };
     }
   } else if (discussionOnly) {
-    const ids = await unreadDiscussionRapportIds(discussionUserId);
+    let ids = await unreadDiscussionRapportIds(discussionUserId);
+    if (opts.forOfficeUserId) {
+      const scope = await officeDiscussionScopeIds(opts.forOfficeUserId);
+      ids = ids.filter((id) => scope.has(id));
+    }
     if (!ids.length) {
       return { rapports: [], total: 0, page, pageSize };
     }
@@ -667,6 +697,31 @@ async function createRapport(data, actor, req) {
     err.status = 400;
     throw err;
   }
+
+  let data_json = data.data_json || {};
+  if (rapportType.content_kind === "commune_list") {
+    const { getIncludedEntityKeys } = require("./entityKeys");
+    if (!getIncludedEntityKeys(data_json)) {
+      const prevFinished = await Rapport.findOne({
+        where: {
+          service_id: data.service_id,
+          rapport_type_id: rapportType.id,
+          hidden_at: { [Op.ne]: null },
+        },
+        order: [["updated_at", "DESC"]],
+        include: [{ model: RapportVersion, as: "currentVersion" }],
+      });
+      const inherited = getIncludedEntityKeys(
+        prevFinished?.currentVersion?.data_json || {},
+      );
+      if (inherited) {
+        data_json = { ...data_json, included_entity_keys: inherited };
+      }
+    }
+    if (!data_json.communes) data_json = { ...data_json, communes: {} };
+    if (!data_json.entities) data_json = { ...data_json, entities: {} };
+  }
+
   const rapport = await Rapport.create({
     service_id: data.service_id,
     rapport_type_id: data.rapport_type_id,
@@ -685,7 +740,7 @@ async function createRapport(data, actor, req) {
   const version = await RapportVersion.create({
     rapport_id: rapport.id,
     version_number: 1,
-    data_json: data.data_json || {},
+    data_json,
     created_by_user_id: actor.id,
   });
   await rapport.update({ current_version_id: version.id });
@@ -935,21 +990,16 @@ async function submitRapport(id, actor, req) {
     owner_office_user_id: actor.id,
   });
 
-  if (!needsChef) {
-    // Notify all chef cabinet users (info only)
-    const chefs = await User.findAll({
-      where: { role: "CHEF_CABINET", is_blocked: false },
-      attributes: ["id"],
+  if (needsChef) {
+    await notifyActiveRole("CHEF_CABINET", {
+      message_key: "rapportPendingChef",
+      rapport_id: rapport.id,
     });
-    await Promise.all(
-      chefs.map((c) =>
-        Notification.create({
-          user_id: c.id,
-          rapport_id: rapport.id,
-          message_key: "rapportResubmittedBypass",
-        }),
-      ),
-    );
+  } else {
+    await notifyActiveRole("CHEF_CABINET", {
+      message_key: "rapportResubmittedBypass",
+      rapport_id: rapport.id,
+    });
   }
 
   await audit(
@@ -1109,36 +1159,27 @@ async function waliRespond(id, data, actor, req) {
     let messageKey = "waliAccepted";
     if (followUpStatus === "pending") messageKey = "waliAcceptedPending";
     if (followUpStatus === "completed") messageKey = "waliAcceptedCompleted";
-    await Notification.create({
-      user_id: notifyUserId,
+    await notifyUsers({
+      userIds: [notifyUserId],
       rapport_id: rapport.id,
       wali_response_id: response.id,
       message_key: messageKey,
     });
   } else if (notifyUserId && data.decision === "changes_requested") {
-    await Notification.create({
-      user_id: notifyUserId,
+    await notifyUsers({
+      userIds: [notifyUserId],
       rapport_id: rapport.id,
       wali_response_id: response.id,
       message_key: "waliChangesRequested",
     });
-    const chefs = await User.findAll({
-      where: { role: "CHEF_CABINET", is_blocked: false },
-      attributes: ["id"],
+    await notifyActiveRole("CHEF_CABINET", {
+      rapport_id: rapport.id,
+      wali_response_id: response.id,
+      message_key: "waliChangesRequested",
     });
-    await Promise.all(
-      chefs.map((c) =>
-        Notification.create({
-          user_id: c.id,
-          rapport_id: rapport.id,
-          wali_response_id: response.id,
-          message_key: "waliChangesRequested",
-        }),
-      ),
-    );
   } else if (notifyUserId && data.decision === "viewed" && bodyText) {
-    await Notification.create({
-      user_id: notifyUserId,
+    await notifyUsers({
+      userIds: [notifyUserId],
       rapport_id: rapport.id,
       wali_response_id: response.id,
       message_key: "waliFeedback",
@@ -1202,13 +1243,17 @@ async function chefRespond(id, data, actor, req) {
       updated_at: new Date(),
     });
     if (notifyUserId) {
-      await Notification.create({
-        user_id: notifyUserId,
+      await notifyUsers({
+        userIds: [notifyUserId],
         rapport_id: rapport.id,
         chef_response_id: response.id,
         message_key: "chefAccepted",
       });
     }
+    await notifyActiveRole("WALI", {
+      message_key: "rapportPendingWali",
+      rapport_id: rapport.id,
+    });
   } else if (data.decision === "changes_requested") {
     await reopenDraftAfterSubmit(rapport, actor);
     await rapport.update({
@@ -1217,8 +1262,8 @@ async function chefRespond(id, data, actor, req) {
       updated_at: new Date(),
     });
     if (notifyUserId) {
-      await Notification.create({
-        user_id: notifyUserId,
+      await notifyUsers({
+        userIds: [notifyUserId],
         rapport_id: rapport.id,
         chef_response_id: response.id,
         message_key: "chefChangesRequested",
@@ -1227,8 +1272,8 @@ async function chefRespond(id, data, actor, req) {
   } else {
     await rapport.update({ status: "pending_chef", updated_at: new Date() });
     if (notifyUserId && bodyText) {
-      await Notification.create({
-        user_id: notifyUserId,
+      await notifyUsers({
+        userIds: [notifyUserId],
         rapport_id: rapport.id,
         chef_response_id: response.id,
         message_key: "chefFeedback",
@@ -1298,9 +1343,14 @@ async function getRapportVersion(rapportId, versionId) {
 }
 
 async function listNotifications(userId, unreadOnly = false) {
+  const prefs = await getPreferences(userId);
+  const hiddenKeys = [
+    ...DEDICATED_NOTIFICATION_KEYS,
+    ...disabledMessageKeys(prefs),
+  ];
   const where = {
     user_id: userId,
-    message_key: { [Op.notIn]: DEDICATED_NOTIFICATION_KEYS },
+    message_key: { [Op.notIn]: [...new Set(hiddenKeys)] },
   };
   if (unreadOnly) where.read_at = null;
   return Notification.findAll({

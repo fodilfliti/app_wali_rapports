@@ -26,7 +26,7 @@ type Props = {
   onEmbeddedTablesChange?: (tables: EmbeddedTable[]) => void
   editable?: boolean
   token: string
-  rapportId: number
+  rapportId?: number
   serviceId?: number
 }
 
@@ -209,6 +209,9 @@ function RichDocumentEditorInner({
         onOpenSchemaTablePick={serviceId ? () => setPickOpen(true) : undefined}
         onChange={handleHtmlChange}
         onUpload={async (file) => {
+          if (!rapportId) {
+            throw new Error('rapportTitleRequired')
+          }
           const res = await api.uploadRapportFile(token, rapportId, file)
           return { id: res.file.id, url: fileUrl(token, res.file) }
         }}

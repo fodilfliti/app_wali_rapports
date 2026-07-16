@@ -56,7 +56,9 @@ Table `rapport_calendar_events`
 | `created_by_user_id` | BIGINT | FK to users |
 | `created_at`, `updated_at` | DATE | Timestamps |
 
-Office users manage events on draft/editable rapports. Events appear on the **Wali hub calendar** (`GET /wali/calendar`); they are **not** appended to PDF/Word export files. Help text in the calendar editor should reflect Wali calendar visibility only.
+Office users manage events on draft/editable rapports. Events appear on the **Wali hub calendar** (`GET /wali/calendar`) and Chef calendar; they are **not** appended to PDF/Word export files. Help text in the calendar editor should reflect Wali calendar visibility only.
+
+**Today / tomorrow reminders:** active Wali + Chef receive in-app + Web Push for events on today / tomorrow (`calendarToday` / `calendarTomorrow`), with optimistic once-per-day hub-counts scan and immediate fanout on save — see `DEVICE_NOTIFICATIONS.md`.
 
 ### Rapport views
 

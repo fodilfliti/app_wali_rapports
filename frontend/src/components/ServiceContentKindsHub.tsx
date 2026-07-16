@@ -56,6 +56,10 @@ export function ServiceContentKindsHub({
   const byKind = Object.fromEntries(summaries.map((s) => [s.content_kind, s]))
   const ordered = CONTENT_KINDS_ORDER.map((kind) => byKind[kind]).filter(Boolean)
   const canManageTypes = mode === 'office' && manageTypes && accessLevel === 'manage'
+  const totalActionCount = ordered.reduce(
+    (sum, s) => sum + (Number(s.action_count) || 0),
+    0,
+  )
 
   return (
     <div className="page">
@@ -92,6 +96,12 @@ export function ServiceContentKindsHub({
         <BackButton to={backTo} fallbackTo={backTo} replace />
       </div>
 
+      {mode === 'office' && totalActionCount > 0 ? (
+        <p className="serviceActionHint" role="status">
+          {t('serviceActionHint')}
+        </p>
+      ) : null}
+
       {canManageTypes && onShowHiddenTypesChange ? (
         <div className="rapportListToolbar">
           <RapportListScopeFilter
@@ -117,7 +127,7 @@ export function ServiceContentKindsHub({
               <div className="serviceRapportSectionHeader">
                 <h2 className="serviceRapportSectionTitle">{t(`contentKind_${summary.content_kind}`)}</h2>
                 {Number(summary.action_count) > 0 ? (
-                  <HubCountBadge count={Number(summary.action_count)} />
+                  <HubCountBadge count={Number(summary.action_count)} variant="inline" />
                 ) : null}
               </div>
               <div className="hubGrid hubGridServices serviceRapportSectionGrid">

@@ -63,6 +63,7 @@ import { ServiceContentKindsHub } from "../components/ServiceContentKindsHub";
 import {
   isDirectWorkspaceKind,
   localizedRapportTypeName,
+  officeNewDocumentPath,
   officeRapportTypeListPath,
   officeRapportTypeWorkspacePath,
   officeServiceHubPath,
@@ -104,6 +105,7 @@ export function OfficeTableGridPage({ token }: Props) {
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
+  const location = useLocation();
   const [workspace, setWorkspace] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
@@ -130,7 +132,7 @@ export function OfficeTableGridPage({ token }: Props) {
         rapportId,
       });
       setWorkspace(ws);
-      setTitle(ws.rapport?.title || "");
+      setTitle(ws.rapport?.title || ws.suggestedTitle || "");
       const table = ws.tableData?.tables?.[0] || {};
       setRows(table.rows || []);
       setMediaRows(table.media_rows || []);
@@ -144,6 +146,9 @@ export function OfficeTableGridPage({ token }: Props) {
           .getCalendarEvents(token, ws.rapport.id)
           .then((r) => setCalendarEvents(r.events || []))
           .catch(() => {});
+      } else {
+        setMediaFiles({});
+        setCalendarEvents([]);
       }
       setTableMeta({
         title_ar: table.title_ar,
@@ -174,26 +179,64 @@ export function OfficeTableGridPage({ token }: Props) {
         : workspace.service.name_ar
       : t("navRapports");
 
-  async function saveForPreview() {
-    if (!workspace?.rapport?.id) return;
-    const patched = await patchRapportTitle(token, workspace.rapport.id, title);
+  async function ensureTableRapportId(): Promise<number> {
+    if (workspace?.rapport?.id) return workspace.rapport.id;
+    if (!workspace?.rapportType?.id) {
+      throw new Error("errorGeneric");
+    }
+    const trimmed = title.trim();
+    if (!trimmed) {
+      const err = new Error("rapportTitleRequired");
+      throw err;
+    }
+    const { rapport } = await api.createRapport(token, {
+      service_id: sid,
+      rapport_type_id: workspace.rapportType.id,
+      title: trimmed,
+      data_json: {
+        tables: [
+          {
+            key: "main",
+            rows,
+            media_rows: mediaRows,
+            ...tableMeta,
+          },
+        ],
+      },
+    });
+    setWorkspace((prev: any) => (prev ? { ...prev, rapport } : prev));
+    const next = new URLSearchParams(searchParams);
+    next.set("rapport_id", String(rapport.id));
+    if (workspace.rapportType.id) {
+      next.set("rapport_type_id", String(workspace.rapportType.id));
+    }
+    navigate(
+      { pathname: location.pathname, search: `?${next.toString()}` },
+      { replace: true },
+    );
+    return rapport.id as number;
+  }
+
+  async function saveForPreview(): Promise<void> {
+    const rid = await ensureTableRapportId();
+    const patched = await patchRapportTitle(token, rid, title);
     setTitle(patched.title);
-    await api.saveTableData(token, workspace.rapport.id, {
+    await api.saveTableData(token, rid, {
       rows,
       table_key: "main",
       media_rows: mediaRows,
       ...tableMeta,
     });
-    await api.saveCalendarEvents(token, workspace.rapport.id, calendarEvents);
+    await api.saveCalendarEvents(token, rid, calendarEvents);
   }
 
   async function save() {
-    if (!workspace?.rapport?.id) return;
+    if (!workspace?.editable) return;
     setSaving(true);
     try {
       await saveForPreview();
       snack.show(t("save"), "success");
-      load();
+      await load();
     } catch (e) {
       const msg =
         e instanceof Error && e.message === "rapportTitleRequired"
@@ -206,14 +249,23 @@ export function OfficeTableGridPage({ token }: Props) {
   }
 
   async function submit() {
-    if (!workspace?.rapport?.id) return;
+    if (!workspace?.editable) return;
     setSubmitting(true);
     try {
-      await saveForPreview();
-      await api.submitRapport(token, workspace.rapport.id);
+      const id = await ensureTableRapportId();
+      const patched = await patchRapportTitle(token, id, title);
+      setTitle(patched.title);
+      await api.saveTableData(token, id, {
+        rows,
+        table_key: "main",
+        media_rows: mediaRows,
+        ...tableMeta,
+      });
+      await api.saveCalendarEvents(token, id, calendarEvents);
+      await api.submitRapport(token, id);
       notifyHubCountsRefresh();
       snack.show(t("submitRapport"), "success");
-      load();
+      await load();
     } catch (e) {
       const msg =
         e instanceof Error && e.message === "rapportTitleRequired"
@@ -788,15 +840,13 @@ export function OfficeDocumentsPage({
     templateId: number | null,
     skipDefault = false,
   ) {
-    try {
-      const res = await api.createDocument(token, sid, typeId, {
+    navigate(
+      officeNewDocumentPath(sid, {
+        rapportTypeId: typeId,
         templateId,
         skipDefault: templateId == null && skipDefault,
-      });
-      navigate(`/office/rapports/${res.rapport.id}/document`);
-    } catch {
-      snack.show(t("errorGeneric"), "error");
-    }
+      }),
+    );
   }
 
   const canEdit = data?.accessLevel === "manage";
@@ -969,12 +1019,29 @@ export function OfficeDocumentsPage({
 }
 
 export function OfficeDocumentEditorPage({ token }: Props) {
-  const { rapportId } = useParams();
-  const rid = Number(rapportId);
+  const { rapportId, serviceId } = useParams();
+  const [searchParams] = useSearchParams();
+  const ridParam = rapportId ? Number(rapportId) : NaN;
+  const sid = serviceId ? Number(serviceId) : NaN;
+  const isNewDraft = !Number.isFinite(ridParam) && Number.isFinite(sid);
+  const newTypeId = searchParams.get("rapport_type_id")
+    ? Number(searchParams.get("rapport_type_id"))
+    : undefined;
+  const newTemplateId = searchParams.get("template_id")
+    ? Number(searchParams.get("template_id"))
+    : null;
+  const newSkipDefault =
+    searchParams.get("skip_default") === "1" ||
+    searchParams.get("skip_default") === "true";
+
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
   const [rapport, setRapport] = useState<any>(null);
+  const [persistedId, setPersistedId] = useState<number | null>(
+    Number.isFinite(ridParam) ? ridParam : null,
+  );
+  const rid = persistedId ?? (Number.isFinite(ridParam) ? ridParam : 0);
   const [title, setTitle] = useState("");
   const [docData, setDocData] = useState<{
     rich_html_ar?: string;
@@ -997,6 +1064,11 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
   const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
+  const [newDraftMeta, setNewDraftMeta] = useState<{
+    service: any;
+    rapportType: any;
+  } | null>(null);
+  const [loadingNew, setLoadingNew] = useState(isNewDraft);
 
   const applyDocumentJson = useCallback((dj: any) => {
     const tables = dj?.embedded_tables || [];
@@ -1044,27 +1116,96 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   }, [rid, token, snack, t, applyDocumentJson]);
 
   useEffect(() => {
+    if (isNewDraft && newTypeId) {
+      setLoadingNew(true);
+      api
+        .previewDocumentCreate(token, sid, {
+          rapportTypeId: newTypeId,
+          templateId: newTemplateId,
+          skipDefault: newSkipDefault,
+        })
+        .then((preview) => {
+          setNewDraftMeta({
+            service: preview.service,
+            rapportType: preview.rapportType,
+          });
+          setTitle(preview.suggestedTitle || "");
+          setCanEdit(true);
+          applyDocumentJson(preview.data_json || {});
+          setVersions([]);
+          setWaliResponses([]);
+          setChefResponses([]);
+          setMediaFiles({});
+        })
+        .catch(() => snack.show(t("errorGeneric"), "error"))
+        .finally(() => setLoadingNew(false));
+      return;
+    }
     loadCurrent();
-  }, [loadCurrent]);
+  }, [
+    isNewDraft,
+    newTypeId,
+    newTemplateId,
+    newSkipDefault,
+    sid,
+    token,
+    snack,
+    t,
+    applyDocumentJson,
+    loadCurrent,
+  ]);
 
-  async function saveForPreview() {
-    const patched = await patchRapportTitle(token, rid, title);
+  async function ensureDocumentId(): Promise<number> {
+    if (rid) return rid;
+    if (!newTypeId || !Number.isFinite(sid)) {
+      throw new Error("errorGeneric");
+    }
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error("rapportTitleRequired");
+    }
+    const { rapport: created } = await api.createDocument(token, sid, newTypeId, {
+      skipDefault: true,
+      title: trimmed,
+      data_json: {
+        rich_html_ar: docData.rich_html_ar,
+        rich_html_fr: docData.rich_html_fr,
+        blocks: docData.blocks,
+        embedded_tables: embeddedTables,
+        media_rows: mediaRows,
+        calendar_events: calendarEvents,
+      },
+    });
+    setRapport(created);
+    setPersistedId(created.id);
+    navigate(`/office/rapports/${created.id}/document`, { replace: true });
+    return created.id as number;
+  }
+
+  async function persistDocument(): Promise<number> {
+    const id = await ensureDocumentId();
+    const patched = await patchRapportTitle(token, id, title);
     setTitle(patched.title);
     setRapport(patched.rapport);
-    await api.saveDocument(token, rid, {
+    await api.saveDocument(token, id, {
       rich_html_ar: docData.rich_html_ar,
       rich_html_fr: docData.rich_html_fr,
       blocks: docData.blocks,
       embedded_tables: embeddedTables,
       media_rows: mediaRows,
     });
-    await api.saveCalendarEvents(token, rid, calendarEvents);
+    await api.saveCalendarEvents(token, id, calendarEvents);
+    return id;
+  }
+
+  async function saveForPreview(): Promise<void> {
+    await persistDocument();
   }
 
   async function save() {
     setSaving(true);
     try {
-      await saveForPreview();
+      await persistDocument();
       snack.show(t("save"), "success");
     } catch (e) {
       const msg =
@@ -1080,8 +1221,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   async function submit() {
     setSubmitting(true);
     try {
-      await saveForPreview();
-      await api.submitRapport(token, rid);
+      const id = await persistDocument();
+      await api.submitRapport(token, id);
       notifyHubCountsRefresh();
       snack.show(t("submitRapport"), "success");
       loadCurrent();
@@ -1101,6 +1242,10 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     mode: "replace" | "append",
   ) {
     try {
+      if (!rid) {
+        snack.show(t("errorGeneric"), "error");
+        return;
+      }
       const res = await api.applyDocumentTemplate(token, rid, templateId, mode);
       const dj = res.rapport?.currentVersion?.data_json || {};
       const tables = dj.embedded_tables || [];
@@ -1119,11 +1264,13 @@ export function OfficeDocumentEditorPage({ token }: Props) {
 
   const editable =
     canEdit &&
-    rapport &&
-    ["draft", "changes_requested"].includes(rapport.status);
-  const docBackPath = rapport?.service_id
-    ? officeServiceHubPath(rapport.service_id)
-    : "/office/services";
+    (isNewDraft && !persistedId
+      ? true
+      : !!(rapport && ["draft", "changes_requested"].includes(rapport.status)));
+  const docBackPath =
+    rapport?.service_id || newDraftMeta?.service?.id
+      ? officeServiceHubPath(rapport?.service_id || newDraftMeta!.service.id)
+      : "/office/services";
 
   const docRemarksVersionId = useMemo(
     () =>
@@ -1142,6 +1289,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     [waliResponses, docRemarksVersionId],
   );
   async function finishCurrentRapport() {
+    if (!rid) return;
     setFinishing(true);
     try {
       await api.finishRapport(token, rid);
@@ -1160,6 +1308,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   }
 
   async function returnCurrentToDraft() {
+    if (!rid) return;
     setReturningToDraft(true);
     try {
       await api.returnRapportToDraft(token, rid);
@@ -1173,6 +1322,14 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     }
   }
 
+  if (loadingNew) {
+    return (
+      <div className="page">
+        <p className="muted">…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <div className="pageHeader row compact">
@@ -1180,18 +1337,24 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           title={title}
           onChange={setTitle}
           editable={!!editable}
-          fallback={t("navRapports")}
+          fallback={
+            newDraftMeta?.rapportType
+              ? localizedRapportTypeName(newDraftMeta.rapportType, i18n.language)
+              : t("navRapports")
+          }
         />
         {!canEdit ? <span className="badge">{t("accessView")}</span> : null}
-        <RapportVersionHeaderActions
-          rapportId={rid}
-          rapportType={rapport?.rapportType}
-          versions={versions}
-          showSentVersion={!editable}
-        />
+        {rid ? (
+          <RapportVersionHeaderActions
+            rapportId={rid}
+            rapportType={rapport?.rapportType || newDraftMeta?.rapportType}
+            versions={versions}
+            showSentVersion={!editable}
+          />
+        ) : null}
         {editable ? (
           <>
-            {ENABLE_DOCUMENT_TEMPLATES ? (
+            {ENABLE_DOCUMENT_TEMPLATES && rid ? (
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1223,11 +1386,13 @@ export function OfficeDocumentEditorPage({ token }: Props) {
             </BusyButton>
           </>
         ) : null}
-        <RapportExportButtons
-          token={token}
-          rapportId={rid}
-          onPreparePreview={editable ? saveForPreview : undefined}
-        />
+        {rid ? (
+          <RapportExportButtons
+            token={token}
+            rapportId={rid}
+            onPreparePreview={editable ? saveForPreview : undefined}
+          />
+        ) : null}
         <BackButton fallbackTo={docBackPath} />
       </div>
 
@@ -1246,8 +1411,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           data={{ ...docData, embedded_tables: embeddedTables }}
           editable
           token={token}
-          rapportId={rid}
-          serviceId={rapport?.service_id}
+          rapportId={rid || undefined}
+          serviceId={rapport?.service_id || newDraftMeta?.service?.id}
           onEmbeddedTablesChange={setEmbeddedTables}
           onChange={(locale, html) =>
             setDocData((prev) => ({
@@ -1263,11 +1428,11 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           data={docData}
           locale={i18n.language}
           token={token}
-          serviceId={rapport?.service_id}
+          serviceId={rapport?.service_id || newDraftMeta?.service?.id}
         />
       )}
 
-      {editable ? (
+      {editable && rid ? (
         <MediaRowsEditor
           rows={mediaRows}
           files={mediaFiles}
@@ -1280,18 +1445,20 @@ export function OfficeDocumentEditorPage({ token }: Props) {
             return res.file;
           }}
         />
-      ) : (
+      ) : rid ? (
         <MediaRowsView rows={mediaRows} files={mediaFiles} token={token} />
-      )}
+      ) : null}
 
       {ENABLE_DOCUMENT_TEMPLATES &&
       importPickOpen &&
-      rapport?.service_id &&
-      rapport?.rapport_type_id ? (
+      (rapport?.service_id || newDraftMeta?.service?.id) &&
+      (rapport?.rapport_type_id || newDraftMeta?.rapportType?.id) ? (
         <DocumentTemplatePickModal
           token={token}
-          serviceId={Number(rapport.service_id)}
-          rapportTypeId={Number(rapport.rapport_type_id)}
+          serviceId={Number(rapport?.service_id || newDraftMeta?.service?.id)}
+          rapportTypeId={Number(
+            rapport?.rapport_type_id || newDraftMeta?.rapportType?.id,
+          )}
           open={importPickOpen}
           mode="import"
           onClose={() => setImportPickOpen(false)}

@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const { RapportCalendarEvent, Rapport, Service, RapportType } = require("../../db");
 const { assertRapportAccess } = require("./serviceAccessService");
+const { remindAfterCalendarSave } = require("../notifications/calendarReminderService");
 
 function parseDateOnly(s) {
   if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(String(s))) return null;
@@ -44,6 +45,12 @@ async function replaceForRapport(rapportId, events, actor) {
     throw err;
   }
 
+  const existing = await RapportCalendarEvent.findAll({
+    where: { rapport_id: rapportId },
+  });
+  const existingById = new Map(existing.map((e) => [Number(e.id), e]));
+  const keepIds = new Set();
+
   const normalized = (events || []).map((e) => {
     const date = parseDateOnly(e.event_date);
     if (!date) {
@@ -52,6 +59,7 @@ async function replaceForRapport(rapportId, events, actor) {
       throw err;
     }
     return {
+      id: e.id != null ? Number(e.id) : null,
       rapport_id: rapportId,
       event_date: date,
       title_ar: String(e.title_ar || "").slice(0, 200),
@@ -63,11 +71,43 @@ async function replaceForRapport(rapportId, events, actor) {
     };
   });
 
-  await RapportCalendarEvent.destroy({ where: { rapport_id: rapportId } });
-  if (normalized.length) {
-    await RapportCalendarEvent.bulkCreate(normalized);
+  for (const item of normalized) {
+    if (item.id && existingById.has(item.id)) {
+      const row = existingById.get(item.id);
+      await row.update({
+        event_date: item.event_date,
+        title_ar: item.title_ar,
+        title_fr: item.title_fr,
+        note_ar: item.note_ar,
+        note_fr: item.note_fr,
+        updated_at: item.updated_at,
+      });
+      keepIds.add(item.id);
+    } else {
+      const created = await RapportCalendarEvent.create({
+        rapport_id: item.rapport_id,
+        event_date: item.event_date,
+        title_ar: item.title_ar,
+        title_fr: item.title_fr,
+        note_ar: item.note_ar,
+        note_fr: item.note_fr,
+        created_by_user_id: item.created_by_user_id,
+        updated_at: item.updated_at,
+      });
+      keepIds.add(Number(created.id));
+    }
   }
-  return listForRapport(rapportId, actor);
+
+  const toDelete = existing
+    .map((e) => Number(e.id))
+    .filter((id) => !keepIds.has(id));
+  if (toDelete.length) {
+    await RapportCalendarEvent.destroy({ where: { id: { [Op.in]: toDelete } } });
+  }
+
+  const saved = await listForRapport(rapportId, actor);
+  await remindAfterCalendarSave(rapportId, saved);
+  return saved;
 }
 
 function weekBounds(anchorDate) {

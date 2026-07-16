@@ -10,6 +10,7 @@ const {
 const { saveUploadedBuffer, serializeFile } = require("../../services/uploadService");
 const { audit } = require("../../services/audit");
 const { hasBilingualText } = require("../../validation/bilingual");
+const { notifyUsers } = require("../notifications/notifyService");
 
 function serializeBroadcast(row, extras = {}) {
   const b = row.toJSON ? row.toJSON() : row;
@@ -98,13 +99,11 @@ async function createBroadcast({ fileBuffer, originalName, mimeType, body }, act
     recipientIds.map((user_id) => ({ broadcast_id: broadcast.id, user_id }))
   );
 
-  for (const userId of recipientIds) {
-    await Notification.create({
-      user_id: userId,
-      broadcast_id: broadcast.id,
-      message_key: "waliBroadcast"
-    });
-  }
+  await notifyUsers({
+    userIds: recipientIds,
+    broadcast_id: broadcast.id,
+    message_key: "waliBroadcast",
+  });
 
   await audit(actor.id, "WALI_BROADCAST_CREATE", { broadcast_id: broadcast.id }, { req });
   return getBroadcastDetail(broadcast.id, actor);
@@ -279,10 +278,10 @@ async function notifyUnreadRecipients(broadcastId, actor) {
       }
     });
     if (!existing) {
-      await Notification.create({
-        user_id: r.user_id,
+      await notifyUsers({
+        userIds: [r.user_id],
         broadcast_id: broadcastId,
-        message_key: "waliBroadcastReminder"
+        message_key: "waliBroadcastReminder",
       });
     }
   }

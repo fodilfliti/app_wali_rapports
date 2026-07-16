@@ -17,6 +17,7 @@ import {
   canOfficeReturnToDraft,
   isDirectWorkspaceKind,
   localizedRapportTypeName,
+  officeNewDocumentPath,
   officeRapportTypeWorkspacePath,
   officeRapportWorkspacePath,
   type RapportTypeNav,
@@ -648,15 +649,13 @@ export function OfficeServiceRapportListPage({ token }: Props) {
 
   async function createDoc(templateId: number | null, skipDefault = false) {
     if (!rapportType) return
-    try {
-      const res = await api.createDocument(token, sid, typeId, {
+    navigate(
+      officeNewDocumentPath(sid, {
+        rapportTypeId: typeId,
         templateId,
         skipDefault: templateId == null && skipDefault,
-      })
-      navigate(`/office/rapports/${res.rapport.id}/document`)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    }
+      }),
+    )
   }
 
   const canEdit = hub?.accessLevel === 'manage'

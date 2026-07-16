@@ -78,10 +78,12 @@ export function OfficeCommuneListPage({ token }: Props) {
         rapportId,
       });
       setWorkspace(ws);
-      setTitle(ws.rapport?.title || "");
+      setTitle(ws.rapport?.title || ws.suggestedTitle || "");
       if (ws.rapport?.id) {
         const vRes = await api.listRapportVersions(token, ws.rapport.id);
         setVersions(vRes.versions);
+      } else {
+        setVersions([]);
       }
     } catch (e) {
       setWorkspace(null);
@@ -186,12 +188,45 @@ export function OfficeCommuneListPage({ token }: Props) {
     ),
   );
 
+  async function ensureCommuneRapportId(opts?: {
+    included_entity_keys?: string[] | null;
+  }): Promise<number> {
+    if (workspace?.rapport?.id) return workspace.rapport.id;
+    if (!workspace?.rapportType?.id) {
+      throw new Error("errorGeneric");
+    }
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error("rapportTitleRequired");
+    }
+    const data_json: Record<string, unknown> = {
+      communes: {},
+      entities: {},
+    };
+    const keys =
+      opts?.included_entity_keys !== undefined
+        ? opts.included_entity_keys
+        : workspace.included_entity_keys;
+    if (keys?.length) {
+      data_json.included_entity_keys = keys;
+    }
+    const { rapport } = await api.createRapport(token, {
+      service_id: sid,
+      rapport_type_id: workspace.rapportType.id,
+      title: trimmed,
+      data_json,
+    });
+    setWorkspace((prev: any) => (prev ? { ...prev, rapport } : prev));
+    return rapport.id as number;
+  }
+
   async function submitAll() {
-    if (!workspace?.rapport?.id) return;
+    if (!editable) return;
     setSubmitting(true);
     try {
-      await patchRapportTitle(token, workspace.rapport.id, title);
-      await api.submitRapport(token, workspace.rapport.id);
+      const rid = await ensureCommuneRapportId();
+      await patchRapportTitle(token, rid, title);
+      await api.submitRapport(token, rid);
       notifyHubCountsRefresh();
       snack.show(t("submitRapport"), "success");
       loadWorkspace();
@@ -326,16 +361,13 @@ export function OfficeCommuneListPage({ token }: Props) {
               busyLabel={t("saving")}
               disabled={submitting}
               onClick={async () => {
-                if (!workspace?.rapport?.id) return;
                 setSavingTitle(true);
                 try {
-                  const patched = await patchRapportTitle(
-                    token,
-                    workspace.rapport.id,
-                    title,
-                  );
+                  const rid = await ensureCommuneRapportId();
+                  const patched = await patchRapportTitle(token, rid, title);
                   setTitle(patched.title);
                   snack.show(t("save"), "success");
+                  await loadWorkspace();
                 } catch (e) {
                   const msg =
                     e instanceof Error && e.message === "rapportTitleRequired"
@@ -535,13 +567,16 @@ export function OfficeCommuneListPage({ token }: Props) {
         </>
       ) : null}
 
-      {inclusionOpen && workspace?.selection_catalog && workspace?.rapport?.id ? (
+      {inclusionOpen && workspace?.selection_catalog ? (
         <EntityInclusionModal
           catalog={workspace.selection_catalog}
           initialKeys={workspace.included_entity_keys ?? null}
           onClose={() => setInclusionOpen(false)}
           onSave={async (keys) => {
-            await api.patchIncludedEntities(token, workspace.rapport.id, keys);
+            const rid = await ensureCommuneRapportId({
+              included_entity_keys: keys,
+            });
+            await api.patchIncludedEntities(token, rid, keys);
             snack.show(t("save"), "success");
             await loadWorkspace();
           }}

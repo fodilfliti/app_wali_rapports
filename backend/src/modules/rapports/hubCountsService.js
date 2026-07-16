@@ -1,7 +1,12 @@
 const { Op } = require("sequelize");
-const { Rapport, RapportType, Notification, WaliBroadcastRecipient } = require("../../db");
+const { Rapport, RapportType, Notification, WaliBroadcastRecipient, User } = require("../../db");
 const { getAccessMapForUser } = require("./serviceAccessService");
-const { DEDICATED_NOTIFICATION_KEYS } = require("./notificationKeys");
+const {
+  DEDICATED_NOTIFICATION_KEYS,
+  disabledMessageKeys,
+} = require("./notificationKeys");
+const { getPreferences } = require("../notifications/preferenceService");
+const { maybeRunDailyCalendarScan } = require("../notifications/calendarReminderService");
 
 const WALI_INBOX_ACTION_STATUSES = ["submitted", "under_review"];
 const CHEF_INBOX_ACTION_STATUSES = ["pending_chef"];
@@ -65,42 +70,35 @@ async function loadSharedFicheCounts(allowedServiceIds, statusWhere) {
   return { byService, byType };
 }
 
-async function countUnreadNotifications(userId) {
+async function countUnreadNotifications(userId, prefs) {
+  const hidden = [
+    ...DEDICATED_NOTIFICATION_KEYS,
+    ...disabledMessageKeys(prefs),
+  ];
   return Notification.count({
     where: {
       user_id: userId,
       read_at: null,
-      message_key: { [Op.notIn]: DEDICATED_NOTIFICATION_KEYS },
+      message_key: { [Op.notIn]: [...new Set(hidden)] },
     },
   });
 }
 
 async function countOfficeChangesRequested(userId) {
-  const [owned, serviceIds, typeIds] = await Promise.all([
-    Rapport.count({
-      where: {
-        owner_office_user_id: userId,
-        status: "changes_requested",
-        hidden_at: null,
-      },
-    }),
-    getAccessibleServiceIds(userId),
-    getFicheLectureTypeIds(),
-  ]);
-  if (!serviceIds.length || !typeIds.length) return owned;
-  const shared = await Rapport.count({
+  const serviceIds = await getAccessibleServiceIds(userId);
+  if (!serviceIds.length) return 0;
+  return Rapport.count({
     where: {
-      owner_office_user_id: null,
       status: "changes_requested",
       hidden_at: null,
       service_id: { [Op.in]: serviceIds },
-      rapport_type_id: { [Op.in]: typeIds },
     },
   });
-  return owned + shared;
 }
 
-async function countUnreadSharedFiles(userId) {
+async function countUnreadSharedFiles(userId, prefs) {
+  if (prefs && !prefs.enabled) return 0;
+  if (prefs && prefs.broadcasts === false) return 0;
   return WaliBroadcastRecipient.count({
     where: { user_id: userId, read_at: null },
   });
@@ -114,7 +112,9 @@ async function countChefInboxPending() {
   return Rapport.count({ where: chefInboxActionWhere() });
 }
 
-async function countUnreadInstructions(userId) {
+async function countUnreadInstructions(userId, prefs) {
+  if (prefs && !prefs.enabled) return 0;
+  if (prefs && prefs.instructions === false) return 0;
   const { WaliInstructionRecipient } = require("../../db");
   return WaliInstructionRecipient.count({
     where: { user_id: userId, read_at: null },
@@ -181,6 +181,7 @@ function applyServiceActionCounts(nodes, countByService, countByType) {
 }
 
 async function getOfficeHubCounts(userId) {
+  const prefs = await getPreferences(userId);
   const [
     unread_notifications,
     changes_requested_rapports,
@@ -189,11 +190,11 @@ async function getOfficeHubCounts(userId) {
     unread_discussion,
     serviceCounts,
   ] = await Promise.all([
-    countUnreadNotifications(userId),
+    countUnreadNotifications(userId, prefs),
     countOfficeChangesRequested(userId),
-    countUnreadSharedFiles(userId),
-    countUnreadInstructions(userId),
-    countUnreadDiscussion(userId),
+    countUnreadSharedFiles(userId, prefs),
+    countUnreadInstructions(userId, prefs),
+    countUnreadDiscussion(userId, {}, prefs),
     getOfficeServiceActionCounts(userId),
   ]);
   const services_action_count = Object.values(serviceCounts.byService).filter((c) => c > 0).length;
@@ -211,36 +212,60 @@ async function countWaliOfficeUsersWithPending() {
   const rows = await Rapport.findAll({
     attributes: [
       "owner_office_user_id",
+      "created_by_user_id",
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"],
     ],
     where: {
       ...waliInboxActionWhere(),
-      owner_office_user_id: { [Op.ne]: null },
+      [Op.or]: [
+        { owner_office_user_id: { [Op.ne]: null } },
+        { created_by_user_id: { [Op.ne]: null } },
+      ],
     },
-    group: ["owner_office_user_id"],
+    group: ["owner_office_user_id", "created_by_user_id"],
     raw: true,
   });
-  return rows.length;
+  const userIds = new Set();
+  for (const r of rows) {
+    const oid = r.owner_office_user_id != null ? Number(r.owner_office_user_id) : null;
+    const cid = r.created_by_user_id != null ? Number(r.created_by_user_id) : null;
+    if (oid) userIds.add(oid);
+    else if (cid) userIds.add(cid);
+  }
+  return userIds.size;
 }
 
 async function countChefOfficeUsersWithPending() {
   const rows = await Rapport.findAll({
     attributes: [
       "owner_office_user_id",
+      "created_by_user_id",
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"],
     ],
     where: {
       ...chefInboxActionWhere(),
-      owner_office_user_id: { [Op.ne]: null },
+      [Op.or]: [
+        { owner_office_user_id: { [Op.ne]: null } },
+        { created_by_user_id: { [Op.ne]: null } },
+      ],
     },
-    group: ["owner_office_user_id"],
+    group: ["owner_office_user_id", "created_by_user_id"],
     raw: true,
   });
-  return rows.length;
+  const userIds = new Set();
+  for (const r of rows) {
+    const oid = r.owner_office_user_id != null ? Number(r.owner_office_user_id) : null;
+    const cid = r.created_by_user_id != null ? Number(r.created_by_user_id) : null;
+    if (oid) userIds.add(oid);
+    else if (cid) userIds.add(cid);
+  }
+  return userIds.size;
 }
 
-async function countUnreadDiscussion(userId, opts = {}) {
+async function countUnreadDiscussion(userId, opts = {}, prefs = null) {
   if (!userId) return 0;
+  if (prefs && !prefs.enabled) return 0;
+  if (prefs && prefs.discussion === false) return 0;
   const rows = await Notification.findAll({
     where: {
       user_id: userId,
@@ -268,47 +293,67 @@ async function countUnreadDiscussion(userId, opts = {}) {
   return Rapport.count({ where });
 }
 
-async function getWaliHubCounts(userId) {
+async function getWaliHubCounts(user) {
+  const userId = typeof user === "object" ? user.id : user;
+  const prefs = await getPreferences(userId);
+  if (typeof user === "object") {
+    await maybeRunDailyCalendarScan(user);
+  } else {
+    const row = await User.findByPk(userId);
+    if (row) await maybeRunDailyCalendarScan(row);
+  }
   const [inbox_pending, office_users_pending, unread_discussion] = await Promise.all([
     countWaliInboxPending(),
     countWaliOfficeUsersWithPending(),
-    countUnreadDiscussion(userId, { forWali: true }),
+    countUnreadDiscussion(userId, { forWali: true }, prefs),
   ]);
   return { inbox_pending, office_users_pending, unread_discussion };
 }
 
-async function getChefHubCounts(userId) {
+async function getChefHubCounts(user) {
+  const userId = typeof user === "object" ? user.id : user;
+  const prefs = await getPreferences(userId);
+  if (typeof user === "object") {
+    await maybeRunDailyCalendarScan(user);
+  } else {
+    const row = await User.findByPk(userId);
+    if (row) await maybeRunDailyCalendarScan(row);
+  }
   const [inbox_pending, office_users_pending, unread_discussion, unread_shared_files] =
     await Promise.all([
       countChefInboxPending(),
       countChefOfficeUsersWithPending(),
-      countUnreadDiscussion(userId),
-      countUnreadSharedFiles(userId),
+      countUnreadDiscussion(userId, {}, prefs),
+      countUnreadSharedFiles(userId, prefs),
     ]);
   return { inbox_pending, office_users_pending, unread_discussion, unread_shared_files };
 }
 
 async function getOfficeServiceActionCounts(userId) {
-  const ownedWhere = {
-    owner_office_user_id: userId,
+  const serviceIds = await getAccessibleServiceIds(userId);
+  if (!serviceIds.length) {
+    return { byService: {}, byType: {} };
+  }
+  // Any editable rapport needing correction in services the user can access
+  // (not only owner_office_user_id) so Éditeur co-workers see the same badges.
+  const where = {
     status: "changes_requested",
     hidden_at: null,
+    service_id: { [Op.in]: serviceIds },
   };
-  const [ownedByService, ownedByType, serviceIds] = await Promise.all([
-    loadRapportCountsByService(ownedWhere),
-    loadRapportCountsByServiceAndType(ownedWhere),
-    getAccessibleServiceIds(userId),
+  const [byService, byType] = await Promise.all([
+    loadRapportCountsByService(where),
+    loadRapportCountsByServiceAndType(where),
   ]);
-  const shared = await loadSharedFicheCounts(serviceIds, { status: "changes_requested" });
-  return {
-    byService: mergeCountMaps(ownedByService, shared.byService),
-    byType: mergeCountMaps(ownedByType, shared.byType),
-  };
+  return { byService, byType };
 }
 
 async function getWaliServicePendingCounts(officeUserId) {
   const ownedWhere = {
-    owner_office_user_id: officeUserId,
+    [Op.or]: [
+      { owner_office_user_id: officeUserId },
+      { created_by_user_id: officeUserId },
+    ],
     ...waliInboxActionWhere(),
   };
   const [ownedByService, ownedByType, serviceIds] = await Promise.all([
@@ -325,7 +370,10 @@ async function getWaliServicePendingCounts(officeUserId) {
 
 async function getChefServicePendingCounts(officeUserId) {
   const ownedWhere = {
-    owner_office_user_id: officeUserId,
+    [Op.or]: [
+      { owner_office_user_id: officeUserId },
+      { created_by_user_id: officeUserId },
+    ],
     ...chefInboxActionWhere(),
   };
   const [ownedByService, ownedByType, serviceIds] = await Promise.all([

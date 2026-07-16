@@ -120,6 +120,22 @@ export function officeRapportTypeListPath(serviceId: number, rapportTypeId: numb
   return `/office/services/${serviceId}/rapports/${rapportTypeId}`
 }
 
+export function officeNewDocumentPath(
+  serviceId: number,
+  opts: {
+    rapportTypeId: number
+    templateId?: number | null
+    skipDefault?: boolean
+  },
+) {
+  const q = new URLSearchParams({
+    rapport_type_id: String(opts.rapportTypeId),
+  })
+  if (opts.templateId != null) q.set('template_id', String(opts.templateId))
+  if (opts.skipDefault) q.set('skip_default', '1')
+  return `/office/services/${serviceId}/documents/new?${q.toString()}`
+}
+
 export function officeRapportTypePath(serviceId: number, rt: RapportTypeNav) {
   return officeRapportTypeListPath(serviceId, rt.id)
 }

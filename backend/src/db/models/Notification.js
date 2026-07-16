@@ -12,6 +12,7 @@ module.exports = (sequelize) =>
       wali_response_id: { type: DataTypes.BIGINT, allowNull: true },
       chef_response_id: { type: DataTypes.BIGINT, allowNull: true },
       comment_id: { type: DataTypes.BIGINT, allowNull: true },
+      calendar_event_id: { type: DataTypes.BIGINT, allowNull: true },
       message_key: { type: DataTypes.STRING(80), allowNull: false, defaultValue: "waliFeedback" },
       read_at: { type: DataTypes.DATE, allowNull: true },
       created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }

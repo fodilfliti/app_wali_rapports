@@ -8,7 +8,7 @@ type Props = {
     id: number
     status: string
     hidden_at?: string | null
-  }
+  } | null
   editable: boolean
   /** Éditeur (`manage`) — required to show return-to-draft. */
   canManage?: boolean

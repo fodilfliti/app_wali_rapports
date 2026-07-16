@@ -8,6 +8,7 @@ const {
 } = require("../../db");
 const { audit } = require("../../services/audit");
 const { assertRapportAccess } = require("./serviceAccessService");
+const { notifyUsers } = require("../notifications/notifyService");
 
 const BODY_MAX = 5000;
 
@@ -174,15 +175,12 @@ async function createComment(rapportId, bodyText, actor, req, opts = {}) {
 
   const recipientIds = await resolveRecipientIds(rapport, actor.id);
   if (recipientIds.length) {
-    await Notification.bulkCreate(
-      recipientIds.map((user_id) => ({
-        user_id,
-        rapport_id: rapport.id,
-        comment_id: comment.id,
-        message_key: "rapportComment",
-        created_at: new Date()
-      }))
-    );
+    await notifyUsers({
+      userIds: recipientIds,
+      rapport_id: rapport.id,
+      comment_id: comment.id,
+      message_key: "rapportComment",
+    });
   }
 
   await audit(

@@ -51,7 +51,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
-      res.json(await hubCountsService.getWaliHubCounts(req.user.id));
+      res.json(await hubCountsService.getWaliHubCounts(req.user));
     } catch (e) {
       next(e);
     }
