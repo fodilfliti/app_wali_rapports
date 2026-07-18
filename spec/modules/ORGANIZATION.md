@@ -95,7 +95,7 @@
 - Admin hub → **المديريات** / **Directions** → `/directions` (legacy `/modiriyat` redirects here)
 - Admin hub → **البلديات** / Communes → `/municipalities` (daira selector on form)
 - Admin hub → **Users** → `/users`
-- Account type shown as compte admin / bureau / wali / **رئيس الديوان**
+- Account type shown as حساب مدير / **ملحق بالديوان** (Attaché de cabinet) / حساب والي / **رئيس الديوان** — never raw enums (`OFFICE_USER`, etc.)
 - Org ref lists: active/hidden filter; row hide (confirm) / restore; no permanent delete.
 
 ### Audit events

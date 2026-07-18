@@ -12,10 +12,10 @@ const resources = {
       guestWelcomeTitle: "منصة تقارير الولاية",
       guestWelcomeSubtitle:
         "إعداد التقارير، مصادقة رئيس الديوان، ومتابعة الوالي في مكان واحد.",
-      guestFeatureOffice: "مكاتب الخدمات: إعداد وإرسال التقارير",
+      guestFeatureOffice: "ملحقو الديوان: إعداد وإرسال التقارير",
       guestFeatureChef: "رئيس الديوان: مراجعة التقارير قبل إحالتها للوالي",
       guestFeatureWali: "الوالي: مطالعة التقارير والرزنامة والملفات المشتركة",
-      guestFeatureOfficeLabel: "مكاتب الخدمات",
+      guestFeatureOfficeLabel: "ملحقو الديوان",
       guestFeatureOfficeDesc: "إعداد وإرسال التقارير",
       guestFeatureChefLabel: "رئيس الديوان",
       guestFeatureChefDesc: "مراجعة التقارير قبل إحالتها للوالي",
@@ -77,7 +77,7 @@ const resources = {
       errorCurrentCodeIncorrect: "الرمز الحالي غير صحيح.",
       passwordMinLength: "الرمز يجب أن يكون 8 أحرف على الأقل.",
       accountTypeAdmin: "حساب مدير",
-      accountTypeOffice: "حساب مكتب",
+      accountTypeOffice: "حساب ملحق بالديوان",
       accountTypeWali: "حساب والي",
       back: "رجوع",
       save: "حفظ",
@@ -91,12 +91,12 @@ const resources = {
       loading: "جاري التحميل…",
       saving: "جاري الحفظ…",
       submitting: "جاري الإرسال…",
-      communeWorkspaceError: "تعذّر تحميل قائمة البلديات لهذه الخدمة.",
-      tableWorkspaceError: "تعذّر تحميل جدول التقرير لهذه الخدمة.",
+      communeWorkspaceError: "تعذّر تحميل قائمة البلديات لهذا المجال.",
+      tableWorkspaceError: "تعذّر تحميل جدول التقرير لهذا المجال.",
       tableSchemaNotConfigured: "لم يُربط مخطط جدول بهذا النوع من التقارير.",
       tableSchemaSlugRequired: "اختر مخطط جدول لنوع التقرير.",
       linkTableSchema: "ربط مخطط الجدول",
-      goToServiceConfig: "إعداد الخدمة",
+      goToServiceConfig: "إعداد المجال",
       communeSearchPlaceholder: "بحث عن بلدية…",
       listSearchPlaceholder: "بحث عن {{unit}}…",
       listProgress: "{{filled}} / {{total}} {{unit}} مكتملة",
@@ -136,7 +136,7 @@ const resources = {
       create: "إنشاء",
       search: "بحث",
       hubAdmin: "لوحة المدير",
-      hubOffice: "لوحة المكتب",
+      hubOffice: "لوحة الملحق بالديوان",
       hubWali: "لوحة الوالي",
       hubChef: "لوحة رئيس الديوان",
       navDairas: "الدوائر",
@@ -196,7 +196,7 @@ const resources = {
       lastCommentAt: "آخر تعليق",
       unreadDiscussionBadge: "تعليق جديد",
       openDiscussion: "فتح المناقشة",
-      instructionsListHint: "أرسل تعليمات للمستفيدين من حسابات المكتب، مع مرفقات اختيارية.",
+      instructionsListHint: "أرسل تعليمات لملحقي الديوان، مع مرفقات اختيارية.",
       instructionsEmpty: "لا تعليمات بعد — أنشئ «تعليمات جديدة».",
       instructionRecipientCount: "{{count}} مستلم",
       instructionsListHintOffice: "اضغط على بطاقة لعرض التعليمات في نافذة منبثقة.",
@@ -211,7 +211,7 @@ const resources = {
       createInstruction: "تعليمات جديدة",
       instructionBody: "نص التعليمات",
       instructionAttachments: "المرفقات",
-      instructionAllOfficeUsers: "جميع مستخدمي المكاتب",
+      instructionAllOfficeUsers: "جميع ملحقي الديوان",
       instructionRecipients: "المستلمون",
       entityTargetKinds: "أهداف القائمة",
       entityTargetKind_commune: "البلديات",
@@ -226,7 +226,7 @@ const resources = {
       navMunicipalities: "البلديات",
       navUsers: "المستخدمون",
       navRapports: "التقارير",
-      navServices: "الخدمات",
+      navServices: "مجالات المتابعة",
       navAccess: "الوصول",
       navInbox: "الوارد",
       waliInboxBellEmpty: "الوارد — لا تقارير بانتظار المطالعة",
@@ -236,34 +236,34 @@ const resources = {
       officeNotificationsBellEmpty: "إشعارات الوالي — لا إشعارات جديدة",
       officeNotificationsBellWithCount: "إشعارات الوالي — {{count}} غير مقروءة",
       officeHubChangesRequestedHint: "تقارير يطلب الوالي تعديلها",
-      officeHubServicesActionHint: "خدمات تحتوي تقاريراً تحتاج تعديلاً",
+      officeHubServicesActionHint: "مجالات تحتوي تقاريراً تحتاج تعديلاً",
       serviceActionHint:
         "يوجد تقارير تحتاج تعديلاً — افتح النوع الذي يحمل الرقم.",
-      officeRapportsListHint: "صندوق التقارير عبر الخدمات — المناقشة من التبويب أعلاه.",
+      officeRapportsListHint: "صندوق التقارير عبر المجالات — المناقشة من التبويب أعلاه.",
       waliInboxNew: "جديد",
       waliInboxFlowTitle: "مسار التقرير — من البلدية إلى الوالي",
       waliInboxFlowExpandTitle: "▸ شرح حالات الوارد",
       waliInboxFlowIntro:
-        "يُنشئ مكتب البلدية التقرير ويرسله؛ تظهر الحالات التالية في صندوق وارد الوالي حسب مرحلة المتابعة.",
-      waliInboxFlowOffice: "مكتب البلدية",
+        "يُنشئ الملحق بالديوان التقرير ويرسله؛ تظهر الحالات التالية في صندوق وارد الوالي حسب مرحلة المتابعة.",
+      waliInboxFlowOffice: "الملحق بالديوان",
       waliInboxFlowWali: "الوالي",
       waliInboxLegendNewHint: "تقرير مرسل ولم تُطالَعْه بعد في صندوق الوارد (يحتاج انتباهك).",
-      waliInboxLegendSubmittedHint: "أرسله المكتب للتو — بانتظار فتحك للتقرير.",
+      waliInboxLegendSubmittedHint: "أرسله الملحق بالديوان للتو — بانتظار فتحك للتقرير.",
       waliInboxLegendUnderReviewHint:
         "فتحت التقرير — قيد المطالعة. يمكنك الرد من زر «رد على التقرير» في القائمة أو من صفحة التفاصيل.",
       waliInboxLegendAcknowledgedHint: "أكدت الاستلام أو المطالعة دون طلب تعديل.",
       waliInboxLegendChangesRequestedHint:
-        "طلبت تعديلاً — يعود التقرير للمكتب للتصحيح ثم إعادة الإرسال.",
+        "طلبت تعديلاً — يعود التقرير للملحق بالديوان للتصحيح ثم إعادة الإرسال.",
       officeRapportFlowExpandTitle: "▸ شرح حالات التقارير",
       officeRapportFlowIntro:
-        "حالات التقرير من إنشائه لدى المكتب حتى رد الوالي. استخدم «إرسال للوالي» عند الجاهزية.",
+        "حالات التقرير من إنشائه لدى الملحق بالديوان حتى رد الوالي. استخدم «إرسال للوالي» عند الجاهزية.",
       officeRapportLegendDraftHint: "مسودة — يمكنك التعديل والحفظ قبل الإرسال.",
       officeRapportLegendSubmittedHint: "أُرسل للوالي — بانتظار المطالعة.",
       officeRapportLegendUnderReviewHint: "الوالي يطالع التقرير حالياً.",
       officeRapportLegendChangesRequestedHint:
         "طلب الوالي تعديلاً — صحّح التقرير ثم أعد الإرسال (قد تظهر إشعار في الجرس).",
       officeRapportLegendAcknowledgedHint: "أكد الوالي الاستلام أو المطالعة دون طلب تعديل.",
-      navOfficeUsers: "حسابات المكتب",
+      navOfficeUsers: "ملحقو الديوان",
       municipalityCode: "رمز البلدية",
       municipalityNameAr: "الاسم (عربي)",
       municipalityNameFr: "الاسم (فرنسي)",
@@ -276,7 +276,7 @@ const resources = {
       optional: "اختياري",
       userRole: "نوع الحساب",
       roleAdmin: "مدير",
-      roleOffice: "مكتب",
+      roleOffice: "ملحق بالديوان",
       roleWali: "والي",
       block: "حظر",
       unblock: "إلغاء الحظر",
@@ -310,14 +310,14 @@ const resources = {
       chefDecisionHelp_accepted:
         "يقبل التقرير ويُرسل إلى صندوق الوالي للمراجعة.",
       chefDecisionHelp_changes_requested:
-        "يُعاد التقرير للمصلحة للتعديل — الملاحظة إلزامية.",
+        "يُعاد التقرير للملحق بالديوان للتعديل — الملاحظة إلزامية.",
       chefDecisionHelp_viewed: "تأكيد المطالعة فقط — يبقى التقرير بانتظار قرارك.",
       waliFollowUpLegend: "بعد القبول",
       waliFollowUp_none: "قبول فقط",
       waliFollowUp_noneHint: "تأكيد بدون متابعة إجراء.",
       waliFollowUp_noneShort: "قبول",
       waliFollowUp_pending: "قبول — إجراء لاحق مطلوب",
-      waliFollowUp_pendingHint: "تم القبول لكن يجب على المصلحة تنفيذ إجراء.",
+      waliFollowUp_pendingHint: "تم القبول لكن يجب على الملحق بالديوان تنفيذ إجراء.",
       waliFollowUp_pendingShort: "إجراء مطلوب",
       waliFollowUp_completed: "قبول — تم التنفيذ",
       waliFollowUp_completedHint: "تم القبول والإجراء منجز.",
@@ -351,7 +351,7 @@ const resources = {
       contentKindHint_document_compose:
         "ملف مركّب — فقرات، جداول، صور في محرّر واحد، ثم تصدير PDF/Word. ملف مستقل لكل موضوع أو تاريخ.",
       contentKindHint_fiche_lecture:
-        "مذكرة استخلاصية — نفس فكرة الملف المركّب، مشتركة بين كل مستخدمي المكتب؛ يُنشأ ملف جديد مع كل تاريخ.",
+        "مذكرة استخلاصية — نفس فكرة الملف المركّب، مشتركة بين كل ملحقي الديوان؛ يُنشأ ملف جديد مع كل تاريخ.",
       contentKindHint_commune_list:
         "قائمة — صف أو بطاقة لكل هدف (بلدية، دائرة، مديرية) مع جدول أو مدخلات خاصة به.",
       navNotifications: "إشعارات الوالي",
@@ -382,19 +382,19 @@ const resources = {
       rapportListScope: "عرض",
       rapportListActive: "النشطة",
       rapportListFinished: "المنهية (المخفية)",
-      hideRapportType: "إخفاء من الخدمة",
-      hideRapportTypeDone: "تم إخفاء نوع التقرير من هذه الخدمة",
-      restoreRapportType: "إظهار في الخدمة",
-      restoreRapportTypeDone: "تم إظهار نوع التقرير في هذه الخدمة",
+      hideRapportType: "إخفاء من المجال",
+      hideRapportTypeDone: "تم إخفاء نوع التقرير من هذا المجال",
+      restoreRapportType: "إظهار في المجال",
+      restoreRapportTypeDone: "تم إظهار نوع التقرير في هذا المجال",
       showHiddenRapportTypes: "عرض أنواع التقارير المخفية",
       rapportTypeListScope: "عرض",
       rapportTypeListVisible: "الظاهرة",
       rapportTypeListHidden: "المخفية",
       moreActions: "المزيد",
       hideRapportTypeConfirmTitle: "إخفاء نوع التقرير؟",
-      hideRapportTypeConfirmMessage: "سيتم إخفاء «{{name}}» من هذه الخدمة. يمكنك استرجاعه لاحقاً من قائمة المخفية.",
+      hideRapportTypeConfirmMessage: "سيتم إخفاء «{{name}}» من هذا المجال. يمكنك استرجاعه لاحقاً من قائمة المخفية.",
       restoreRapportTypeConfirmTitle: "إظهار نوع التقرير؟",
-      restoreRapportTypeConfirmMessage: "سيتم إظهار «{{name}}» مجدداً في هذه الخدمة.",
+      restoreRapportTypeConfirmMessage: "سيتم إظهار «{{name}}» مجدداً في هذا المجال.",
       finishRapportConfirmTitle: "إنهاء وإخفاء التقرير؟",
       finishRapportConfirmMessage: "سيتم إخفاء هذا التقرير من القوائم. يمكنك استرجاعه لاحقاً.",
       finishRapportConfirmMessageNamed: "سيتم إخفاء «{{name}}» من القوائم. يمكنك استرجاعه لاحقاً.",
@@ -404,17 +404,17 @@ const resources = {
       deleteRapportAdminConfirmMessage:
         "سيتم حذف «{{name}}» من قاعدة البيانات. لا يمكن التراجع.",
       deleteRapportAdminDone: "تم حذف التقرير",
-      deleteService: "حذف الخدمة",
-      deleteServiceConfirmTitle: "حذف الخدمة؟",
+      deleteService: "حذف المجال",
+      deleteServiceConfirmTitle: "حذف المجال؟",
       deleteServiceConfirmMessage:
         "سيتم إخفاء «{{name}}» من القوائم. التقارير المرتبطة تبقى محفوظة.",
-      deleteServiceDone: "تم حذف الخدمة",
+      deleteServiceDone: "تم حذف المجال",
       deleteDepartment: "حذف القطاع",
       deleteDepartmentConfirmTitle: "حذف القطاع؟",
       deleteDepartmentConfirmMessage:
-        "سيتم إخفاء «{{name}}». الخدمات والتقارير تبقى؛ الخدمات تصبح بدون قطاع.",
+        "سيتم إخفاء «{{name}}». المجالات والتقارير تبقى؛ المجالات تصبح بدون قطاع.",
       deleteDepartmentDone: "تم حذف القطاع",
-      editService: "تعديل الخدمة",
+      editService: "تعديل المجال",
       serviceNoDepartment: "بدون قطاع",
       noDepartment: "— بدون قطاع —",
       waliVisible: "يرى الوالي",
@@ -444,37 +444,37 @@ const resources = {
       details: "عرض",
       navSchemas: "مخططات الجداول",
       schemasHelp:
-        "اختر خدمة أولاً — ثم أدِر مخططاتها وأنواع تقاريرها في مكان واحد.",
+        "اختر مجالاً أولاً — ثم أدِر مخططاته وأنواع تقاريره في مكان واحد.",
       schemasPageIntro:
-        "كل خدمة لها مخططاتها وأنواع تقاريرها الخاصة. خدمة «ملف» أو «مذكرة استخلاصية» قد لا تحتاج جداول.",
+        "كل مجال له مخططاته وأنواع تقاريره الخاصة. مجال «ملف» أو «مذكرة استخلاصية» قد لا يحتاج جداول.",
       schemasPageStep1:
-        "① تبويب «مخططات الجداول» — أعمدة خاصة بهذه الخدمة فقط (مع بحث وترقيم).",
+        "① تبويب «مخططات الجداول» — أعمدة خاصة بهذا المجال فقط (مع بحث وترقيم).",
       schemasPageStep2:
-        "② تبويب «أنواع التقارير» — كيف تعمل الخدمة (جدول، ملف…).",
+        "② تبويب «أنواع التقارير» — كيف يعمل المجال (جدول، ملف…).",
       schemasStep1Help:
-        "المخطط = تعريف الأعمدة. يُنشأ ويُعدَّل ضمن الخدمة المختارة — لا يظهر لمستخدمي خدمات أخرى.",
+        "المخطط = تعريف الأعمدة. يُنشأ ويُعدَّل ضمن المجال المختار — لا يظهر لمستخدمي مجالات أخرى.",
       schemasStep2Help:
         "نوع التقرير = وضع العمل (جدول، ملف مركّب…). إن كان «جدول»، اربطه بمخطط من تبويب المخططات.",
-      schemasPickService: "① اختر الخدمة",
+      schemasPickService: "① اختر المجال",
       schemasServiceScopeHelp:
-        "ما تراه أدناه يخص هذه الخدمة فقط — مخططاتها وأنواع تقاريرها.",
+        "ما تراه أدناه يخص هذا المجال فقط — مخططاته وأنواع تقاريره.",
       schemasServiceRequired:
-        "اختر خدمة أولاً لإدارة مخططاتها وأنواع تقاريرها.",
+        "اختر مجالاً أولاً لإدارة مخططاته وأنواع تقاريره.",
       schemasSelectServiceFirst:
-        "اختر خدمة من القائمة لتفعيل «نوع تقرير جديد».",
-      schemasNoServiceSelected: "اختر خدمة من القائمة أعلاه للبدء.",
+        "اختر مجالاً من القائمة لتفعيل «نوع تقرير جديد».",
+      schemasNoServiceSelected: "اختر مجالاً من القائمة أعلاه للبدء.",
       schemasNoRapportTypes:
-        "لا يوجد نوع تقرير لهذه الخدمة بعد — أنشئ واحداً من التبويب «أنواع التقارير».",
+        "لا يوجد نوع تقرير لهذا المجال بعد — أنشئ واحداً من التبويب «أنواع التقارير».",
       schemasTabSchemas: "مخططات الجداول",
       schemasTabRapportTypes: "أنواع التقارير",
       schemasSearchPlaceholder: "بحث باسم المخطط…",
       schemasIncludeShared: "إظهار القوالب المشتركة (أمثلة النظام)",
       schemasNoSchemasForService:
-        "لا يوجد مخطط لهذه الخدمة — أنشئ «مخطط جديد» أو فعّل القوالب المشتركة.",
+        "لا يوجد مخطط لهذا المجال — أنشئ «مخطط جديد» أو فعّل القوالب المشتركة.",
       schemasDocumentServiceNote:
-        "خدمة بدون جداول؟ انتقل إلى تبويب «أنواع التقارير» وأنشئ نوع «ملف» أو «مذكرة استخلاصية».",
+        "مجال بدون جداول؟ انتقل إلى تبويب «أنواع التقارير» وأنشئ نوع «ملف» أو «مذكرة استخلاصية».",
       schemasScopeLabel: "النطاق",
-      schemasScopeService: "هذه الخدمة",
+      schemasScopeService: "هذا المجال",
       schemasScopeSystem: "قالب نظام",
       schemasScopeLinked: "مرتبط",
       tableSchemas: "مخططات الجداول",
@@ -668,20 +668,20 @@ const resources = {
       schemaAdvancedLayout: "تخطيط متقدم (JSON)",
       rapportTypes: "أنواع التقارير",
       createRapportType: "نوع تقرير جديد",
-      selectService: "اختر خدمة",
+      selectService: "اختر مجالاً",
       selectSchema: "اختر مخططاً",
       linkedSchema: "مخطط الجدول",
       layoutJson: "تخطيط الجدول (JSON)",
-      serviceConfig: "إعداد الخدمة",
+      serviceConfig: "إعداد المجال",
       officeConfigHelp:
-        "إعداد الخدمة — اختر علامة تبويب واحدة في كل مرة لتفادي الخلط بين القوائم.",
+        "إعداد المجال — اختر علامة تبويب واحدة في كل مرة لتفادي الخلط بين القوائم.",
       serviceConfigStep1: "مخططات الجداول: أعمدة وشكل جداول التقارير.",
       serviceConfigStep2: "أنواع التقارير: ربط كل نوع بمحتواه (جدول، مستند، …) وبمخطط إن لزم.",
       serviceConfigStep3: "قوالب المستند: نصوص جاهزة للمستندات والفيشات (بعد إنشاء نوع مستند).",
       serviceConfigTypesHelp:
-        "كل نوع يظهر في لوحة الخدمة. أنواع الجداول تحتاج مخطط جدول مرتبط.",
+        "كل نوع يظهر في لوحة المجال. أنواع الجداول تحتاج مخطط جدول مرتبط.",
       documentTemplatesNeedTypes:
-        "لا توجد أنواع مستند أو فيشة في هذه الخدمة بعد. أنشئ نوع تقرير بمحتوى «مستند» أو «فيشة» من علامة «أنواع التقارير».",
+        "لا توجد أنواع مستند أو فيشة في هذا المجال بعد. أنشئ نوع تقرير بمحتوى «مستند» أو «فيشة» من علامة «أنواع التقارير».",
       duplicateTemplate: "نسخ مخطط",
       selectTemplate: "اختر مخططاً",
       newSchemaSlug: "معرّف المخطط الجديد",
@@ -694,45 +694,45 @@ const resources = {
       mergeColumnsExample:
         "مثال: عمود «البلدية» — 5 صفوف بنفس الاسم → اسم واحد في خلية مدمجة.",
       contentKind: "نوع المحتوى",
-      createService: "خدمة جديدة",
+      createService: "مجال متابعة جديد",
       servicesShareHelp:
-        "أنشئ خدمة ثم شاركها مع حسابات المكتب: مطالعة فقط أو محرّر (إنشاء وتعديل). المجلد يعرض عدد المستخدمين عبر خدماته الفرعية.",
+        "أنشئ مجالاً ثم شاركه مع ملحقي الديوان: مطالعة فقط أو محرّر (إنشاء وتعديل). المجلد يعرض عدد المستخدمين عبر مجالاته الفرعية.",
       servicesPageIntro:
-        "الخدمة = ما يراه موظف المكتب والوالي. المجلد = تجميع فقط (مثل «المالية» → البنك + الميزانية).",
+        "مجال المتابعة = ما يراه الملحق بالديوان والوالي. المجلد = تجميع فقط (مثل «المالية» → البنك + الميزانية).",
       servicesPageStep1:
-        "① اضغط «خدمة جديدة» واختر القطاع (أنشئه من تبويب القطاعات).",
+        "① اضغط «مجال متابعة جديد» واختر القطاع (أنشئه من تبويب القطاعات).",
       servicesPageStep2:
-        "② «خدمة» = تقارير فعلية. «مجلد» = يحتوي خدمات فرعية — بدون تقارير مباشرة.",
+        "② «مجال» = تقارير فعلية. «مجلد» = يحتوي مجالات فرعية — بدون تقارير مباشرة.",
       servicesPageStep3:
-        "③ «مشاركة» على كل خدمة فرعية — المجلد يعرض مجموع المستخدمين تلقائياً.",
+        "③ «مشاركة» على كل مجال فرعي — المجلد يعرض مجموع المستخدمين تلقائياً.",
       servicesCreateHint:
-        "املأ الحقول ثم احفظ. الخدمة الجديدة تحصل تلقائياً على مذكرة استخلاصية.",
+        "املأ الحقول ثم احفظ. المجال الجديد يحصل تلقائياً على مذكرة استخلاصية.",
       servicesDepartmentHelpTitle: "▸ ما هو «القطاع»؟",
       servicesDepartmentHelp:
-        "القطاع يصنّف الخدمات (استثمار، مالية…). أضف قطاعات جديدة من الجدول أدناه ثم اخترها عند إنشاء خدمة.",
+        "القطاع يصنّف مجالات المتابعة (استثمار، مالية…). أضف قطاعات جديدة من الجدول أدناه ثم اخترها عند إنشاء مجال.",
       departmentNameExists: "اسم القطاع موجود مسبقاً (عربي أو فرنسي).",
       departmentsSection: "القطاعات",
       departmentsSectionHelp:
-        "أنشئ قطاعاً جديداً أو عدّل الموجود — يظهر في قائمة «القطاع» عند إنشاء خدمة.",
-      adminOrgNav: "القطاعات والخدمات",
-      servicesEmpty: "لا توجد خدمات — أنشئ «خدمة جديدة».",
+        "أنشئ قطاعاً جديداً أو عدّل الموجود — يظهر في قائمة «القطاع» عند إنشاء مجال.",
+      adminOrgNav: "القطاعات ومجالات المتابعة",
+      servicesEmpty: "لا توجد مجالات — أنشئ «مجال متابعة جديد».",
       servicesNoDepartmentsHint: "أنشئ قطاعاً أولاً من صفحة",
       createDepartment: "قطاع جديد",
       editDepartment: "تعديل القطاع",
       departmentsEmpty: "لا يوجد قطاع — أنشئ «قطاع جديد».",
       servicesDepartmentRequired: "اختر القطاع.",
-      servicesTypeHelpTitle: "▸ خدمة أم مجلد؟",
+      servicesTypeHelpTitle: "▸ مجال أم مجلد؟",
       serviceTypeLabel: "النوع",
       serviceTypeLeafHint:
-        "خدمة: عنصر يعمل عليه المكتب (جدول، ملف…). يمكن وضعه داخل مجلد.",
+        "مجال: عنصر يعمل عليه الملحق بالديوان (جدول، ملف…). يمكن وضعه داخل مجلد.",
       serviceTypeFolderHint:
-        "مجلد: لتجميع خدمات فقط (مثال: الوضعية المالية → البنك + ميزانية المشاريع). لا يُشارك مباشرة.",
+        "مجلد: لتجميع مجالات فقط (مثال: الوضعية المالية → البنك + ميزانية المشاريع). لا يُشارك مباشرة.",
       servicesShareModalHint:
-        "فعّل المستخدمين الذين يصلون لهذه الخدمة. المجلدات تُشارك عبر كل خدمة فرعية.",
-      serviceFolderGrantsRollup: "عبر الخدمات الفرعية",
-      serviceFolderShareViaChildren: "شارك كل خدمة فرعية",
+        "فعّل المستخدمين الذين يصلون لهذا المجال. المجلدات تُشارك عبر كل مجال فرعي.",
+      serviceFolderGrantsRollup: "عبر المجالات الفرعية",
+      serviceFolderShareViaChildren: "شارك كل مجال فرعي",
       serviceFolder: "مجلد",
-      serviceLeaf: "خدمة",
+      serviceLeaf: "مجال متابعة",
       serviceGrants: "صلاحيات",
       shareService: "مشاركة",
       department: "القطاع",
@@ -794,7 +794,7 @@ const resources = {
       documentTemplatePickImportHint:
         "استبدل المحتوى أو أضف فوقه من قالب محفوظ.",
       documentTemplateBlank: "مستند فارغ (بدون قالب)",
-      documentTemplateNone: "لا توجد قوالب — أنشئها من إعدادات الخدمة.",
+      documentTemplateNone: "لا توجد قوالب — أنشئها من إعدادات المجال.",
       documentTemplateDefaultWillApply:
         "يمكنك اختيار القالب الافتراضي من القائمة.",
       documentTemplateDefaultSelected:
@@ -842,7 +842,7 @@ const resources = {
       rapportTitleRequired: "عنوان التقرير مطلوب.",
       waliResponseRequired: "الرد مطلوب.",
       waliDecisionInvalid: "القرار غير صالح.",
-      sessionExpired: "انتهت الجلسة.",
+      sessionExpired: "انتهت جلستك. يرجى تسجيل الدخول من جديد للمتابعة.",
       errorGeneric: "حدث خطأ.",
       mediaAttachments: "المرفقات",
       mediaAttachmentsHint:
@@ -889,10 +889,10 @@ const resources = {
       today: "اليوم",
       shareFile: "مشاركة ملف",
       shareMessage: "رسالة",
-      allOfficeUsers: "كل حسابات المكتب ورئيس الديوان",
+      allOfficeUsers: "كل ملحقي الديوان ورئيس الديوان",
       shareRecipients: "المستلمون",
       shareRecipientsHelp:
-        "اختر مستخدماً واحداً على الأقل، أو فعّل «كل حسابات المكتب ورئيس الديوان».",
+        "اختر مستخدماً واحداً على الأقل، أو فعّل «كل ملحقي الديوان ورئيس الديوان».",
       shareSearchUsers: "بحث بالاسم أو اسم المستخدم…",
       shareSelectAll: "تحديد الكل",
       shareClearSelection: "إلغاء التحديد",
@@ -929,7 +929,7 @@ const resources = {
       previewDocx: "معاينة Word",
       previewExcel: "معاينة Excel",
       exportPreviewSavedNote:
-        "المعاينة تعرض محتوى المحرّر (الألوان والتنسيق) دون عنوان التقرير أو الخدمة أو تواريخ الرزنامة.",
+        "المعاينة تعرض محتوى المحرّر (الألوان والتنسيق) دون عنوان التقرير أو المجال أو تواريخ الرزنامة.",
       exportPreviewDocxPaginationNote:
         "إن اختلف عدد الصفحات عن Word، استخدم معاينة PDF للتأكد من التقسيم.",
       exportPreviewPageCount: "عدد الصفحات: {{count}}",
@@ -942,7 +942,7 @@ const resources = {
       schemaTableMissing: "جدول غير موجود — أعد إدراجه من المخطط.",
       selectRapportToImport: "اختر تقريراً للاستيراد",
       searchRapport: "بحث في التقارير",
-      noTableRapportsFound: "لا توجد تقارير جدول تحتوي بيانات في هذا المصلحة.",
+      noTableRapportsFound: "لا توجد تقارير جدول تحتوي بيانات في هذا المجال.",
       schemaTableImportHint:
         "يُعرض فقط تقارير الجداول التي تحتوي صفوفاً. الاستيراد ينسخ الجدول — يمكنك تعديله دون التأثير على التقرير الأصلي.",
       importAndEdit: "استيراد وتعديل",
@@ -957,12 +957,12 @@ const resources = {
       schemaTableScopeLegend: "نطاق المخطط",
       schemaTableScopeRapportOnly: "لهذا التقرير فقط",
       schemaTableScopeRapportOnlyHint:
-        "الأعمدة تُحفظ داخل هذا التقرير ولا تظهر في مخططات المصلحة.",
+        "الأعمدة تُحفظ داخل هذا التقرير ولا تظهر في مخططات المجال.",
       schemaTableScopeSaveService: "حفظ المخطط للاستخدام لاحقاً",
       schemaTableScopeSaveServiceHint:
-        "يُضاف مخططاً في إعدادات المصلحة ويمكن إعادة استخدامه في تقارير أخرى.",
+        "يُضاف مخططاً في إعدادات المجال ويمكن إعادة استخدامه في تقارير أخرى.",
       schemaTableScopeSyncNote:
-        "عند تعديل هذا المخطط لاحقاً من إعدادات المصلحة، تتحدّث الأعمدة تلقائياً في كل التقارير المرتبطة (البيانات المدخلة تبقى).",
+        "عند تعديل هذا المخطط لاحقاً من إعدادات المجال، تتحدّث الأعمدة تلقائياً في كل التقارير المرتبطة (البيانات المدخلة تبقى).",
       schemaTableLinkedBadge: "مشترك",
       createTableAndInsert: "إنشاء وإدراج",
       createSchemaAndInsert: "حفظ المخطط وإدراج",
@@ -971,7 +971,7 @@ const resources = {
       deleteRow: "حذف الصف",
       rows: "صفوف",
       insert: "إدراج",
-      service: "خدمة",
+      service: "مجال متابعة",
     },
   },
   fr: {
@@ -984,12 +984,12 @@ const resources = {
       guestWelcomeTitle: "Plateforme Rapports Wilaya",
       guestWelcomeSubtitle:
         "Rédaction des rapports, validation du chef de cabinet et suivi wali.",
-      guestFeatureOffice: "Bureaux : préparer et envoyer les rapports",
+      guestFeatureOffice: "Attachés du cabinet : préparer et envoyer les rapports",
       guestFeatureChef:
         "Chef de cabinet : valider les rapports avant le wali",
       guestFeatureWali:
         "Wali : consulter rapports, calendrier et fichiers partagés",
-      guestFeatureOfficeLabel: "Bureaux de services",
+      guestFeatureOfficeLabel: "Attachés du cabinet",
       guestFeatureOfficeDesc: "Préparer et envoyer les rapports",
       guestFeatureChefLabel: "Chef de cabinet",
       guestFeatureChefDesc: "Valider les rapports avant le wali",
@@ -1054,7 +1054,7 @@ const resources = {
       errorCurrentCodeIncorrect: "Code actuel incorrect.",
       passwordMinLength: "Le code doit contenir au moins 8 caractères.",
       accountTypeAdmin: "Compte admin",
-      accountTypeOffice: "Compte bureau",
+      accountTypeOffice: "Compte attaché de cabinet",
       accountTypeWali: "Compte wali",
       back: "Retour",
       save: "Enregistrer",
@@ -1069,14 +1069,14 @@ const resources = {
       saving: "Enregistrement…",
       submitting: "Envoi…",
       communeWorkspaceError:
-        "Impossible de charger la liste des communes pour ce service.",
+        "Impossible de charger la liste des communes pour ce domaine.",
       tableWorkspaceError: "Impossible de charger le tableau de ce rapport.",
       tableSchemaNotConfigured:
         "Aucun schéma de tableau n’est lié à ce type de rapport.",
       tableSchemaSlugRequired:
         "Choisissez un schéma de tableau pour ce type de rapport.",
       linkTableSchema: "Lier un schéma",
-      goToServiceConfig: "Configuration du service",
+      goToServiceConfig: "Configuration du domaine",
       communeSearchPlaceholder: "Rechercher une commune…",
       listSearchPlaceholder: "Rechercher {{unit}}…",
       listProgress: "{{filled}} / {{total}} {{unit}} rempli(e)s",
@@ -1117,7 +1117,7 @@ const resources = {
       create: "Créer",
       search: "Rechercher",
       hubAdmin: "Tableau admin",
-      hubOffice: "Tableau bureau",
+      hubOffice: "Espace attaché de cabinet",
       hubWali: "Tableau wali",
       hubChef: "Tableau chef de cabinet",
       navDairas: "Daïras",
@@ -1178,7 +1178,7 @@ const resources = {
       unreadDiscussionBadge: "Nouveau commentaire",
       openDiscussion: "Ouvrir la discussion",
       instructionsListHint:
-        "Envoyez des instructions aux comptes bureau, avec pièces jointes optionnelles.",
+        "Envoyez des instructions aux attachés du cabinet, avec pièces jointes optionnelles.",
       instructionsEmpty: "Aucune instruction — créez « Nouvelles instructions ».",
       instructionRecipientCount: "{{count}} destinataire(s)",
       instructionsListHintOffice: "Cliquez une carte pour ouvrir l’instruction dans une fenêtre.",
@@ -1193,7 +1193,7 @@ const resources = {
       createInstruction: "Nouvelle instruction",
       instructionBody: "Texte de l'instruction",
       instructionAttachments: "Pièces jointes",
-      instructionAllOfficeUsers: "Tous les comptes bureau",
+      instructionAllOfficeUsers: "Tous les attachés du cabinet",
       instructionRecipients: "Destinataires",
       entityTargetKinds: "Cibles de la liste",
       entityTargetKind_commune: "Communes",
@@ -1208,7 +1208,7 @@ const resources = {
       navMunicipalities: "Communes",
       navUsers: "Utilisateurs",
       navRapports: "Rapports",
-      navServices: "Services",
+      navServices: "Domaines de suivi",
       navAccess: "Accès",
       navInbox: "Boîte de réception",
       waliInboxBellEmpty: "Boîte de réception — aucun rapport en attente",
@@ -1218,34 +1218,34 @@ const resources = {
       officeNotificationsBellEmpty: "Notifications wali — aucune non lue",
       officeNotificationsBellWithCount: "Notifications wali — {{count}} non lue(s)",
       officeHubChangesRequestedHint: "Rapports à corriger suite à la demande du wali",
-      officeHubServicesActionHint: "Services contenant des rapports à corriger",
+      officeHubServicesActionHint: "Domaines contenant des rapports à corriger",
       serviceActionHint:
         "Des rapports demandent une correction — ouvrez le type portant le chiffre.",
-      officeRapportsListHint: "Boîte des rapports tous services — discussion via l’onglet ci-dessus.",
+      officeRapportsListHint: "Boîte des rapports tous domaines — discussion via l’onglet ci-dessus.",
       waliInboxNew: "Nouveau",
-      waliInboxFlowTitle: "Circuit du rapport — bureau → wali",
+      waliInboxFlowTitle: "Circuit du rapport — attaché → wali",
       waliInboxFlowExpandTitle: "▸ Explication des statuts (wali)",
       waliInboxFlowIntro:
-        "Le bureau rédige et envoie le rapport ; les statuts ci-dessous reflètent l'étape côté wali.",
-      waliInboxFlowOffice: "Bureau",
+        "L'attaché de cabinet rédige et envoie le rapport ; les statuts ci-dessous reflètent l'étape côté wali.",
+      waliInboxFlowOffice: "Attaché de cabinet",
       waliInboxFlowWali: "Wali",
       waliInboxLegendNewHint: "Envoi non encore ouvert dans votre boîte (à traiter).",
-      waliInboxLegendSubmittedHint: "Vient d'être envoyé par le bureau — en attente d'ouverture.",
+      waliInboxLegendSubmittedHint: "Vient d'être envoyé par l'attaché — en attente d'ouverture.",
       waliInboxLegendUnderReviewHint:
         "Rapport ouvert — en revue. Répondez via « Répondre » dans la liste ou la fiche détail.",
       waliInboxLegendAcknowledgedHint: "Lu ou accepté sans demande de modification.",
       waliInboxLegendChangesRequestedHint:
-        "Modifications demandées — le bureau corrige puis renvoie.",
+        "Modifications demandées — l'attaché corrige puis renvoie.",
       officeRapportFlowExpandTitle: "▸ Explication des statuts",
       officeRapportFlowIntro:
-        "Statuts du rapport, de la rédaction bureau jusqu'à la réponse du wali.",
+        "Statuts du rapport, de la rédaction par l'attaché jusqu'à la réponse du wali.",
       officeRapportLegendDraftHint: "Brouillon — modifiable avant envoi.",
       officeRapportLegendSubmittedHint: "Envoyé au wali — en attente de revue.",
       officeRapportLegendUnderReviewHint: "Le wali consulte le rapport.",
       officeRapportLegendChangesRequestedHint:
         "Le wali demande des modifications — corrigez puis renvoyez.",
       officeRapportLegendAcknowledgedHint: "Le wali a accusé réception sans demande de modification.",
-      navOfficeUsers: "Comptes bureau",
+      navOfficeUsers: "Attachés du cabinet",
       municipalityCode: "Code commune",
       municipalityNameAr: "Nom (arabe)",
       municipalityNameFr: "Nom (français)",
@@ -1258,7 +1258,7 @@ const resources = {
       optional: "Optionnel",
       userRole: "Type de compte",
       roleAdmin: "Admin",
-      roleOffice: "Bureau",
+      roleOffice: "Attaché de cabinet",
       roleWali: "Wali",
       block: "Bloquer",
       unblock: "Débloquer",
@@ -1292,7 +1292,7 @@ const resources = {
       chefDecisionHelp_accepted:
         "Accepte le rapport et l’envoie dans la boîte du wali.",
       chefDecisionHelp_changes_requested:
-        "Renvoie le rapport au bureau pour correction — la note est obligatoire.",
+        "Renvoie le rapport à l'attaché de cabinet pour correction — la note est obligatoire.",
       chefDecisionHelp_viewed:
         "Accusé de lecture uniquement — le rapport reste en attente de votre décision.",
       waliFollowUpLegend: "Après acceptation",
@@ -1335,7 +1335,7 @@ const resources = {
       contentKindHint_document_compose:
         "Document composé — paragraphes, tableaux, images dans un éditeur, export PDF/Word. Un fichier par sujet ou date.",
       contentKindHint_fiche_lecture:
-        "Fiche lecture — comme le document composé, partagée par tout le bureau ; un nouveau fichier à chaque date.",
+        "Fiche lecture — comme le document composé, partagée par tous les attachés du cabinet ; un nouveau fichier à chaque date.",
       contentKindHint_commune_list:
         "Liste — une ligne ou fiche par cible (commune, daïra, direction) avec tableau ou saisies dédiées.",
       navNotifications: "Notifications wali",
@@ -1366,19 +1366,19 @@ const resources = {
       rapportListScope: "Afficher",
       rapportListActive: "Actifs",
       rapportListFinished: "Terminés (masqués)",
-      hideRapportType: "Masquer du service",
-      hideRapportTypeDone: "Type de rapport masqué pour ce service",
-      restoreRapportType: "Afficher dans le service",
-      restoreRapportTypeDone: "Type de rapport réaffiché dans ce service",
+      hideRapportType: "Masquer du domaine",
+      hideRapportTypeDone: "Type de rapport masqué pour ce domaine",
+      restoreRapportType: "Afficher dans le domaine",
+      restoreRapportTypeDone: "Type de rapport réaffiché dans ce domaine",
       showHiddenRapportTypes: "Afficher les types de rapport masqués",
       rapportTypeListScope: "Afficher",
       rapportTypeListVisible: "Visibles",
       rapportTypeListHidden: "Masqués",
       moreActions: "Plus d'actions",
       hideRapportTypeConfirmTitle: "Masquer ce type de rapport ?",
-      hideRapportTypeConfirmMessage: "« {{name}} » sera masqué pour ce service. Vous pourrez le restaurer plus tard.",
+      hideRapportTypeConfirmMessage: "« {{name}} » sera masqué pour ce domaine. Vous pourrez le restaurer plus tard.",
       restoreRapportTypeConfirmTitle: "Afficher ce type de rapport ?",
-      restoreRapportTypeConfirmMessage: "« {{name}} » sera de nouveau visible dans ce service.",
+      restoreRapportTypeConfirmMessage: "« {{name}} » sera de nouveau visible dans ce domaine.",
       finishRapportConfirmTitle: "Terminer et masquer ce rapport ?",
       finishRapportConfirmMessage: "Ce rapport sera masqué des listes. Vous pourrez le restaurer plus tard.",
       finishRapportConfirmMessageNamed: "« {{name}} » sera masqué des listes. Vous pourrez le restaurer plus tard.",
@@ -1388,17 +1388,17 @@ const resources = {
       deleteRapportAdminConfirmMessage:
         "« {{name}} » sera supprimé de la base. Action irréversible.",
       deleteRapportAdminDone: "Rapport supprimé",
-      deleteService: "Supprimer le service",
-      deleteServiceConfirmTitle: "Supprimer ce service ?",
+      deleteService: "Supprimer le domaine",
+      deleteServiceConfirmTitle: "Supprimer ce domaine ?",
       deleteServiceConfirmMessage:
         "« {{name}} » sera masqué des listes. Les rapports liés restent en base.",
-      deleteServiceDone: "Service supprimé",
+      deleteServiceDone: "Domaine supprimé",
       deleteDepartment: "Supprimer le département",
       deleteDepartmentConfirmTitle: "Supprimer ce département ?",
       deleteDepartmentConfirmMessage:
-        "« {{name}} » sera masqué. Services et rapports restent ; les services n'auront plus de département.",
+        "« {{name}} » sera masqué. Domaines et rapports restent ; les domaines n'auront plus de département.",
       deleteDepartmentDone: "Département supprimé",
-      editService: "Modifier le service",
+      editService: "Modifier le domaine",
       serviceNoDepartment: "Sans département",
       noDepartment: "— Sans département —",
       waliVisible: "Visible wali",
@@ -1429,38 +1429,38 @@ const resources = {
       details: "Voir",
       navSchemas: "Schémas & types",
       schemasHelp:
-        "Choisissez d’abord un service — puis gérez ses schémas et types de rapport.",
+        "Choisissez d’abord un domaine — puis gérez ses schémas et types de rapport.",
       schemasPageIntro:
-        "Chaque service a ses propres schémas et types. Un service « document » peut ne pas utiliser de tableaux.",
+        "Chaque domaine a ses propres schémas et types. Un domaine « document » peut ne pas utiliser de tableaux.",
       schemasPageStep1:
-        "① Onglet « Schémas de tableaux » — colonnes propres à ce service (recherche + pages).",
+        "① Onglet « Schémas de tableaux » — colonnes propres à ce domaine (recherche + pages).",
       schemasPageStep2:
         "② Onglet « Types de rapport » — mode de fonctionnement (tableau, document…).",
       schemasStep1Help:
-        "Schéma = définition des colonnes, créé pour le service sélectionné — invisible aux autres services.",
+        "Schéma = définition des colonnes, créé pour le domaine sélectionné — invisible aux autres domaines.",
       schemasStep2Help:
         "Type de rapport = mode (tableau, document…). Si « tableau », liez un schéma de l’onglet schémas.",
-      schemasPickService: "① Choisir le service",
+      schemasPickService: "① Choisir le domaine",
       schemasServiceScopeHelp:
-        "Ci-dessous : uniquement les schémas et types de ce service.",
+        "Ci-dessous : uniquement les schémas et types de ce domaine.",
       schemasServiceRequired:
-        "Choisissez un service pour gérer ses schémas et types.",
+        "Choisissez un domaine pour gérer ses schémas et types.",
       schemasSelectServiceFirst:
-        "Choisissez un service pour activer « Nouveau type ».",
+        "Choisissez un domaine pour activer « Nouveau type ».",
       schemasNoServiceSelected:
-        "Choisissez un service dans la liste pour commencer.",
+        "Choisissez un domaine dans la liste pour commencer.",
       schemasNoRapportTypes:
-        "Aucun type pour ce service — créez-en un dans l’onglet « Types de rapport ».",
+        "Aucun type pour ce domaine — créez-en un dans l’onglet « Types de rapport ».",
       schemasTabSchemas: "Schémas de tableaux",
       schemasTabRapportTypes: "Types de rapport",
       schemasSearchPlaceholder: "Rechercher un schéma…",
       schemasIncludeShared: "Afficher les modèles partagés (exemples système)",
       schemasNoSchemasForService:
-        "Aucun schéma pour ce service — « Nouveau schéma » ou modèles partagés.",
+        "Aucun schéma pour ce domaine — « Nouveau schéma » ou modèles partagés.",
       schemasDocumentServiceNote:
-        "Service sans tableaux ? Onglet « Types de rapport » → type « Document » ou « Fiche lecture ».",
+        "Domaine sans tableaux ? Onglet « Types de rapport » → type « Document » ou « Fiche lecture ».",
       schemasScopeLabel: "Portée",
-      schemasScopeService: "Ce service",
+      schemasScopeService: "Ce domaine",
       schemasScopeSystem: "Modèle système",
       schemasScopeLinked: "Lié",
       tableSchemas: "Schémas de tableaux",
@@ -1662,22 +1662,22 @@ const resources = {
       schemaAdvancedLayout: "Mise en page avancée (JSON)",
       rapportTypes: "Types de rapport",
       createRapportType: "Nouveau type",
-      selectService: "Choisir un service",
+      selectService: "Choisir un domaine",
       selectSchema: "Choisir un schéma",
       linkedSchema: "Schéma lié",
       layoutJson: "Mise en page (JSON)",
       serviceConfig: "Configuration",
       officeConfigHelp:
-        "Configuration du service — un onglet à la fois pour éviter la confusion entre listes.",
+        "Configuration du domaine — un onglet à la fois pour éviter la confusion entre listes.",
       serviceConfigStep1: "Schémas de tableaux : colonnes et mise en page des rapports tableau.",
       serviceConfigStep2:
         "Types de rapport : lier chaque type à son contenu (tableau, document, …) et au schéma si besoin.",
       serviceConfigStep3:
         "Modèles de document : textes prêts pour documents et fiches (après création d’un type document).",
       serviceConfigTypesHelp:
-        "Chaque type apparaît sur le hub du service. Les tableaux nécessitent un schéma lié.",
+        "Chaque type apparaît sur le hub du domaine. Les tableaux nécessitent un schéma lié.",
       documentTemplatesNeedTypes:
-        "Aucun type document ou fiche sur ce service. Créez un type « document » ou « fiche » dans l’onglet Types de rapport.",
+        "Aucun type document ou fiche sur ce domaine. Créez un type « document » ou « fiche » dans l’onglet Types de rapport.",
       duplicateTemplate: "Dupliquer le schéma",
       selectTemplate: "Choisir un schéma",
       newSchemaSlug: "Identifiant du nouveau schéma",
@@ -1690,46 +1690,46 @@ const resources = {
       mergeColumnsExample:
         "Ex. : colonne « Commune » — 5 lignes identiques → une seule cellule fusionnée.",
       contentKind: "Type de contenu",
-      createService: "Nouveau service",
+      createService: "Nouveau domaine de suivi",
       servicesShareHelp:
-        "Créez un service puis partagez-le. Un dossier affiche le nombre d’utilisateurs via ses sous-services.",
+        "Créez un domaine puis partagez-le. Un dossier affiche le nombre d’utilisateurs via ses sous-domaines.",
       servicesPageIntro:
-        "Service = visible bureau/wali. Dossier = regroupement seulement (ex. Finance → Banque + Budget).",
+        "Domaine de suivi = visible attaché/wali. Dossier = regroupement seulement (ex. Finance → Banque + Budget).",
       servicesPageStep1:
-        "① Cliquez « Nouveau service » et choisissez le département (onglet Départements).",
+        "① Cliquez « Nouveau domaine de suivi » et choisissez le département (onglet Départements).",
       servicesPageStep2:
-        "② « Service » = rapports réels. « Dossier » = contient des sous-services.",
+        "② « Domaine » = rapports réels. « Dossier » = contient des sous-domaines.",
       servicesPageStep3:
-        "③ « Partager » sur chaque sous-service — le dossier agrège les utilisateurs.",
+        "③ « Partager » sur chaque sous-domaine — le dossier agrège les utilisateurs.",
       servicesCreateHint:
         "Remplissez puis enregistrez. Une fiche lecture est créée automatiquement.",
       servicesDepartmentHelpTitle: "▸ Qu’est-ce que le « département » ?",
       servicesDepartmentHelp:
-        "Le département classe les services. Ajoutez-en ci-dessous, puis choisissez-le à la création d’un service.",
+        "Le département classe les domaines de suivi. Ajoutez-en ci-dessous, puis choisissez-le à la création d’un domaine.",
       departmentNameExists:
         "Nom de département déjà utilisé (arabe ou français).",
       departmentsSection: "Départements",
       departmentsSectionHelp:
-        "Créez ou modifiez un département — visible lors de la création d’un service.",
-      adminOrgNav: "Départements et services",
-      servicesEmpty: "Aucun service — cliquez « Nouveau service ».",
+        "Créez ou modifiez un département — visible lors de la création d’un domaine.",
+      adminOrgNav: "Départements et domaines de suivi",
+      servicesEmpty: "Aucun domaine — cliquez « Nouveau domaine de suivi ».",
       servicesNoDepartmentsHint: "Créez d’abord un département depuis",
       createDepartment: "Nouveau département",
       editDepartment: "Modifier le département",
       departmentsEmpty: "Aucun département — cliquez « Nouveau département ».",
       servicesDepartmentRequired: "Choisissez un département.",
-      servicesTypeHelpTitle: "▸ Service ou dossier ?",
+      servicesTypeHelpTitle: "▸ Domaine ou dossier ?",
       serviceTypeLabel: "Type",
       serviceTypeLeafHint:
-        "Service : travail bureau (tableau, document…). Peut être dans un dossier.",
+        "Domaine : travail de l'attaché (tableau, document…). Peut être dans un dossier.",
       serviceTypeFolderHint:
-        "Dossier : regroupe des services (ex. Finance → Banque + Budget). Pas de partage direct.",
+        "Dossier : regroupe des domaines (ex. Finance → Banque + Budget). Pas de partage direct.",
       servicesShareModalHint:
-        "Activez les utilisateurs pour ce service. Les dossiers se partagent via les sous-services.",
-      serviceFolderGrantsRollup: "via sous-services",
-      serviceFolderShareViaChildren: "Partager chaque sous-service",
+        "Activez les utilisateurs pour ce domaine. Les dossiers se partagent via les sous-domaines.",
+      serviceFolderGrantsRollup: "via sous-domaines",
+      serviceFolderShareViaChildren: "Partager chaque sous-domaine",
       serviceFolder: "Dossier",
-      serviceLeaf: "Service",
+      serviceLeaf: "Domaine de suivi",
       serviceGrants: "Accès",
       shareService: "Partager",
       department: "Département",
@@ -1793,7 +1793,7 @@ const resources = {
         "Remplacez le contenu ou ajoutez à la fin depuis un modèle enregistré.",
       documentTemplateBlank: "Document vide (sans modèle)",
       documentTemplateNone:
-        "Aucun modèle — créez-en dans la configuration du service.",
+        "Aucun modèle — créez-en dans la configuration du domaine.",
       documentTemplateDefaultWillApply:
         "Le modèle par défaut est présélectionné si disponible.",
       documentTemplateDefaultSelected:
@@ -1838,7 +1838,7 @@ const resources = {
       rapportTitleRequired: "Titre requis.",
       waliResponseRequired: "Réponse requise.",
       waliDecisionInvalid: "Décision invalide.",
-      sessionExpired: "Session expirée.",
+      sessionExpired: "Votre session a expiré. Veuillez vous reconnecter pour continuer.",
       errorGeneric: "Une erreur est survenue.",
       mediaAttachments: "Pièces jointes",
       mediaAttachmentsHint:
@@ -1886,10 +1886,10 @@ const resources = {
       today: "Aujourd'hui",
       shareFile: "Partager un fichier",
       shareMessage: "Message",
-      allOfficeUsers: "Tous les comptes bureau et le chef de cabinet",
+      allOfficeUsers: "Tous les attachés du cabinet et le chef de cabinet",
       shareRecipients: "Destinataires",
       shareRecipientsHelp:
-        "Choisissez au moins un utilisateur, ou activez « Tous les comptes bureau et le chef de cabinet ».",
+        "Choisissez au moins un utilisateur, ou activez « Tous les attachés du cabinet et le chef de cabinet ».",
       shareSearchUsers: "Rechercher par nom ou identifiant…",
       shareSelectAll: "Tout sélectionner",
       shareClearSelection: "Tout désélectionner",
@@ -1926,7 +1926,7 @@ const resources = {
       previewDocx: "Aperçu Word",
       previewExcel: "Aperçu Excel",
       exportPreviewSavedNote:
-        "L’aperçu reprend le contenu de l’éditeur (couleurs et mise en forme), sans titre du rapport, service ni dates calendrier.",
+        "L’aperçu reprend le contenu de l’éditeur (couleurs et mise en forme), sans titre du rapport, domaine ni dates calendrier.",
       exportPreviewDocxPaginationNote:
         "Si le nombre de pages diffère de Word, utilisez l’aperçu PDF pour vérifier la pagination.",
       exportPreviewPageCount: "Nombre de pages : {{count}}",
@@ -1941,7 +1941,7 @@ const resources = {
       selectRapportToImport: "Choisir un rapport à importer",
       searchRapport: "Rechercher un rapport",
       noTableRapportsFound:
-        "Aucun rapport tableau avec des données pour ce service.",
+        "Aucun rapport tableau avec des données pour ce domaine.",
       schemaTableImportHint:
         "Seuls les rapports tableau avec des lignes sont listés. L’import crée une copie modifiable, sans lien avec le rapport source.",
       importAndEdit: "Importer et modifier",
@@ -1956,12 +1956,12 @@ const resources = {
       schemaTableScopeLegend: "Portée du schéma",
       schemaTableScopeRapportOnly: "Pour ce rapport seulement",
       schemaTableScopeRapportOnlyHint:
-        "Les colonnes restent dans ce document, sans schéma de service.",
+        "Les colonnes restent dans ce document, sans schéma de domaine.",
       schemaTableScopeSaveService: "Enregistrer le schéma pour plus tard",
       schemaTableScopeSaveServiceHint:
-        "Ajoute un schéma réutilisable dans la configuration du service.",
+        "Ajoute un schéma réutilisable dans la configuration du domaine.",
       schemaTableScopeSyncNote:
-        "Si vous modifiez ce schéma plus tard dans la configuration du service, les colonnes se mettent à jour dans tous les rapports liés (les données saisies sont conservées).",
+        "Si vous modifiez ce schéma plus tard dans la configuration du domaine, les colonnes se mettent à jour dans tous les rapports liés (les données saisies sont conservées).",
       schemaTableLinkedBadge: "Partagé",
       createTableAndInsert: "Créer et insérer",
       createSchemaAndInsert: "Enregistrer le schéma et insérer",
@@ -1970,7 +1970,7 @@ const resources = {
       deleteRow: "Supprimer la ligne",
       rows: "lignes",
       insert: "Insérer",
-      service: "Service",
+      service: "Domaine de suivi",
     },
   },
 };

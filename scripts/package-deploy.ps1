@@ -12,8 +12,10 @@
     - public_html/.htaccess (customized on cPanel — not in zip)
     - wali-api/.env (secrets stay on server — not in zip)
 
-  Skips: node_modules, env files, backend/scripts (seed/dev only),
+  Skips: node_modules, env files, demo/dev/test seed scripts,
          local storage, docs, tests, old archives.
+  Includes prod cabinet seeds only: seed-prod-bootstrap, seed-prod-ensure,
+         load-env, lib/prodCabinetUsers, data/prodBootstrapInventory.
 
 .EXAMPLE
   .\scripts\package-deploy.ps1
@@ -83,12 +85,12 @@ Copy-Item $FrontendZip $FrontendLatest -Force
 Remove-Item $FrontendStage -Recurse -Force
 
 # --- Backend ---
-Write-Step "Zip backend → wali-api package (no env, no seed scripts)"
+Write-Step "Zip backend → wali-api package (no env; prod seeds whitelisted)"
 $BackendStage = Join-Path $OutDir "_stage-backend"
 if (Test-Path $BackendStage) { Remove-Item $BackendStage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $BackendStage | Out-Null
 
-# Prod runtime + migrations only. Skip backend/scripts (seed-dev, demo, tests).
+# Prod runtime + migrations. Demo/dev/test seeds stay out of the zip.
 $IncludeDirs = @("config", "src")
 foreach ($dir in $IncludeDirs) {
   $src = Join-Path $BackendDir $dir
@@ -105,6 +107,23 @@ foreach ($file in $IncludeFiles) {
   $src = Join-Path $BackendDir $file
   Assert-Path $src "backend/$file"
   Copy-Item -Path $src -Destination (Join-Path $BackendStage $file) -Force
+}
+
+# Whitelist prod cabinet scripts only (wipe once + safe ensure).
+$ProdScriptFiles = @(
+  "scripts\load-env.js",
+  "scripts\seed-prod-bootstrap.js",
+  "scripts\seed-prod-ensure.js",
+  "scripts\lib\prodCabinetUsers.js",
+  "scripts\data\prodBootstrapInventory.js"
+)
+foreach ($rel in $ProdScriptFiles) {
+  $src = Join-Path $BackendDir $rel
+  Assert-Path $src "backend/$rel"
+  $dest = Join-Path $BackendStage $rel
+  $destDir = Split-Path $dest -Parent
+  New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+  Copy-Item -Path $src -Destination $dest -Force
 }
 
 Get-ChildItem $BackendStage -Recurse -File -Include `
@@ -142,7 +161,7 @@ Write-Host ""
 Write-Host "Skipped on purpose (do not overwrite on server):"
 Write-Host "  - public_html/.htaccess (your cPanel version)"
 Write-Host "  - wali-api/.env and any env templates"
-Write-Host "  - backend/scripts (seed/dev/test only)"
+Write-Host "  - demo/dev/test seed scripts (prod bootstrap + ensure are included)"
 Write-Host "  - node_modules (Run NPM Install on cPanel)"
 Write-Host "  - local storage/, uploads, docs, frontend src"
 Write-Host ""

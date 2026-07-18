@@ -14,16 +14,16 @@ Define **how the Wali finds and reviews** office work, and **four content archit
 
 ```mermaid
 flowchart TD
-  waliHub[Hub Wali] --> officeList[Liste comptes bureau]
-  officeList --> officeUser[Un compte bureau]
-  officeUser --> serviceTree[Arbre services / sous-services]
+  waliHub[Hub Wali] --> officeList[Liste attachés du cabinet]
+  officeList --> officeUser[Un attaché de cabinet]
+  officeUser --> serviceTree[Arbre domaines de suivi]
   serviceTree --> contentOpen[Ouvrir contenu selon type]
   contentOpen --> review[Revue + note optionnelle]
-  review --> notifyOffice[Notification bureau]
+  review --> notifyOffice[Notification attaché]
 ```
 
-1. **Wali hub** → **Comptes bureau** (one click per office user).
-2. Select **office user** → see **services** assigned to that user (permission-scoped).
+1. **Wali hub** → **ملحقو الديوان / Attachés du cabinet** (one click per office user).
+2. Select **attaché** → see **domaines de suivi** (`services`) assigned to that user (permission-scoped).
 3. Service may be:
    - **Leaf** (single item — open directly), or
    - **Folder** with **sub-services** (e.g. Finance → Banque, Budget projets).
@@ -32,7 +32,7 @@ flowchart TD
 
 ### Office navigation (mirror)
 
-- Office hub → **Mes services** (same tree, filtered to own permissions).
+- Office hub → **مجالات المتابعة / Domaines de suivi** (same tree, filtered to own permissions).
 - Draft work → **Enregistrer brouillon** (first save creates `draft`) → **Envoyer au wali** (creates submission; versioned types increment version).
 - **Office service badges** (`action_count` / `services_action_count`): count `changes_requested` rapports in services the user can access (any owner). Soft-hidden rapport types that still have a pending action remain visible on the service hub so the badge is clickable.
 
@@ -86,6 +86,8 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
   - **`table`** (default): any row can move anywhere in the table (table grid, single-commune editor, embedded tables).
   - **`commune`** (commune bulk entry): reorder **within the same `municipality_code` only** — a row in Tlemcen cannot move into another commune’s block.
 - **Hide rapport / type** (office): soft-hide individual rapports (`rapports.hidden_at`) or rapport types (`rapport_types.hidden_at`) from service hubs; **fiche_lecture** type cannot be hidden as a type. Restore from « hidden » filter. Confirm dialog before hide.
+  - **Office hub:** hidden types excluded by default; exception — a soft-hidden type that still has `changes_requested` rapports stays visible so the action badge remains clickable.
+  - **Wali / Chef hubs:** soft-hidden types are **never** shown (no office action-badge exception). Soft-hidden rapports are excluded from lists and cannot be opened by direct URL (`404`).
 
 ### Versioning & archive
 

@@ -43,9 +43,9 @@
 
 
 
-1. Wali → **liste comptes bureau** (one click per user).
+1. Wali → **liste ملحقو الديوان / attachés du cabinet** (one click per user).
 
-2. User → **services / sous-services** (folder or leaf).
+2. User → **domaines de suivi** (`services` / sous-services — folder or leaf; UI: مجال المتابعة / Domaine de suivi).
 
 3. Leaf opens content per **`content_kind`**: `table_grid` | `document_compose` | `fiche_lecture` | `commune_list`.
 

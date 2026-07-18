@@ -616,13 +616,19 @@ async function assertVisibleToWali(rapportOrId) {
   const rapport =
     typeof rapportOrId === "object" && rapportOrId?.status != null
       ? rapportOrId
-      : await Rapport.findByPk(rapportOrId, { attributes: ["id", "status"] });
+      : await Rapport.findByPk(rapportOrId, {
+          attributes: ["id", "status", "hidden_at"],
+        });
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
-  if (rapport.status === "pending_chef" || rapport.status === "draft") {
+  if (
+    rapport.status === "pending_chef" ||
+    rapport.status === "draft" ||
+    rapport.hidden_at
+  ) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;

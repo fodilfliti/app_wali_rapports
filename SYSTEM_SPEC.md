@@ -27,7 +27,8 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 
 ### Cross-cutting updates (initial)
 
-- **Four account types:** `ADMIN` (compte admin), `OFFICE_USER` (compte bureau), `WALI` (compte wali), `CHEF_CABINET` (رئيس الديوان) — never show raw enums in UI.
+- **Four account types:** `ADMIN` (compte admin), `OFFICE_USER` (**ملحق بالديوان** / Attaché de cabinet), `WALI` (compte wali), `CHEF_CABINET` (رئيس الديوان) — never show raw enums in UI.
+- **Domain tree UI:** DB/API `services` → leaf **مجال المتابعة** / **Domaine de suivi**; folder **مجلد** / **Dossier** (not «dossier» for leaf nodes).
 - **Communes / dairas / directions (Directions):** reference rows only; no login accounts for these. Communes belong to a daira; directions are independent. UI path: `/directions` (labels المديريات / Directions). Service « départements / قطاعات » are hidden in admin UI.
 - **Route prefixes:** `/admin/*`, `/office/*`, `/wali/*`, `/chef/*` + `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`.
 - **Form validation:** mandatory Zod client + server on all create/edit flows — `spec/CORE.md`.

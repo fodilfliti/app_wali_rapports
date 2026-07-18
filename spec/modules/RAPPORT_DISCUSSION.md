@@ -17,7 +17,7 @@ Non-live **comment thread** at the bottom of a rapport so **office**, **Chef cab
 | `WALI` | Yes only if visible to Wali | Blocked for `pending_chef` / draft via `assertVisibleToWali` |
 | `ADMIN` | Yes (support) | Via chef/wali/office routes as applicable |
 
-UI labels: compte bureau / رئيس الديوان / حساب الوالي — never raw enums.
+UI labels: ملحق بالديوان / Attaché de cabinet · رئيس الديوان · حساب الوالي — never raw enums.
 
 ### Data model
 

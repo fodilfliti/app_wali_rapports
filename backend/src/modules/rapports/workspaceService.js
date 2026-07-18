@@ -304,17 +304,18 @@ async function getServiceContentHub(serviceId, user, options = {}) {
   const hiddenTypesOnly = Boolean(options.hiddenTypesOnly);
 
   let visibleTypes = service.rapportTypes || [];
-  if (!isWaliView) {
-    if (hiddenTypesOnly) {
-      visibleTypes = visibleTypes.filter((t) => t.hidden_at);
-    } else if (!includeHiddenTypes) {
-      // Keep soft-hidden types that still need action so badges remain clickable
-      visibleTypes = visibleTypes.filter(
-        (t) =>
-          !t.hidden_at ||
-          Number(byType[`${sid}:${Number(t.id)}`]) > 0,
-      );
-    }
+  if (isWaliView) {
+    // Wali/Chef: never show soft-hidden types (no office action-badge exception)
+    visibleTypes = visibleTypes.filter((t) => !t.hidden_at);
+  } else if (hiddenTypesOnly) {
+    visibleTypes = visibleTypes.filter((t) => t.hidden_at);
+  } else if (!includeHiddenTypes) {
+    // Keep soft-hidden types that still need action so badges remain clickable
+    visibleTypes = visibleTypes.filter(
+      (t) =>
+        !t.hidden_at ||
+        Number(byType[`${sid}:${Number(t.id)}`]) > 0,
+    );
   }
 
   const rapportTypes = visibleTypes.map((t) => ({

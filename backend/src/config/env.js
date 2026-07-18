@@ -12,6 +12,7 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRES_IN: DurationSchema,
   REFRESH_TOKEN_EXPIRES_IN: DurationSchema,
+  REFRESH_REUSE_GRACE_MS: z.coerce.number().int().nonnegative().optional(),
   COOKIE_SECURE: z
     .string()
     .optional()
@@ -65,6 +66,7 @@ function getEnv() {
     jwtAccessExpiresIn: e.JWT_ACCESS_EXPIRES_IN || "15m",
     refreshTokenExpiresIn: e.REFRESH_TOKEN_EXPIRES_IN || "7d",
     refreshTokenExpiresMs: parseDurationMs(e.REFRESH_TOKEN_EXPIRES_IN || "7d", 7 * 86_400_000),
+    refreshReuseGraceMs: e.REFRESH_REUSE_GRACE_MS ?? 10_000,
     cookieSecure: e.COOKIE_SECURE ?? nodeEnv === "production",
     fileStorageRoot: e.FILE_STORAGE_ROOT,
     corsOrigin: e.CORS_ORIGIN,

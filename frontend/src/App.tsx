@@ -207,7 +207,9 @@ function AppShell() {
       setToken(null);
       setMe(null);
       localStorage.removeItem("me");
-      snack.show(t("sessionExpired"), "error");
+      const msg = t("sessionExpired");
+      snack.show(msg, "error");
+      window.alert(msg);
       navigate("/");
     });
     onAccessTokenChange((next) => setToken(next));

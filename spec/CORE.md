@@ -16,10 +16,12 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 
 | Internal enum | UI label | Scope |
 | ------------- | -------- | ----- |
-| `ADMIN` | compte admin | Users, communes, dairas, directions, services, rapport types, access profiles |
-| `OFFICE_USER` | compte bureau | Create/edit/submit rapports in assigned domains |
-| `CHEF_CABINET` | رئيس الديوان | First-line validation before Wali; same review tools as Wali (no instruction/broadcast create) |
-| `WALI` | compte wali | Read validated rapports, respond, request changes, create instructions |
+| `ADMIN` | compte admin / حساب مدير | Users, communes, dairas, directions, domaines de suivi (services), rapport types, access profiles |
+| `OFFICE_USER` | **ملحق بالديوان** / **Attaché de cabinet** | Create/edit/submit rapports in assigned domaines de suivi |
+| `CHEF_CABINET` | رئيس الديوان / Chef de cabinet | First-line validation before Wali; same review tools as Wali (no instruction/broadcast create) |
+| `WALI` | حساب الوالي / Compte wali | Read validated rapports, respond, request changes, create instructions |
+
+**UI vocabulary (never show raw enums):** `OFFICE_USER` → ملحق بالديوان / Attaché de cabinet (plural: ملحقو الديوان / Attachés du cabinet). Domain tree nodes (`services` table): leaf UI = **مجال المتابعة** / **Domaine de suivi**; folder UI = **مجلد** / **Dossier**. Keep code/API names (`OFFICE_USER`, `/office/*`, `services`) unchanged.
 
 - **Reference geography/org:** `dairas`, `municipalities` (FK `daira_id`), `directions` (flat) — **not login accounts**.
 - **User**: `username`, `name`, `role`, optional `department_id`, access role template.

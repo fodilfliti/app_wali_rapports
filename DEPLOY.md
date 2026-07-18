@@ -160,9 +160,12 @@ npm run db:seed-dev
 | `npm run db:seed-dev` | Yes (once / as needed) | Does **not** wipe data; inserts dairas/municipalities if empty; creates/updates admin |
 | `npm run db:seed-test` | **No** | `DELETE FROM` services, rapports, versions, notifications, broadcasts, etc. |
 | `npm run db:seed-demo` | **No** | Same wipe as test seed, plus deletes **departments** |
+| `npm run db:seed-prod-bootstrap` | **Once only** (after backup) | Wipes domain data + loads cabinet users and **root leaf** services from `spec/data/PROD_BOOTSTRAP.md` (no person folders); requires `CONFIRM_PROD_BOOTSTRAP=YES`. Temporary — do not re-run after the initial reset. |
+| `npm run db:seed-prod-ensure` | **Safe ongoing** | Adds missing users/services/grants from the same inventory; never deletes or resets passwords; requires `CONFIRM_PROD_ENSURE=YES`. New passwords only in `credentials-added-*.xlsx`. |
+| `npm run db:seed-demo-cabinet` | **Dev only** | Fills cabinet bootstrap services with presentation data; refuses when `NODE_ENV=production` |
 | `npm run db:migrate:undo` / `db:migrate:undo:all` | **No** | Rolls back migrations; can drop tables / remove seed rows |
 
-**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo.
+**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `CONFIRM_PROD_BOOTSTRAP=YES npm run db:seed-prod-bootstrap` once — credentials under `storage/bootstrap/`. For later people/services: edit inventory, then `CONFIRM_PROD_ENSURE=YES npm run db:seed-prod-ensure` (no wipe).
 
 ### 6. Frontend build (on your PC)
 

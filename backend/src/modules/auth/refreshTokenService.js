@@ -158,17 +158,10 @@ async function rotateRefresh(req, res) {
       throw err;
     }
 
-    if (existing.revoked_at || existing.replaced_by_id) {
-      await revokeFamily(existing.family_id, transaction);
-      clearRefreshCookie(res);
-      await audit(existing.user_id, "TOKEN_REUSE_DETECTED", { family_id: existing.family_id }, { req });
-      const err = new Error("Invalid token");
-      err.status = 401;
-      throw err;
-    }
-
     if (existing.expires_at <= now || existing.family_expires_at <= now) {
-      await existing.update({ revoked_at: now }, { transaction });
+      if (!existing.revoked_at) {
+        await existing.update({ revoked_at: now }, { transaction });
+      }
       clearRefreshCookie(res);
       const err = new Error("Invalid token");
       err.status = 401;
@@ -179,6 +172,35 @@ async function rotateRefresh(req, res) {
     if (!user || user.is_blocked) {
       await revokeFamily(existing.family_id, transaction);
       clearRefreshCookie(res);
+      const err = new Error("Invalid token");
+      err.status = 401;
+      throw err;
+    }
+
+    // Concurrent multi-tab reuse of a just-rotated token: return access only.
+    if (existing.revoked_at || existing.replaced_by_id) {
+      const graceMs = getEnv().refreshReuseGraceMs;
+      const rotatedAt = existing.revoked_at ? new Date(existing.revoked_at).getTime() : 0;
+      const withinGrace =
+        Boolean(existing.replaced_by_id) &&
+        rotatedAt > 0 &&
+        now.getTime() - rotatedAt <= graceMs;
+
+      if (withinGrace) {
+        const token = signAccessToken(user);
+        const sessionUser = await enrichSessionUser(user);
+        await audit(
+          user.id,
+          "TOKEN_REFRESH",
+          { family_id: existing.family_id, concurrent_reuse: true },
+          { req }
+        );
+        return { token, user: sessionUser };
+      }
+
+      await revokeFamily(existing.family_id, transaction);
+      clearRefreshCookie(res);
+      await audit(existing.user_id, "TOKEN_REUSE_DETECTED", { family_id: existing.family_id }, { req });
       const err = new Error("Invalid token");
       err.status = 401;
       throw err;

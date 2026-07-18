@@ -39,8 +39,9 @@ Login, short-lived access JWTs, and long-lived refresh sessions so users stay si
 ### Rotation & reuse detection
 
 1. Each successful `/auth/refresh` creates a **new** refresh row, marks the old row revoked (`replaced_by_id`), and sets a new cookie.
-2. If a **already-rotated / revoked** refresh token is presented again → treat as possible theft: **revoke the entire family**, clear cookie, audit `TOKEN_REUSE_DETECTED`, return **401**.
-3. Expired or unknown refresh → **401**, clear cookie.
+2. **Concurrent-reuse grace (multi-tab):** If an already-rotated refresh token is presented again within **~10 seconds** of rotation (`revoked_at` set, `replaced_by_id` set, env `REFRESH_REUSE_GRACE_MS` default `10000`), treat as a concurrent tab race — not theft: issue a **new access JWT** for the same user, **do not** rotate again, **do not** `revokeFamily`, **do not** clear or overwrite the cookie (leave the successor cookie from the winning refresh). Family / user must still be valid and unblocked.
+3. If a **already-rotated / revoked** refresh is presented **outside** the grace window (or was revoked without a successor, e.g. logout / kill-all) → treat as possible theft: **revoke the entire family**, clear cookie, audit `TOKEN_REUSE_DETECTED`, return **401**.
+4. Expired or unknown refresh → **401**, clear cookie.
 
 ### Revocation (kill all sessions)
 
@@ -88,8 +89,9 @@ Blocked users: login and refresh fail; protected routes still use `checkBlocked`
 - Persist **no** access JWT in `localStorage` / `sessionStorage`.
 - On boot: `POST /auth/refresh` with `credentials: 'include'`; if ok, hold access in memory and load UI; else guest login.
 - All API `fetch` calls use `credentials: 'include'`.
-- On **401** from a protected call: single-flight refresh once, retry; if refresh fails → clear session and show `sessionExpired`.
+- On **401** from a protected call: single-flight refresh once, retry; if refresh fails → clear session, show explicit `sessionExpired` message (Arabic/French: session ended — please log in again), and return to the login screen. No device push for this case (user is already in the browser).
 - Logout calls `POST /auth/logout` then clears client state.
+- **Multi-tab:** Use `navigator.locks` (`wr-auth-refresh`) so only one tab calls `/auth/refresh` at a time; use `BroadcastChannel('wr-auth')` to share the new access JWT (`{ type: 'access', token }`) and to propagate session expiry (`{ type: 'expired' }`) across tabs. Access JWT remains memory-only per tab (updated via the channel).
 
 ### CORS / deployment
 
