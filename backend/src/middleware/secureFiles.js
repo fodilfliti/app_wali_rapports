@@ -1,10 +1,15 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const path = require("path");
-const fs = require("fs");
 const { getEnv } = require("../config/env");
-const { storageRoot } = require("../services/storage");
-const { User } = require("../db");
+const { User, UploadedFile } = require("../db");
+const {
+  resolveSafeAbs,
+  canAccessStoragePath,
+  contentTypeForPath,
+  isInlineMedia,
+  ensureFileExists,
+} = require("../services/fileAccessService");
 
 function secureFilesRouter() {
   const router = express.Router();
@@ -25,14 +30,40 @@ function secureFilesRouter() {
     }
   });
 
-  router.get("/*", (req, res) => {
-    const rel = req.params[0] || "";
-    if (rel.includes("..")) return res.status(400).json({ error: "Invalid path" });
-    const abs = path.join(storageRoot(), rel);
-    if (!abs.startsWith(storageRoot())) return res.status(400).json({ error: "Invalid path" });
-    if (!fs.existsSync(abs)) return res.status(404).json({ error: "Not found" });
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.sendFile(abs);
+  router.get("/*", async (req, res, next) => {
+    try {
+      const rel = req.params[0] || "";
+      const resolved = resolveSafeAbs(rel);
+      if (!resolved) return res.status(400).json({ error: "Invalid path" });
+      const { abs, normalized } = resolved;
+
+      const allowed = await canAccessStoragePath(req.user, normalized);
+      if (!allowed) return res.status(404).json({ error: "Not found" });
+
+      if (!ensureFileExists(abs)) return res.status(404).json({ error: "Not found" });
+
+      let mimeFromDb = null;
+      if (normalized.startsWith("uploads/")) {
+        const row = await UploadedFile.findOne({
+          where: { storage_rel_path: normalized },
+          attributes: ["mime_type"],
+        });
+        mimeFromDb = row?.mime_type || null;
+      }
+
+      const contentType = contentTypeForPath(normalized, mimeFromDb);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("X-Frame-Options", "DENY");
+      if (!isInlineMedia(contentType)) {
+        const name = path.posix.basename(normalized);
+        res.setHeader("Content-Disposition", `attachment; filename="${name.replace(/"/g, "")}"`);
+      }
+
+      res.sendFile(abs);
+    } catch (e) {
+      next(e);
+    }
   });
 
   return router;

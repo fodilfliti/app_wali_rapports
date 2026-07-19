@@ -52,10 +52,11 @@
 
 #### Users
 
-- Admin creates accounts with role (including رئيس الديوان), initial password (8 digits), optional access template.
+- Admin creates accounts with role (including رئيس الديوان), initial password (8 digits, **CSPRNG** via `crypto.randomInt`), optional access template.
 - Block/unblock, reset password; cannot block own account.
 - **Self-service:** any logged-in user may update **own** `name` and `job_title` via `PATCH /auth/me` (see `AUTH.md`); username/role remain admin-managed.
-- On **create** and **password reset**, the server generates an **8-digit code** and a **credentials PDF** (`credentialsPdfService.js`) returned as `credentials.pdf_url`.
+- On **create** and **password reset**, the server generates an **8-digit code** and a **credentials PDF** (`credentialsPdfService.js`) returned as `credentials.pdf_url` (**ADMIN-only** via `/files` ACL).
+- Prod bootstrap credential Excels: `backend/private/bootstrap/` (outside web storage root). If ever exposed under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords`.
 - **Credentials PDF language:** **French only** (labels and body). Do **not** include Arabic (or English) bilingual lines in this generated file — it is a handout for the account holder, not a UI surface.
 
 ### API endpoints

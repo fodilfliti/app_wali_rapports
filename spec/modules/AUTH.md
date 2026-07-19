@@ -17,6 +17,13 @@ Login, short-lived access JWTs, and long-lived refresh sessions so users stay si
 - Payload: `{ sub, role, typ: "access" }` plus standard `exp` / `iat`.
 - Required on all protected API routes (`requireAuth` → `attachUser` → `checkBlocked` → role/permission).
 - File downloads: Bearer or `?access_token=` using the **current access** JWT (short TTL; UI rebuilds URLs when access rotates).
+- **`GET /files/*` ACL:** path resolved under `FILE_STORAGE_ROOT` with `..` rejection; serve only if the caller may access that object:
+  - `bootstrap/**` — **never** served (bootstrap Excels live under `backend/private/bootstrap`, outside the web root).
+  - `pdf/credentials_*` — **ADMIN only**.
+  - `uploads/*` — uploader, admin, or rapport/service grant (office) / Wali-or-Chef visibility for linked rapports; guide/broadcast/instruction recipients as applicable.
+  - other `pdf/` / `exports/` — admin only.
+- Dangerous types (`html`/`svg`/`js`/…) rejected on upload; non-inline types use `Content-Disposition: attachment` + `nosniff`.
+- Frontend rich HTML: sanitize (DOMPurify); **never persist** `access_token` inside document HTML (strip on save; inject current token only at display).
 
 #### Refresh cookie
 

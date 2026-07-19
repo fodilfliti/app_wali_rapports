@@ -65,8 +65,9 @@ async function assertCanDiscuss(rapportId, actor, { asWali = false } = {}) {
     await rapportService.assertVisibleToWali(rapportId);
   } else if (actor.role === "OFFICE_USER" || actor.role === "ADMIN") {
     await assertRapportAccess(actor, rapportId, "view");
-  } else if (actor.role === "CHEF_CABINET" || actor.role === "ADMIN") {
-    await loadRapportOrThrow(rapportId);
+  } else if (actor.role === "CHEF_CABINET") {
+    const rapportService = require("./rapportService");
+    await rapportService.assertVisibleToChef(rapportId);
   } else {
     const err = new Error("Forbidden");
     err.status = 403;

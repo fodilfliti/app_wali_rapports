@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
-import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
+import { ENABLE_FR_VALUE_INPUTS, ENABLE_SERVICE_FOLDERS } from '../config/features'
 import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
 import { BackButton } from '../components/BackButton'
 import { ExpandableHelp } from '../components/ExpandableHelp'
@@ -74,8 +74,11 @@ export function AdminServicesPage({ token }: Props) {
         department_id: null,
         name_ar: names.ar,
         name_fr: names.fr,
-        is_folder: form.is_folder,
-        parent_service_id: form.is_folder || !form.parent_service_id ? null : Number(form.parent_service_id),
+        is_folder: ENABLE_SERVICE_FOLDERS ? form.is_folder : false,
+        parent_service_id:
+          !ENABLE_SERVICE_FOLDERS || form.is_folder || !form.parent_service_id
+            ? null
+            : Number(form.parent_service_id),
         sort_order: Number(form.sort_order) || 0,
       })
       setCreateOpen(false)
@@ -269,47 +272,51 @@ export function AdminServicesPage({ token }: Props) {
               </label>
             ) : null}
 
-            <fieldset className="serviceTypePick">
-              <legend className="fieldLabel">{t('serviceTypeLabel')}</legend>
-              <label className="schemaColumnCheck serviceTypeOption">
-                <input
-                  type="radio"
-                  name="serviceKind"
-                  checked={!form.is_folder}
-                  onChange={() => setForm({ ...form, is_folder: false })}
-                />
-                <span>{t('serviceLeaf')}</span>
-              </label>
-              <label className="schemaColumnCheck serviceTypeOption">
-                <input
-                  type="radio"
-                  name="serviceKind"
-                  checked={form.is_folder}
-                  onChange={() => setForm({ ...form, is_folder: true, parent_service_id: '' })}
-                />
-                <span>{t('serviceFolder')}</span>
-              </label>
-            </fieldset>
-            <ExpandableHelp title={t('servicesTypeHelpTitle')} className="contentKindHelpExpand">
-              <p className="muted small">{t('serviceTypeLeafHint')}</p>
-              <p className="muted small">{t('serviceTypeFolderHint')}</p>
-            </ExpandableHelp>
+            {ENABLE_SERVICE_FOLDERS ? (
+              <>
+                <fieldset className="serviceTypePick">
+                  <legend className="fieldLabel">{t('serviceTypeLabel')}</legend>
+                  <label className="schemaColumnCheck serviceTypeOption">
+                    <input
+                      type="radio"
+                      name="serviceKind"
+                      checked={!form.is_folder}
+                      onChange={() => setForm({ ...form, is_folder: false })}
+                    />
+                    <span>{t('serviceLeaf')}</span>
+                  </label>
+                  <label className="schemaColumnCheck serviceTypeOption">
+                    <input
+                      type="radio"
+                      name="serviceKind"
+                      checked={form.is_folder}
+                      onChange={() => setForm({ ...form, is_folder: true, parent_service_id: '' })}
+                    />
+                    <span>{t('serviceFolder')}</span>
+                  </label>
+                </fieldset>
+                <ExpandableHelp title={t('servicesTypeHelpTitle')} className="contentKindHelpExpand">
+                  <p className="muted small">{t('serviceTypeLeafHint')}</p>
+                  <p className="muted small">{t('serviceTypeFolderHint')}</p>
+                </ExpandableHelp>
 
-            {!form.is_folder ? (
-              <label>
-                <span className="fieldLabel">{t('parentFolder')}</span>
-                <select
-                  value={form.parent_service_id}
-                  onChange={(e) => setForm({ ...form, parent_service_id: e.target.value })}
-                >
-                  <option value="">{t('noParent')}</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {localizedName(f, i18n.language)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                {!form.is_folder ? (
+                  <label>
+                    <span className="fieldLabel">{t('parentFolder')}</span>
+                    <select
+                      value={form.parent_service_id}
+                      onChange={(e) => setForm({ ...form, parent_service_id: e.target.value })}
+                    >
+                      <option value="">{t('noParent')}</option>
+                      {folders.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {localizedName(f, i18n.language)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </>
             ) : null}
 
             <div className="modalActions">

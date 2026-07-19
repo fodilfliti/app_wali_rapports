@@ -239,12 +239,14 @@ Paired storage (`name_ar`/`name_fr`, `label_ar`/`label_fr`, `title_ar`/`title_fr
 
 **Display / export fallback** (frontend + backend): requested locale first, then the other language (`pickBilingualText` / export `?locale=`).
 
-**Frontend flag** `ENABLE_FR_VALUE_INPUTS` in `frontend/src/config/features.ts`:
+**Frontend flags** in `frontend/src/config/features.ts`:
 
-| Flag | Behavior |
-| ---- | -------- |
-| `false` (default for current product) | Hide French **content-value** inputs in forms across admin / office / wali / chef UIs. JSX for FR inputs stays in source (wrapped by the flag) so they can be re-enabled. Content editors that normally follow UI language bind to **Arabic** fields only. |
-| `true` | Show dual AR/FR value inputs as before. |
+| Flag | Default | Behavior |
+| ---- | ------- | -------- |
+| `ENABLE_FR_VALUE_INPUTS` | `false` | Hide French **content-value** inputs in forms across admin / office / wali / chef UIs. JSX for FR inputs stays in source (wrapped by the flag) so they can be re-enabled. Content editors that normally follow UI language bind to **Arabic** fields only. When `true`, show dual AR/FR value inputs as before. |
+| `ENABLE_SERVICE_FOLDERS` | `false` | When `false`, admin **create service** UI hides folder vs leaf radio and parent-folder picker; creates always use `is_folder: false` and `parent_service_id: null`. When `true`, restore folder create UX. Tree navigation for any pre-existing folders remains; API still accepts `is_folder` (UI gate only). |
+| `ENABLE_DOCUMENT_TEMPLATES` | `false` | See `SCHEMA_CONFIGURATION.md` / `RAPPORT_SERVICE_TYPES.md`. |
+| `ENABLE_GUIDE_VIDEOS` | `true` | See `GUIDE_VIDEOS.md`. |
 
 - **UI language toggle** (chrome AR/FR, RTL/LTR) is **independent** of this flag — keep the French UI option.
 - When the flag is `false`, **do not** wipe or overwrite existing `*_fr` on save (leave loaded FR as-is / omit from patch). Do **not** auto-copy AR→FR on save; empty FR already falls back to AR at display/export time.

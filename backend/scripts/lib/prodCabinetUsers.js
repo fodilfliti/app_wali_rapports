@@ -13,7 +13,7 @@ const ExcelJS = require("exceljs");
 
 const { AccessRoleTemplate, User } = require("../../src/db");
 
-const OUT_DIR = path.join(__dirname, "..", "..", "storage", "bootstrap");
+const OUT_DIR = path.join(__dirname, "..", "..", "private", "bootstrap");
 
 const DEPT_NAME_AR = "ديوان الولاية";
 const DEPT_NAME_FR = "Cabinet de la wilaya";

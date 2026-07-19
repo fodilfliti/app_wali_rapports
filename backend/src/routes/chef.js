@@ -200,10 +200,12 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       const rapport = await rapportService.getRapportDetail(req.params.id);
       await rapportService.markRapportNotificationsRead(req.params.id, req.user.id);
       res.json({ rapport });
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },
@@ -215,6 +217,7 @@ chefRouter.post(
   validateBody(waliRespondSchema),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       const rapport = await rapportService.chefRespond(
         req.params.id,
         req.validatedBody,
@@ -223,6 +226,7 @@ chefRouter.post(
       );
       res.json({ rapport });
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },
@@ -233,6 +237,7 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const versionId = req.query.versionId ? Number(req.query.versionId) : null;
       res.json(
@@ -244,6 +249,7 @@ chefRouter.get(
         ),
       );
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },
@@ -254,8 +260,10 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       res.json({ versions: await rapportService.listRapportVersions(req.params.id) });
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },
@@ -266,6 +274,7 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       const version = await rapportService.getRapportVersion(
         req.params.id,
         req.params.versionId,
@@ -295,6 +304,7 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
       const versionId = req.query.versionId ? Number(req.query.versionId) : null;
@@ -309,6 +319,7 @@ chefRouter.get(
       res.setHeader("Content-Disposition", contentDispositionAttachment(filename));
       res.send(buffer);
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },
@@ -319,6 +330,7 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
       const { buffer, filename } = await generateRapportExcel(req.params.id, {
@@ -334,6 +346,7 @@ chefRouter.get(
       res.setHeader("Content-Disposition", contentDispositionAttachment(filename));
       res.send(buffer);
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },
@@ -344,6 +357,7 @@ chefRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
+      await rapportService.assertVisibleToChef(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
       const { buffer, filename } = await generateRapportDocx(req.params.id, {

@@ -14,7 +14,7 @@ Machine source: [`backend/scripts/data/prodBootstrapInventory.js`](../../backend
 
 Each person gets **root leaf services** (ملفات) with `parent_service_id: null` and `manage` access — no person-named folders. No rapport types in bootstrap v1.
 
-Nested sub-services under الموارد المائية exist only in **dev Demo 2** (`db:seed-demo-cabinet`), never in prod bootstrap/ensure.
+Admin UI folder create is gated by frontend `ENABLE_SERVICE_FOLDERS` (default off) — see `spec/CORE.md`.
 
 ### chabira.houssein — شبيرة حسين
 
@@ -103,12 +103,12 @@ Nested sub-services under الموارد المائية exist only in **dev Demo
 
 **Wipe bootstrap** writes:
 
-- `backend/storage/bootstrap/credentials-office.xlsx`
-- `backend/storage/bootstrap/credentials-chef-wali.xlsx`
+- `backend/private/bootstrap/credentials-office.xlsx`
+- `backend/private/bootstrap/credentials-chef-wali.xlsx`
 
-**Ensure (add)** writes only newly created users:
+**Ensure** (new users only) appends / writes only newly created users:
 
-- `backend/storage/bootstrap/credentials-added-<timestamp>.xlsx`
+- `backend/private/bootstrap/credentials-added-<timestamp>.xlsx`
 
 ## Reset (once) — wipe
 
@@ -140,7 +140,7 @@ Safe to re-run: second run should create nothing if inventory is unchanged.
 
 After bootstrap, fill all leaf services with presentation data.
 
-- **Hero services (full Demo 1 depth for videos):** `svc-chabira-eau` and `svc-zaabat-invest`. In **dev only**, Demo 2 nests chabira water under a folder (السدود / توزيع / متابعة بلدية) — not created by prod bootstrap/ensure.
+- **Hero services (full Demo 1 depth for videos):** `svc-chabira-eau` and `svc-zaabat-invest` as **flat root leaves** (same as bootstrap — no folder nesting).
 - **Other services:** lightweight fiche / document / table fill.
 
 ```bash

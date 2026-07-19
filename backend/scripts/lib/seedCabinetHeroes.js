@@ -7,8 +7,6 @@
 
 const crypto = require("crypto");
 const {
-  Service,
-  UserServiceGrant,
   RapportType,
   RapportTableSchema,
   RapportDocumentTemplate,
@@ -1026,111 +1024,6 @@ async function seedHeroInvestissement({ svc, owner, chef, wali }) {
   console.log(`  HERO investissement: 5 rapports + 3-way discussion + instruction (${svc.slug})`);
 }
 
-async function ensureManageGrant(userId, serviceId) {
-  const existing = await UserServiceGrant.findOne({
-    where: { user_id: userId, service_id: serviceId },
-  });
-  if (!existing) {
-    await UserServiceGrant.create({
-      user_id: userId,
-      service_id: serviceId,
-      access_level: "manage",
-    });
-  } else if (existing.access_level !== "manage") {
-    await existing.update({ access_level: "manage" });
-  }
-}
-
-/**
- * DEV-only: nest chabira water under a folder with sub-services for Demo 2 videos.
- * Prod bootstrap/ensure stay flat (svc-chabira-eau = الموارد المائية root leaf).
- */
-async function ensureChabiraDemoWaterTree(owner) {
-  const eau = await Service.findOne({ where: { slug: HERO_SLUGS.HYDRAULIQUE } });
-  if (!eau) {
-    console.warn("  DEV water tree: svc-chabira-eau missing — skip");
-    return [];
-  }
-
-  let folder = await Service.findOne({ where: { slug: "folder-chabira-eau" } });
-  if (!folder) {
-    folder = await Service.create({
-      department_id: eau.department_id,
-      slug: "folder-chabira-eau",
-      name_ar: "الموارد المائية",
-      name_fr: "Ressources hydriques",
-      sort_order: eau.sort_order,
-      is_active: true,
-      is_folder: true,
-      parent_service_id: null,
-    });
-  } else {
-    await folder.update({
-      is_folder: true,
-      parent_service_id: null,
-      name_ar: "الموارد المائية",
-      name_fr: "Ressources hydriques",
-      is_active: true,
-    });
-  }
-
-  await eau.update({
-    parent_service_id: folder.id,
-    is_folder: false,
-    name_ar: "السدود",
-    name_fr: "Barrages",
-    is_active: true,
-    sort_order: 0,
-  });
-  await ensureManageGrant(owner.id, eau.id);
-
-  const siblings = [
-    {
-      slug: "svc-chabira-eau-distribution",
-      name_ar: "توزيع المياه",
-      name_fr: "Distribution d'eau",
-      sort_order: 1,
-    },
-    {
-      slug: "svc-chabira-eau-communes",
-      name_ar: "المتابعة البلدية",
-      name_fr: "Suivi communal",
-      sort_order: 2,
-    },
-  ];
-
-  const extraLeaves = [];
-  for (const spec of siblings) {
-    let leaf = await Service.findOne({ where: { slug: spec.slug } });
-    if (!leaf) {
-      leaf = await Service.create({
-        department_id: folder.department_id,
-        slug: spec.slug,
-        name_ar: spec.name_ar,
-        name_fr: spec.name_fr,
-        sort_order: spec.sort_order,
-        is_active: true,
-        is_folder: false,
-        parent_service_id: folder.id,
-      });
-    } else {
-      await leaf.update({
-        parent_service_id: folder.id,
-        is_folder: false,
-        name_ar: spec.name_ar,
-        name_fr: spec.name_fr,
-        is_active: true,
-        sort_order: spec.sort_order,
-      });
-    }
-    await ensureManageGrant(owner.id, leaf.id);
-    extraLeaves.push(leaf);
-  }
-
-  console.log("  DEV-only: الموارد المائية folder → السدود + توزيع + متابعة بلدية");
-  return [eau, ...extraLeaves];
-}
-
 async function seedHeroIfNeeded(leaf, owner, chef, wali) {
   if (leaf.slug === HERO_SLUGS.HYDRAULIQUE) {
     await seedHeroHydraulique({ svc: leaf, owner, chef, wali });
@@ -1145,6 +1038,5 @@ async function seedHeroIfNeeded(leaf, owner, chef, wali) {
 
 module.exports = {
   seedHeroIfNeeded,
-  ensureChabiraDemoWaterTree,
   HERO_SLUGS,
 };

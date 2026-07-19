@@ -34,6 +34,7 @@ pnpm-debug.log*
 # --- Runtime / uploads (adjust if you want to version these) ---
 **/uploads/
 **/storage/
+**/private/
 **/tmp/
 **/temp/
 

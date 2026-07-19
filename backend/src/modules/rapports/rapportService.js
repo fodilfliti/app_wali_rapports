@@ -335,6 +335,24 @@ async function listRapports(query, opts = {}) {
     where.hidden_at = null;
   }
 
+  // Office: only rapports in services the user is granted.
+  if (opts.restrictToOfficeUserId) {
+    const { getAccessMapForUser } = require("./serviceAccessService");
+    const accessMap = await getAccessMapForUser(opts.restrictToOfficeUserId);
+    const grantedIds = Object.keys(accessMap).map(Number).filter(Boolean);
+    if (!grantedIds.length) {
+      return { rapports: [], total: 0, page, pageSize };
+    }
+    if (where.service_id != null) {
+      const requested = Number(where.service_id);
+      if (!grantedIds.includes(requested)) {
+        return { rapports: [], total: 0, page, pageSize };
+      }
+    } else {
+      where.service_id = { [Op.in]: grantedIds };
+    }
+  }
+
   if (query.hidden_only === "1" || query.hidden_only === "true") {
     where.hidden_at = { [Op.ne]: null };
   } else if (query.include_hidden !== "1" && query.include_hidden !== "true") {
@@ -629,6 +647,40 @@ async function assertVisibleToWali(rapportOrId) {
     rapport.status === "draft" ||
     rapport.hidden_at
   ) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  return rapport;
+}
+
+/** Statuses Chef may open outside a hard IDOR (includes pending_chef; never drafts). */
+const CHEF_VISIBLE_STATUSES = [
+  "pending_chef",
+  "submitted",
+  "under_review",
+  "changes_requested",
+  "acknowledged",
+];
+
+async function assertVisibleToChef(rapportOrId) {
+  const rapport =
+    typeof rapportOrId === "object" && rapportOrId?.status != null
+      ? rapportOrId
+      : await Rapport.findByPk(rapportOrId, {
+          attributes: ["id", "status", "hidden_at"],
+        });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (rapport.hidden_at || rapport.status === "draft") {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!CHEF_VISIBLE_STATUSES.includes(rapport.status)) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
@@ -1512,6 +1564,7 @@ module.exports = {
   unreadDiscussionRapportIds,
   getRapportDetail,
   assertVisibleToWali,
+  assertVisibleToChef,
   createRapport,
   updateRapportDraft,
   submitRapport,

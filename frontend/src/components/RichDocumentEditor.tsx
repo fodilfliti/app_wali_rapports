@@ -6,6 +6,10 @@ import type { EmbeddedTable } from '../types/embeddedTable'
 import { pruneEmbeddedTables } from '../types/embeddedTable'
 import { fileUrl } from '../utils/media'
 import { getRichHtml } from '../utils/richDocument'
+import {
+  prepareRichHtmlForDisplay,
+  prepareRichHtmlForSave,
+} from '../utils/richHtmlSecurity'
 import { embeddedTablesEqual, resolveEmbeddedTables } from '../utils/embeddedTableSchema'
 import { RichTextEditor } from './richText/RichTextEditor'
 import { ImageLightbox, useImageLightbox } from './ImageLightbox'
@@ -103,7 +107,7 @@ function RichDocumentEditorInner({
 }: Props) {
   const { t, i18n } = useTranslation()
   const locale = contentLocale(i18n.language)
-  const html = getRichHtml(data, locale)
+  const html = prepareRichHtmlForDisplay(getRichHtml(data, locale), token)
   const { tables, upsertTable, updateTable, removeTable, editingId, setEditingId } = useSchemaTables()
   const [pickOpen, setPickOpen] = useState(false)
   const [insertTableId, setInsertTableId] = useState<string | null>(null)
@@ -132,8 +136,9 @@ function RichDocumentEditorInner({
   )
 
   function handleHtmlChange(next: string) {
-    onChange(locale, next)
-    const pruned = pruneEmbeddedTables(next, Object.values(tablesRef.current))
+    const cleaned = prepareRichHtmlForSave(next)
+    onChange(locale, cleaned)
+    const pruned = pruneEmbeddedTables(cleaned, Object.values(tablesRef.current))
     if (pruned.length !== Object.values(tablesRef.current).length) {
       const prunedMap = Object.fromEntries(pruned.map((tbl) => [tbl.id, tbl]))
       notifyParent(prunedMap)
@@ -213,6 +218,7 @@ function RichDocumentEditorInner({
             throw new Error('rapportTitleRequired')
           }
           const res = await api.uploadRapportFile(token, rapportId, file)
+          // Display URL may include access_token; save path strips it via prepareRichHtmlForSave.
           return { id: res.file.id, url: fileUrl(token, res.file) }
         }}
       />
@@ -231,7 +237,7 @@ export function RichDocumentView({
   token?: string
   serviceId?: number
 }) {
-  const html = getRichHtml(data, locale)
+  const html = prepareRichHtmlForDisplay(getRichHtml(data, locale), token)
   const tables = data?.embedded_tables || []
   const tableMap = Object.fromEntries(tables.map((t) => [t.id, t]))
   const ids = extractSchemaTableIds(html)

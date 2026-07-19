@@ -6,8 +6,7 @@
  * Prerequisites: run prod bootstrap first (users + root leaf services exist).
  * Does NOT delete users/services/grants. Clears rapports + types/schemas then reseeds.
  *
- * Hero services (full Demo 1 depth): svc-chabira-eau, svc-zaabat-invest.
- * DEV-only: chabira water is nested under a folder with 2 extra sub-services (not in prod bootstrap).
+ * Hero services (full Demo 1 depth): svc-chabira-eau, svc-zaabat-invest (flat root leaves).
  * Other services: lightweight generic fill.
  *
  * Usage:
@@ -44,7 +43,7 @@ const inventory = require("./data/prodBootstrapInventory");
 const {
   buildFicheDefaultBlocks,
 } = require("../src/modules/rapports/documentDefaults");
-const { seedHeroIfNeeded, ensureChabiraDemoWaterTree } = require("./lib/seedCabinetHeroes");
+const { seedHeroIfNeeded } = require("./lib/seedCabinetHeroes");
 
 function assertDevOnly() {
   if (process.env.NODE_ENV === "production") {
@@ -532,18 +531,7 @@ async function main() {
   let svcIndex = 0;
   for (const officer of inventory.officeUsers) {
     const owner = byUsername[officer.username];
-    let slugs = inventory.collectLeafServiceSpecs(officer.services).map((s) => s.slug);
-
-    if (officer.username === "chabira.houssein") {
-      await ensureChabiraDemoWaterTree(owner);
-      slugs = [
-        "svc-chabira-eau",
-        "svc-chabira-eau-distribution",
-        "svc-chabira-eau-communes",
-        "svc-chabira-poste",
-        "svc-chabira-protection",
-      ];
-    }
+    const slugs = inventory.collectLeafServiceSpecs(officer.services).map((s) => s.slug);
 
     const leaves = await Service.findAll({
       where: { slug: slugs, is_folder: false },

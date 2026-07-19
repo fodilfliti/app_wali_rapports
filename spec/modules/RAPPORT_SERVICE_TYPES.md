@@ -73,7 +73,8 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 - Office defines formulas referencing **column keys** or **cell refs** (e.g. `(colA + colB) / colC` or row-aware `(A1 + B1) / C1`).
 - **Display format** on number/formula columns: plain number, currency (DA), percentage, integer, decimal places.
-- Server validates formula DAG (no cycles); recalc on save (phase 2 engine; spec first).
+- Server validates formula DAG (no cycles); recalc on save.
+- **Formula evaluation is math-only** (recursive parser; no `Function`/`eval`/`require`). Allowed: numbers, `+ - * / %`, parentheses, comparisons, ternary, `Math.min` / `Math.max`, and helpers `IF`/`SUM`/`AVG`/`MIN`/`MAX`/`PCT`. Other identifiers are rejected.
 
 ### Row visibility & emphasis (for Wali)
 

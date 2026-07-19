@@ -165,7 +165,7 @@ npm run db:seed-dev
 | `npm run db:seed-demo-cabinet` | **Dev only** | Fills cabinet bootstrap services with presentation data; refuses when `NODE_ENV=production` |
 | `npm run db:migrate:undo` / `db:migrate:undo:all` | **No** | Rolls back migrations; can drop tables / remove seed rows |
 
-**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `CONFIRM_PROD_BOOTSTRAP=YES npm run db:seed-prod-bootstrap` once — credentials under `storage/bootstrap/`. For later people/services: edit inventory, then `CONFIRM_PROD_ENSURE=YES npm run db:seed-prod-ensure` (no wipe).
+**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `CONFIRM_PROD_BOOTSTRAP=YES npm run db:seed-prod-bootstrap` once — credentials under **`backend/private/bootstrap/`** (outside `FILE_STORAGE_ROOT`; never served via `/files`). For later people/services: edit inventory, then `CONFIRM_PROD_ENSURE=YES npm run db:seed-prod-ensure` (no wipe). If credential sheets were ever under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords` once (quarantines sheets + rotates those users’ passwords into a new private Excel).
 
 ### 6. Frontend build (on your PC)
 

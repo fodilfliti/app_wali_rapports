@@ -1,4 +1,5 @@
 const { Op } = require("sequelize");
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { Municipality, User, Daira, Direction } = require("../../db");
 const { audit } = require("../../services/audit");
@@ -262,7 +263,9 @@ async function listUsers(query) {
 }
 
 function randomPassword8() {
-  return String(Math.floor(10000000 + Math.random() * 90000000));
+  // Cryptographically strong 8-digit code (same display format as before).
+  const n = crypto.randomInt(10_000_000, 100_000_000);
+  return String(n);
 }
 
 async function createUser(data, actor, req) {

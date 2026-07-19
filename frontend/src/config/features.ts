@@ -8,6 +8,12 @@ export const ENABLE_DOCUMENT_TEMPLATES = false
 export const ENABLE_FR_VALUE_INPUTS = false
 
 /**
+ * Flip to true to show admin service folder create / parent-folder picker.
+ * When false, creates are always root leaves (`is_folder: false`).
+ */
+export const ENABLE_SERVICE_FOLDERS = false
+
+/**
  * Flip to false to hide guide-videos hub tiles and routes.
  * Backend API stays available either way.
  */

@@ -47,7 +47,8 @@ Office return-to-draft (while pending_chef | submitted | under_review, before Wa
 | Method | Path | Notes |
 | ------ | ---- | ----- |
 | `GET` | `/chef/rapports` | Inbox: `pending_chef`, `submitted`, `under_review`, … |
-| `POST` | `/chef/rapports/:id/respond` | Chef decision |
+| `GET` | `/chef/rapports/:id` (+ view / versions / exports) | Requires `assertVisibleToChef` — never `draft` / hidden; status must be in Chef inbox set |
+| `POST` | `/chef/rapports/:id/respond` | Chef decision (also gated by `assertVisibleToChef`) |
 | `GET` | `/chef/office-users` | Same tree as Wali |
 | `GET` | `/chef/instructions` | Read-only list |
 | `GET` | `/chef/instructions/:id` | Detail |

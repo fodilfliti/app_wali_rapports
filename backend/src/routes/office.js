@@ -657,7 +657,11 @@ officeRouter.patch(
 
 officeRouter.get("/services", async (req, res, next) => {
   try {
-    const services = await rapportService.listServices();
+    const { getAccessMapForUser } = require("../modules/rapports/serviceAccessService");
+    const accessMap = await getAccessMapForUser(req.user.id);
+    const grantedIds = new Set(Object.keys(accessMap).map(Number));
+    const all = await rapportService.listServices();
+    const services = all.filter((s) => grantedIds.has(Number(s.id)));
     res.json({ services });
   } catch (e) {
     next(e);
@@ -676,6 +680,7 @@ officeRouter.get("/rapports", async (req, res, next) => {
         enrichForOfficeUserId: req.user.id,
         discussionUserId: discussionList ? req.user.id : undefined,
         forOfficeUserId: discussionList ? req.user.id : undefined,
+        restrictToOfficeUserId: req.user.id,
       }),
     );
   } catch (e) {
