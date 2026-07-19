@@ -1,5 +1,11 @@
 const { Op } = require("sequelize");
-const { Service, RapportType, RapportTableSchema } = require("../../db");
+const {
+  Service,
+  RapportType,
+  RapportTableSchema,
+  Rapport,
+  RapportDocumentTemplate,
+} = require("../../db");
 const { audit } = require("../../services/audit");
 const {
   baseSlugFromNames,
@@ -213,7 +219,19 @@ async function updateTableSchema(id, data, actor, req) {
   return row;
 }
 
-async function deleteTableSchema(id, actor, req) {
+async function countTypesReferencingSchemaSlug(slug, { excludeTypeId } = {}) {
+  const types = await RapportType.findAll({
+    attributes: ["id", "schema_json"],
+  });
+  return types.filter((t) => {
+    if (excludeTypeId != null && Number(t.id) === Number(excludeTypeId)) {
+      return false;
+    }
+    return t.schema_json?.table_schema_slug === slug;
+  }).length;
+}
+
+async function deleteTableSchema(id, actor, req, options = {}) {
   const row = await RapportTableSchema.findByPk(id);
   if (!row) {
     const err = new Error("Not found");
@@ -225,8 +243,108 @@ async function deleteTableSchema(id, actor, req) {
     err.status = 409;
     throw err;
   }
+  if (options.requireUnused) {
+    const refCount = await countTypesReferencingSchemaSlug(row.slug);
+    if (refCount > 0) {
+      const err = new Error("tableSchemaInUse");
+      err.status = 409;
+      throw err;
+    }
+  }
   await row.destroy();
   await audit(actor.id, "TABLE_SCHEMA_DELETE", { schema_id: id }, { req });
+}
+
+async function detachDocumentTemplatesFromType(typeId) {
+  const tid = Number(typeId);
+  const templates = await RapportDocumentTemplate.findAll({
+    where: {
+      [Op.or]: [
+        { rapport_type_id: tid },
+        { rapport_type_ids: { [Op.contains]: [tid] } },
+      ],
+    },
+  });
+  for (const tpl of templates) {
+    const ids = Array.isArray(tpl.rapport_type_ids)
+      ? tpl.rapport_type_ids.map(Number).filter((id) => id !== tid)
+      : [];
+    const nextTypeId =
+      tpl.rapport_type_id != null && Number(tpl.rapport_type_id) === tid
+        ? null
+        : tpl.rapport_type_id;
+    await tpl.update({
+      rapport_type_id: nextTypeId,
+      rapport_type_ids: ids,
+    });
+  }
+}
+
+async function deleteRapportTypeIfUnused(id, actor, req) {
+  const row = await RapportType.findByPk(id);
+  if (!row) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (row.content_kind === "fiche_lecture") {
+    const err = new Error("cannotDeleteFicheLectureType");
+    err.status = 409;
+    throw err;
+  }
+  const rapportCount = await Rapport.count({
+    where: { rapport_type_id: row.id },
+  });
+  if (rapportCount > 0) {
+    const err = new Error("rapportTypeInUse");
+    err.status = 409;
+    throw err;
+  }
+
+  const schemaSlug = row.schema_json?.table_schema_slug || null;
+  const serviceId = row.service_id;
+  await detachDocumentTemplatesFromType(row.id);
+  await row.destroy();
+  await audit(
+    actor.id,
+    "RAPPORT_TYPE_DELETE",
+    { rapport_type_id: Number(id), service_id: serviceId },
+    { req },
+  );
+
+  if (schemaSlug) {
+    const stillReferenced = await countTypesReferencingSchemaSlug(schemaSlug);
+    if (stillReferenced === 0) {
+      const schema = await RapportTableSchema.findOne({
+        where: {
+          slug: schemaSlug,
+          service_id: serviceId,
+          is_system: false,
+        },
+      });
+      if (schema) {
+        await schema.destroy();
+        await audit(
+          actor.id,
+          "TABLE_SCHEMA_DELETE",
+          { schema_id: schema.id, orphan_after_type: Number(id) },
+          { req },
+        );
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
+async function rapportTypeIdsWithRapports(typeIds) {
+  if (!typeIds.length) return new Set();
+  const rows = await Rapport.findAll({
+    attributes: ["rapport_type_id"],
+    where: { rapport_type_id: { [Op.in]: typeIds } },
+    raw: true,
+  });
+  return new Set(rows.map((r) => Number(r.rapport_type_id)));
 }
 
 async function listRapportTypes(serviceId) {
@@ -238,7 +356,19 @@ async function listRapportTypes(serviceId) {
     err.status = 404;
     throw err;
   }
-  return { service, rapportTypes: service.rapportTypes || [] };
+  const types = service.rapportTypes || [];
+  const usedIds = await rapportTypeIdsWithRapports(
+    types.map((t) => Number(t.id)),
+  );
+  const rapportTypes = types.map((t) => {
+    const json = t.toJSON ? t.toJSON() : { ...t };
+    return {
+      ...json,
+      can_delete:
+        json.content_kind !== "fiche_lecture" && !usedIds.has(Number(json.id)),
+    };
+  });
+  return { service, rapportTypes };
 }
 
 async function createRapportType(serviceId, data, actor, req) {
@@ -402,6 +532,9 @@ module.exports = {
   createTableSchema,
   updateTableSchema,
   deleteTableSchema,
+  deleteRapportTypeIfUnused,
+  countTypesReferencingSchemaSlug,
+  rapportTypeIdsWithRapports,
   listRapportTypes,
   createRapportType,
   updateRapportType,

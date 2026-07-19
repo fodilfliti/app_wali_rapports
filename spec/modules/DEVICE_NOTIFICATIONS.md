@@ -37,7 +37,7 @@ Disabled preference types are **not inserted**, **not pushed**, and **hidden** f
 | Key | Meaning |
 | --- | ------- |
 | `enabled` | Master switch — off disables all types |
-| `push_enabled` | Allow Web Push subscription / delivery |
+| `push_enabled` | Allow Web Push delivery to any subscribed device (all devices); see UI two-switch model |
 | `rapport_inbox` | New rapport awaiting me (`rapportPendingChef`, `rapportPendingWali`, `rapportResubmittedBypass`) |
 | `rapport_feedback` | Chef/Wali decision notes to office |
 | `discussion` | `rapportComment` |
@@ -82,8 +82,11 @@ Defaults: all `true`.
 
 #### Optimistic calendar reminders
 
-1. **On calendar events replace-save:** if any `event_date` is today or tomorrow (Africa/Algiers) and the rapport is visible to Wali and/or Chef filters, fanout reminders immediately (idempotent).
-2. **On first `GET /*/hub-counts` per user per local day:** if `calendar_reminders_checked_on` ≠ today, scan today+tomorrow events visible to that role, create missing rows + push, set `calendar_reminders_checked_on = today`.
+1. **On calendar events replace-save:** if any `event_date` is today or tomorrow (Africa/Algiers) and the rapport is visible to Wali and/or Chef filters, fanout **digest** reminders immediately (idempotent).
+2. **On first `GET /*/hub-counts` per user per local day:** if `calendar_reminders_checked_on` ≠ today, scan today+tomorrow events visible to that role, create digests + push, set `calendar_reminders_checked_on = today`.
+3. **Digest shape (Wali and Chef identical):** at most **one** `calendarToday` and **one** `calendarTomorrow` notification per recipient (not one per event). Push body includes count + up to 5 titles (`؛` separated, then `+k`). Filters: Wali excludes `draft`/`pending_chef`/`archived`; Chef excludes `draft`/`archived` only.
+4. **Replace, not stack:** creating a digest deletes all prior rows for that user+`message_key` (including old per-event rows with `calendar_event_id`). `calendar_event_id` on digests is null. Web Push `tag` = `calendar-digest-{today|tomorrow}-{wali|chef}`.
+5. **On calendar save:** rebuild digests from the **full** today/tomorrow catalogue for both roles (not only events in the saved rapport).
 
 ### API endpoints
 
@@ -102,8 +105,11 @@ Hub-counts endpoints keep their paths; calendar day-scan is a side effect.
 ### UI/UX
 
 - Profile menu → **إعدادات الإشعارات** / Paramètres des notifications
-- Master toggle, type toggles, device push enable (permission + subscribe)
-- Soft-fail if permission denied
+- Master toggle, type toggles, and **two** device-push switches:
+  1. **All devices** (`push_enabled`) — allow Web Push delivery to any subscribed endpoint for this account. Turning **off** stops delivery everywhere and unsubscribes **this** browser only (other devices keep their rows until dead-endpoint cleanup; no push is sent while the pref is off).
+  2. **This device** — subscribe / unsubscribe the **current** browser only (permission prompt + `POST/DELETE /auth/push/subscribe`). Requires master `enabled` and `push_enabled`. Does **not** toggle other devices.
+- Soft-fail if permission denied on this-device enable
+- On login / app load: if permission is already `granted` **and** a local `PushManager` subscription already exists, refresh/upsert it; **never** create a new subscription without an explicit this-device enable
 - Service worker: `push` + `notificationclick` → deep-link (inbox, calendar, discussion, shared, instructions)
 - While tab open: SW may postMessage → `hub-counts-refresh` (no poll)
 

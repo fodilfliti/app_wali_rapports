@@ -3,8 +3,11 @@ const {
   RapportCalendarEvent,
   Rapport,
   User,
+  Notification,
 } = require("../../db");
 const { notifyUsers, notifyActiveRole } = require("./notifyService");
+
+const TITLE_CAP = 5;
 
 /** YYYY-MM-DD in Africa/Algiers. */
 function algiersDateOnly(date = new Date()) {
@@ -22,78 +25,178 @@ function addDaysAlgiers(dateOnly, days) {
   return algiersDateOnly(utc);
 }
 
-function pushOverridesForEvent(event, kind) {
-  const title = event.title_ar || event.title_fr || "";
+function eventTitle(event, lang) {
+  if (lang === "fr") return event.title_fr || event.title_ar || "";
+  return event.title_ar || event.title_fr || "";
+}
+
+function formatTitleList(titles) {
+  const clean = titles.map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return "";
+  const shown = clean.slice(0, TITLE_CAP);
+  const extra = clean.length > TITLE_CAP ? `؛ +${clean.length - TITLE_CAP}` : "";
+  return `${shown.join("؛ ")}${extra}`;
+}
+
+function buildDigestPush(events, messageKey, kind) {
+  const n = events.length;
+  const listAr = formatTitleList(events.map((e) => eventTitle(e, "ar")));
+  const listFr = formatTitleList(events.map((e) => eventTitle(e, "fr")));
+  const isToday = messageKey === "calendarToday";
+  const url = kind === "chef" ? "/chef/calendar" : "/wali/calendar";
+
+  const title_ar = isToday
+    ? n === 1
+      ? "حدث اليوم"
+      : `أحداث اليوم (${n})`
+    : n === 1
+      ? "حدث غداً"
+      : `أحداث غداً (${n})`;
+  const title_fr = isToday
+    ? n === 1
+      ? "Événement aujourd'hui"
+      : `Événements aujourd'hui (${n})`
+    : n === 1
+      ? "Événement demain"
+      : `Événements demain (${n})`;
+
+  const body_ar = isToday
+    ? n === 1
+      ? listAr || "لديك حدث في التقويم اليوم."
+      : `لديك ${n} أحداث اليوم: ${listAr}`
+    : n === 1
+      ? listAr || "لديك حدث في التقويم غداً."
+      : `لديك ${n} أحداث غداً: ${listAr}`;
+
+  const body_fr = isToday
+    ? n === 1
+      ? listFr || "Vous avez un événement au calendrier aujourd'hui."
+      : `Vous avez ${n} événements aujourd'hui : ${listFr}`
+    : n === 1
+      ? listFr || "Vous avez un événement au calendrier demain."
+      : `Vous avez ${n} événements demain : ${listFr}`;
+
   return {
-    body_ar: title ? `${title}` : undefined,
-    body_fr: title ? `${event.title_fr || event.title_ar || title}` : undefined,
-    url: kind === "chef" ? "/chef/calendar" : "/wali/calendar",
-    tag: `calendar-${event.id}-${event.event_date}`,
+    title_ar,
+    title_fr,
+    body_ar,
+    body_fr,
+    url,
+    tag: `calendar-digest-${isToday ? "today" : "tomorrow"}-${kind}`,
   };
 }
 
-async function fanoutEventReminders(events, { today, tomorrow } = {}) {
-  const t = today || algiersDateOnly();
-  const tm = tomorrow || addDaysAlgiers(t, 1);
-  const list = (events || []).filter(Boolean);
-  if (!list.length) return;
-
-  for (const event of list) {
-    const date = String(event.event_date || "").slice(0, 10);
-    let message_key = null;
-    if (date === t) message_key = "calendarToday";
-    else if (date === tm) message_key = "calendarTomorrow";
-    if (!message_key) continue;
-
-    const rapport = event.rapport || (await Rapport.findByPk(event.rapport_id));
-    if (!rapport || rapport.hidden_at) continue;
-    const status = rapport.status;
-
-    const baseOpts = {
-      message_key,
-      rapport_id: Number(event.rapport_id),
-      calendar_event_id: Number(event.id),
-      dedupeCalendar: true,
-    };
-
-    // Wali: exclude draft, pending_chef, archived
-    if (!["draft", "pending_chef", "archived"].includes(status)) {
-      await notifyActiveRole("WALI", {
-        ...baseOpts,
-        push: pushOverridesForEvent(event, "wali"),
-      });
-    }
-    // Chef: exclude draft, archived (pending_chef visible)
-    if (!["draft", "archived"].includes(status)) {
-      await notifyActiveRole("CHEF_CABINET", {
-        ...baseOpts,
-        push: pushOverridesForEvent(event, "chef"),
-      });
-    }
-  }
-}
-
-/** After calendar replace-save: remind for today/tomorrow events. */
-async function remindAfterCalendarSave(rapportId, savedEvents) {
-  if (!savedEvents?.length) return;
-  const rapport = await Rapport.findByPk(rapportId);
-  if (!rapport) return;
-  const today = algiersDateOnly();
-  const tomorrow = addDaysAlgiers(today, 1);
-  const relevant = savedEvents.filter((e) => {
-    const d = String(e.event_date || "").slice(0, 10);
-    return d === today || d === tomorrow;
-  });
-  if (!relevant.length) return;
-  await fanoutEventReminders(
-    relevant.map((e) => ({ ...e, rapport })),
-    { today, tomorrow },
-  );
+function hiddenStatusesForRole(role) {
+  if (role === "CHEF_CABINET") return ["draft", "archived"];
+  return ["draft", "pending_chef", "archived"];
 }
 
 /**
- * Once per user per local day: scan today+tomorrow and create missing reminders.
- * @param {{ id: number, role: string, calendar_reminders_checked_on?: string|null }} user
+ * Load all visible calendar events for a role on today + tomorrow.
+ */
+async function loadVisibleDayBuckets(role, today, tomorrow) {
+  const rows = await RapportCalendarEvent.findAll({
+    where: { event_date: { [Op.in]: [today, tomorrow] } },
+    include: [
+      {
+        model: Rapport,
+        as: "rapport",
+        required: true,
+        attributes: ["id", "status", "hidden_at"],
+        where: {
+          status: { [Op.notIn]: hiddenStatusesForRole(role) },
+          hidden_at: null,
+        },
+      },
+    ],
+    order: [
+      ["event_date", "ASC"],
+      ["id", "ASC"],
+    ],
+  });
+
+  const todayEvents = [];
+  const tomorrowEvents = [];
+  for (const row of rows) {
+    const event = row.toJSON ? row.toJSON() : row;
+    const date = String(event.event_date || "").slice(0, 10);
+    if (date === today) todayEvents.push(event);
+    else if (date === tomorrow) tomorrowEvents.push(event);
+  }
+  return { today: todayEvents, tomorrow: tomorrowEvents };
+}
+
+async function clearRoleDigest(role, messageKey) {
+  const users = await User.findAll({
+    where: { role, is_blocked: false },
+    attributes: ["id"],
+  });
+  const ids = users.map((u) => Number(u.id));
+  if (!ids.length) return;
+  await Notification.destroy({
+    where: {
+      user_id: { [Op.in]: ids },
+      message_key: messageKey,
+    },
+  });
+}
+
+async function sendRoleDayDigest(role, messageKey, events) {
+  if (!events?.length) {
+    await clearRoleDigest(role, messageKey);
+    return;
+  }
+  const kind = role === "CHEF_CABINET" ? "chef" : "wali";
+  await notifyActiveRole(role, {
+    message_key: messageKey,
+    calendar_event_id: null,
+    rapport_id: null,
+    dedupeCalendarDigest: true,
+    push: buildDigestPush(events, messageKey, kind),
+  });
+}
+
+async function sendUserDayDigest(userId, role, messageKey, events) {
+  if (!events?.length) {
+    await Notification.destroy({
+      where: { user_id: Number(userId), message_key: messageKey },
+    });
+    return;
+  }
+  const kind = role === "CHEF_CABINET" ? "chef" : "wali";
+  await notifyUsers({
+    userIds: [Number(userId)],
+    message_key: messageKey,
+    calendar_event_id: null,
+    rapport_id: null,
+    dedupeCalendarDigest: true,
+    push: buildDigestPush(events, messageKey, kind),
+  });
+}
+
+/**
+ * Rebuild full-day digests for Wali + Chef (same logic for both roles).
+ * Used after calendar save so one rapport save does not emit a partial digest.
+ */
+async function rebuildAllRoleDigests({ today, tomorrow } = {}) {
+  const t = today || algiersDateOnly();
+  const tm = tomorrow || addDaysAlgiers(t, 1);
+
+  for (const role of ["WALI", "CHEF_CABINET"]) {
+    const buckets = await loadVisibleDayBuckets(role, t, tm);
+    await sendRoleDayDigest(role, "calendarToday", buckets.today);
+    await sendRoleDayDigest(role, "calendarTomorrow", buckets.tomorrow);
+  }
+}
+
+/** After calendar replace-save: refresh digests from full day catalogue. */
+async function remindAfterCalendarSave(_rapportId, _savedEvents) {
+  await rebuildAllRoleDigests();
+}
+
+/**
+ * Once per user per local day: scan today+tomorrow and create digest reminders.
+ * Chef and Wali use the same digest shape (filters differ by role visibility only).
  */
 async function maybeRunDailyCalendarScan(user) {
   if (!user || !["WALI", "CHEF_CABINET"].includes(user.role)) return;
@@ -104,40 +207,10 @@ async function maybeRunDailyCalendarScan(user) {
   if (checked === today) return;
 
   const tomorrow = addDaysAlgiers(today, 1);
-  const forChef = user.role === "CHEF_CABINET";
-  const hiddenStatuses = forChef
-    ? ["draft", "archived"]
-    : ["draft", "pending_chef", "archived"];
+  const buckets = await loadVisibleDayBuckets(user.role, today, tomorrow);
 
-  const rows = await RapportCalendarEvent.findAll({
-    where: { event_date: { [Op.in]: [today, tomorrow] } },
-    include: [
-      {
-        model: Rapport,
-        as: "rapport",
-        required: true,
-        attributes: ["id", "status", "hidden_at"],
-        where: {
-          status: { [Op.notIn]: hiddenStatuses },
-          hidden_at: null,
-        },
-      },
-    ],
-  });
-
-  for (const row of rows) {
-    const event = row.toJSON ? row.toJSON() : row;
-    const date = String(event.event_date || "").slice(0, 10);
-    const message_key = date === today ? "calendarToday" : "calendarTomorrow";
-    await notifyUsers({
-      userIds: [Number(user.id)],
-      message_key,
-      rapport_id: Number(event.rapport_id),
-      calendar_event_id: Number(event.id),
-      dedupeCalendar: true,
-      push: pushOverridesForEvent(event, forChef ? "chef" : "wali"),
-    });
-  }
+  await sendUserDayDigest(user.id, user.role, "calendarToday", buckets.today);
+  await sendUserDayDigest(user.id, user.role, "calendarTomorrow", buckets.tomorrow);
 
   await User.update(
     { calendar_reminders_checked_on: today },
@@ -146,10 +219,16 @@ async function maybeRunDailyCalendarScan(user) {
   user.calendar_reminders_checked_on = today;
 }
 
+/** @deprecated alias — digests now always rebuild full days */
+async function fanoutEventReminders(_events, opts = {}) {
+  await rebuildAllRoleDigests(opts);
+}
+
 module.exports = {
   algiersDateOnly,
   addDaysAlgiers,
   remindAfterCalendarSave,
   maybeRunDailyCalendarScan,
   fanoutEventReminders,
+  rebuildAllRoleDigests,
 };

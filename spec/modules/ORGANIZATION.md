@@ -54,7 +54,9 @@
 
 - Admin creates accounts with role (including رئيس الديوان), initial password (8 digits, **CSPRNG** via `crypto.randomInt`), optional access template.
 - Block/unblock, reset password; cannot block own account.
-- **Self-service:** any logged-in user may update **own** `name` and `job_title` via `PATCH /auth/me` (see `AUTH.md`); username/role remain admin-managed.
+- **Reset password (users list):** shown only for **other** users (never on the logged-in admin’s own row). Must open a **confirm dialog** before calling `POST /admin/users/:id/reset-password` — never reset on a single click. Confirm copy should name the target user (username / display name). On confirm → new random 8-digit code + credentials PDF modal (same as create).
+- **Self-service profile:** any logged-in user may update **own** `name` and `job_title` via `PATCH /auth/me` (see `AUTH.md`); username/role remain admin-managed.
+- **Self-service code (الرمز):** any logged-in user changes **own** password via `POST /auth/change-password` — must enter **current code** then **new code** (see `AUTH.md`). UI: profile menu → تغيير الرمز / Changer le code. Admin must **not** use the users-list reset action for self.
 - On **create** and **password reset**, the server generates an **8-digit code** and a **credentials PDF** (`credentialsPdfService.js`) returned as `credentials.pdf_url` (**ADMIN-only** via `/files` ACL).
 - Prod bootstrap credential Excels: `backend/private/bootstrap/` (outside web storage root). If ever exposed under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords`.
 - **Credentials PDF language:** **French only** (labels and body). Do **not** include Arabic (or English) bilingual lines in this generated file — it is a handout for the account holder, not a UI surface.
@@ -96,6 +98,7 @@
 - Admin hub → **المديريات** / **Directions** → `/directions` (legacy `/modiriyat` redirects here)
 - Admin hub → **البلديات** / Communes → `/municipalities` (daira selector on form)
 - Admin hub → **Users** → `/users`
+- Users list **إعادة الرمز / Réinitialiser**: hidden on own row; for others, confirm dialog before reset (see Users workflows).
 - Account type shown as حساب مدير / **ملحق بالديوان** (Attaché de cabinet) / حساب والي / **رئيس الديوان** — never raw enums (`OFFICE_USER`, etc.)
 - Org ref lists: active/hidden filter; row hide (confirm) / restore; no permanent delete.
 

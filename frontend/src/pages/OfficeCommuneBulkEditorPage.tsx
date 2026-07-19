@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
@@ -18,6 +18,7 @@ import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
 import {
   COMMUNE_NAME_COL_KEY,
   buildEmptyCommuneRow,
+  rowEntityKey,
   rowsWithCommuneNames,
   sortRowsByCommune,
   stripCommuneDisplayFields,
@@ -28,6 +29,10 @@ import { reorderRowsArray } from "../utils/tableRowReorder";
 import type { TableMeta } from "../utils/tableLayout";
 
 type Props = { token: string };
+
+function entityKeyOfSummary(m: { entity_key?: string; kind?: string; code: string }) {
+  return m.entity_key || `${m.kind || "commune"}:${m.code}`;
+}
 
 export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const { serviceId } = useParams();
@@ -50,8 +55,9 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const [title, setTitle] = useState("");
   const [versions, setVersions] = useState<any[]>([]);
   const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
-  const [addRowCommuneCode, setAddRowCommuneCode] = useState("");
+  const [addRowEntityKey, setAddRowEntityKey] = useState("");
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const keysPresentAtLoadRef = useRef<Set<string>>(new Set());
 
   const listPath = `/office/services/${sid}/communes${
     rapportTypeId || rapportIdParam
@@ -62,10 +68,22 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
       : ""
   }`;
 
-  const applyTableData = useCallback((tableData: any, municipalities: any[]) => {
+  const bulkEntities = useMemo(() => {
+    if (!workspace) return [];
+    return [
+      ...(workspace.municipalities || []),
+      ...(workspace.dairas || []),
+      ...(workspace.directions || []),
+    ];
+  }, [workspace]);
+
+  const applyTableData = useCallback((tableData: any, entities: any[]) => {
     const table = tableData?.tables?.[0] || {};
     const sorted = sortRowsByCommune(table.rows || []);
     setRows(sorted);
+    keysPresentAtLoadRef.current = new Set(
+      sorted.map((r) => rowEntityKey(r)).filter(Boolean),
+    );
     setTableMeta({
       title_ar: table.title_ar,
       title_fr: table.title_fr,
@@ -73,8 +91,9 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
       subtitle_fr: table.subtitle_fr,
       merge_column_keys: table.merge_column_keys || [],
     });
-    if (municipalities?.length) {
-      setAddRowCommuneCode((prev) => prev || municipalities[0].code);
+    if (entities?.length) {
+      const firstKey = entityKeyOfSummary(entities[0]);
+      setAddRowEntityKey((prev) => prev || firstKey);
     }
   }, []);
 
@@ -88,7 +107,12 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
         rapportId: rapportIdParam,
       });
       setWorkspace(ws);
-      applyTableData(ws.tableData, ws.municipalities);
+      const entities = [
+        ...(ws.municipalities || []),
+        ...(ws.dairas || []),
+        ...(ws.directions || []),
+      ];
+      applyTableData(ws.tableData, entities);
       setTitle(ws.rapport?.title || ws.suggestedTitle || "");
       if (ws.rapport?.id) {
         void markOfficeRapportOpened(token, ws.rapport.id);
@@ -127,8 +151,8 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
       data_json.included_entity_keys = workspace.included_entity_keys;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: sid,
-      rapport_type_id: workspace.rapportType.id,
+      service_id: Number(sid),
+      rapport_type_id: Number(workspace.rapportType.id),
       title: trimmed,
       data_json,
     });
@@ -144,6 +168,12 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
       const patched = await patchRapportTitle(token, rid, title);
       setTitle(patched.title);
       const cleanedRows = rows.map(stripCommuneDisplayFields);
+      const currentKeys = new Set(
+        cleanedRows.map((r) => rowEntityKey(r)).filter(Boolean),
+      );
+      const cleared_entity_keys = [...keysPresentAtLoadRef.current].filter(
+        (k) => !currentKeys.has(k),
+      );
       await api.saveCommuneBulkData(token, rid, {
         tables: [
           {
@@ -152,6 +182,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
             ...tableMeta,
           },
         ],
+        cleared_entity_keys,
       });
       snack.show(t("save"), "success");
       load();
@@ -189,31 +220,42 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
     setRows((prev) => prev.map((r) => ({ ...r, _wali_visible: visible })));
   }
 
-  function addRowForCommune(code: string) {
-    const municipality = (workspace?.municipalities || []).find((m: any) => m.code === code);
-    if (!municipality) return;
-    const template = rows.find((r) => r.municipality_code === code);
+  function addRowForEntity(entityKey: string) {
+    const entity = bulkEntities.find(
+      (m: any) => entityKeyOfSummary(m) === entityKey,
+    );
+    if (!entity) return;
+    const template = rows.find((r) => rowEntityKey(r) === entityKey);
     setRows((prev) => {
       const next = [...prev];
       const insertAt =
         next.reduce(
-          (last, r, i) => (r.municipality_code === code ? i : last),
+          (last, r, i) => (rowEntityKey(r) === entityKey ? i : last),
           -1,
         ) + 1;
-      const newRow = buildEmptyCommuneRow(municipality, template);
+      const newRow = buildEmptyCommuneRow(entity, template);
       if (insertAt > 0) next.splice(insertAt, 0, newRow);
       else next.push(newRow);
       return sortRowsByCommune(next);
     });
   }
 
-  function deleteRow(rowIdx: number) {
-    const code = rows[rowIdx]?.municipality_code;
+  function addRowForAllEntities() {
     setRows((prev) => {
-      const communeCount = prev.filter((r) => r.municipality_code === code).length;
-      if (communeCount <= 1) return prev;
-      return prev.filter((_, i) => i !== rowIdx);
+      const present = new Set(prev.map((r) => rowEntityKey(r)).filter(Boolean));
+      const next = [...prev];
+      for (const entity of bulkEntities) {
+        const key = entityKeyOfSummary(entity);
+        if (present.has(key)) continue;
+        next.push(buildEmptyCommuneRow(entity));
+        present.add(key);
+      }
+      return sortRowsByCommune(next);
     });
+  }
+
+  function deleteRow(rowIdx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== rowIdx));
   }
 
   function reorderRow(fromIdx: number, toIdx: number) {
@@ -225,16 +267,22 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const displayRows = rowsWithCommuneNames(rows, i18n.language);
   const finishedRowCount = countFinishedRows(rows);
   const mergeKeys = tableMeta.merge_column_keys || [];
-  const municipalities = workspace?.municipalities || [];
-  const rowCountsByCode = useMemo(() => {
+  const rowCountsByKey = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const r of rows) {
-      const code = String(r.municipality_code || "");
-      if (!code) continue;
-      counts[code] = (counts[code] || 0) + 1;
+      const key = rowEntityKey(r);
+      if (!key) continue;
+      counts[key] = (counts[key] || 0) + 1;
     }
     return counts;
   }, [rows]);
+
+  const canAddAll = useMemo(() => {
+    if (!bulkEntities.length) return false;
+    return bulkEntities.some(
+      (e: any) => !(rowCountsByKey[entityKeyOfSummary(e)] > 0),
+    );
+  }, [bulkEntities, rowCountsByKey]);
 
   async function returnCurrentToDraft() {
     if (!workspace?.rapport?.id) return;
@@ -300,11 +348,13 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
 
           {editable ? (
             <CommuneBulkAddRowBar
-              municipalities={municipalities}
-              rowCountsByCode={rowCountsByCode}
-              selectedCode={addRowCommuneCode}
-              onSelectCode={setAddRowCommuneCode}
-              onAddRow={() => addRowForCommune(addRowCommuneCode)}
+              entities={bulkEntities}
+              rowCountsByKey={rowCountsByKey}
+              selectedKey={addRowEntityKey}
+              onSelectKey={setAddRowEntityKey}
+              onAddRow={() => addRowForEntity(addRowEntityKey)}
+              onAddAllRows={addRowForAllEntities}
+              canAddAll={canAddAll}
             />
           ) : null}
 

@@ -32,10 +32,16 @@ import { useSnackbar } from "../snackbar/SnackbarContext";
 import { EntityTargetKindsField } from "../components/EntityTargetKindsField";
 import { defaultEntityTargetKinds } from "../utils/entityTargets";
 import { needsLinkedTableSchema } from "../utils/rapportTypeSchema";
+import { SchemaListPanel } from "../components/SchemaListPanel";
+import { ConfirmActionModal } from "../components/ConfirmActionModal";
+import { RapportKindsExplainer } from "../components/RapportKindsExplainer";
 
 type Props = { token: string };
 
 type ConfigPanel = "schemas" | "rapportTypes" | "templates";
+
+/** Hidden for now — re-enable when template-duplicate UX ships. */
+const ENABLE_SCHEMA_DUPLICATE = false;
 
 const CONTENT_KINDS = ["table_grid", "document_compose", "commune_list"];
 
@@ -82,9 +88,10 @@ export function OfficeServiceConfigPage({ token }: Props) {
     table_schema_slug: "",
   });
   const [dupForm, setDupForm] = useState({ source_schema_id: "" });
-  const [schemaPage, setSchemaPage] = useState(1);
   const [typePage, setTypePage] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [pendingDeleteType, setPendingDeleteType] = useState<any>(null);
+  const [deletingType, setDeletingType] = useState(false);
 
   const load = useCallback(async () => {
     if (!sid) return;
@@ -272,10 +279,37 @@ export function OfficeServiceConfigPage({ token }: Props) {
     }
   }
 
+  async function deleteSchema(schemaId: number) {
+    try {
+      await api.deleteOfficeSchema(token, schemaId);
+      snack.show(t("deleteUnusedSchemaDone"), "success");
+      await load();
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "errorGeneric";
+      snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
+      throw e;
+    }
+  }
+
+  async function confirmDeleteRapportType() {
+    if (!pendingDeleteType) return;
+    setDeletingType(true);
+    try {
+      await api.deleteRapportType(token, pendingDeleteType.id);
+      snack.show(t("deleteUnusedRapportTypeDone"), "success");
+      setPendingDeleteType(null);
+      await load();
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "errorGeneric";
+      snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
+    } finally {
+      setDeletingType(false);
+    }
+  }
+
   const label = service
     ? localizedName(service, i18n.language)
     : t("serviceConfig");
-  const pagedSchemas = paginateSlice(schemas, schemaPage, DEFAULT_PAGE_SIZE);
   const pagedRapportTypes = paginateSlice(
     rapportTypes,
     typePage,
@@ -346,50 +380,36 @@ export function OfficeServiceConfigPage({ token }: Props) {
             >
               {t("createSchema")}
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setDuplicateModal(true)}
-            >
-              {t("duplicateTemplate")}
-            </button>
+            {ENABLE_SCHEMA_DUPLICATE ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDuplicateModal(true)}
+              >
+                {t("duplicateTemplate")}
+              </button>
+            ) : null}
           </div>
-          <p className="muted small">{t("schemaClickToEdit")}</p>
-          <div className="card tableWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("rapportTitle")}</th>
-                  <th>{t("columnsCount")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedSchemas.map((s) => (
-                  <tr
-                    key={s.id}
-                    className="clickableRow"
-                    onClick={() => openEditSchemaModal(s)}
-                  >
-                    <td>{localizedName(s, i18n.language)}</td>
-                    <td>{(s.columns_json || []).length}</td>
-                  </tr>
-                ))}
-                {!schemas.length ? (
-                  <tr>
-                    <td colSpan={2} className="muted">
-                      {t("noResults")}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+          <p className="muted small">{t("schemaBrowserHint")}</p>
+          <div className="card schemasPanelBody">
+            <SchemaListPanel
+              schemas={schemas}
+              templates={templates}
+              includeTemplates
+              onEditColumns={openEditSchemaModal}
+              onSaveNames={async (schemaId, names) => {
+                try {
+                  await api.patchOfficeSchema(token, schemaId, names);
+                  await load();
+                } catch (e) {
+                  const msg = e instanceof ApiError ? e.message : "errorGeneric";
+                  snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
+                  throw e;
+                }
+              }}
+              onDelete={deleteSchema}
+            />
           </div>
-          <TablePagination
-            page={schemaPage}
-            total={schemas.length}
-            onPageChange={setSchemaPage}
-            compact
-          />
         </div>
       ) : null}
 
@@ -413,7 +433,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
                   <th>{t("rapportTitle")}</th>
                   <th>{t("status")}</th>
                   <th>{t("linkedSchema")}</th>
-                  <th />
+                  <th>{t("actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -444,18 +464,29 @@ export function OfficeServiceConfigPage({ token }: Props) {
                           : "—"}
                       </td>
                       <td>
-                        {needsLinkedTableSchema(
-                          rt.content_kind,
-                          rt.commune_content_kind,
-                        ) ? (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => openEditTypeModal(rt)}
-                          >
-                            {t("edit")}
-                          </button>
-                        ) : null}
+                        <div className="tableRowActions">
+                          {needsLinkedTableSchema(
+                            rt.content_kind,
+                            rt.commune_content_kind,
+                          ) ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => openEditTypeModal(rt)}
+                            >
+                              {t("edit")}
+                            </button>
+                          ) : null}
+                          {rt.can_delete ? (
+                            <button
+                              type="button"
+                              className="btn btn-danger"
+                              onClick={() => setPendingDeleteType(rt)}
+                            >
+                              {t("deleteUnusedRapportType")}
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -491,6 +522,8 @@ export function OfficeServiceConfigPage({ token }: Props) {
         </div>
       ) : null}
 
+      <RapportKindsExplainer />
+
       {schemaModal ? (
         <TableSchemaEditorModal
           title={editingSchemaId ? t("editSchema") : t("createSchema")}
@@ -507,7 +540,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
         />
       ) : null}
 
-      {duplicateModal ? (
+      {ENABLE_SCHEMA_DUPLICATE && duplicateModal ? (
         <div className="modalOverlay">
           <div className="modalCard">
             <h2>{t("duplicateTemplate")}</h2>
@@ -553,7 +586,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
           <div className="modalCard">
             <h2>{t("createRapportType")}</h2>
             <label>
-              {t("municipalityNameAr")}
+              {t("rapportTypeNameAr")}
               <input
                 value={typeForm.name_ar}
                 onChange={(e) =>
@@ -563,7 +596,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
             </label>
             {ENABLE_FR_VALUE_INPUTS ? (
               <label>
-                {t("municipalityNameFr")}
+                {t("rapportTypeNameFr")}
                 <input
                   value={typeForm.name_fr}
                   onChange={(e) =>
@@ -710,6 +743,21 @@ export function OfficeServiceConfigPage({ token }: Props) {
           </div>
         </div>
       ) : null}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteType)}
+        title={t("deleteUnusedRapportTypeConfirmTitle")}
+        message={t("deleteUnusedRapportTypeConfirmMessage", {
+          name: pendingDeleteType
+            ? localizedName(pendingDeleteType, i18n.language)
+            : "",
+        })}
+        confirmLabel={t("deleteUnusedRapportType")}
+        variant="danger"
+        loading={deletingType}
+        onConfirm={() => void confirmDeleteRapportType()}
+        onClose={() => setPendingDeleteType(null)}
+      />
     </div>
   );
 }

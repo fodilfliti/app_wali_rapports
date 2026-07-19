@@ -31,6 +31,18 @@ export async function registerAppServiceWorker() {
   }
 }
 
+/** True when this browser already has a PushManager subscription (may or may not be on server). */
+export async function hasLocalPushSubscription(): Promise<boolean> {
+  if (!pushSupported()) return false
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    return Boolean(sub)
+  } catch {
+    return false
+  }
+}
+
 export async function ensurePushSubscription(token: string): Promise<'granted' | 'denied' | 'default' | 'unsupported'> {
   if (!pushSupported()) return 'unsupported'
   await registerAppServiceWorker()
@@ -58,6 +70,23 @@ export async function ensurePushSubscription(token: string): Promise<'granted' |
     keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
   })
   return 'granted'
+}
+
+/** Refresh server row for an existing local subscription only — never prompts or creates. */
+export async function refreshExistingPushSubscription(token: string): Promise<boolean> {
+  if (!pushSupported()) return false
+  await registerAppServiceWorker()
+  if (Notification.permission !== 'granted') return false
+  const reg = await navigator.serviceWorker.ready
+  const sub = await reg.pushManager.getSubscription()
+  if (!sub) return false
+  const json = sub.toJSON()
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false
+  await subscribePush(token, {
+    endpoint: json.endpoint,
+    keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+  })
+  return true
 }
 
 export async function removePushSubscription(token: string) {

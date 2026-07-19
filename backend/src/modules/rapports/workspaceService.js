@@ -32,6 +32,7 @@ const {
 const { enrichDataJsonWithFiles } = require("../../services/uploadService");
 const calendarEventService = require("./calendarEventService");
 const rapportViewService = require("./rapportViewService");
+const schemaConfigService = require("./schemaConfigService");
 
 const { buildCommuneDocumentDefaultBlocks } = require("./documentDefaults");
 
@@ -329,6 +330,13 @@ async function getServiceContentHub(serviceId, user, options = {}) {
     hidden_at: t.hidden_at,
     action_count: Number(byType[`${sid}:${Number(t.id)}`]) || 0,
   }));
+  const usedTypeIds = await schemaConfigService.rapportTypeIdsWithRapports(
+    rapportTypes.map((t) => Number(t.id)),
+  );
+  for (const t of rapportTypes) {
+    t.can_delete =
+      t.content_kind !== "fiche_lecture" && !usedTypeIds.has(Number(t.id));
+  }
   const typeById = Object.fromEntries(
     rapportTypes.map((t) => [Number(t.id), t]),
   );
@@ -549,8 +557,15 @@ async function getRapportView(
   actor = null,
   versionId = null,
 ) {
+  // Spec: Wali opens → under_review. Only Wali (not Chef/Admin) advances status.
+  // Do this before loading the view so the response status is already updated.
+  if (actor?.role === "WALI") {
+    await rapportService.markUnderReview(rapportId, actor);
+  }
+
   const rapport = await rapportService.getRapportDetail(rapportId, versionId);
   const kind = rapport.rapportType?.content_kind;
+  // Sub-views must not re-mark; Wali already handled above (Chef/Admin never mark).
   let view;
   if (kind === "table_grid")
     view = {
@@ -565,7 +580,7 @@ async function getRapportView(
   else if (kind === "commune_list")
     view = {
       content_kind: kind,
-      ...(await getWaliCommuneView(rapportId, versionId)),
+      ...(await getWaliCommuneView(rapportId, versionId, false)),
     };
   else view = { content_kind: kind || "unknown", rapport };
 
@@ -1216,6 +1231,7 @@ async function getCommuneBulkWorkspace(
   rapportTypeId = null,
   rapportId = null,
 ) {
+  const { entityKey, getEntitiesMap, ensureEntitiesMap } = require("./entityKeys");
   const ws = await getCommuneListWorkspace(
     serviceId,
     actor,
@@ -1233,21 +1249,39 @@ async function getCommuneBulkWorkspace(
 
   const schema = ws.schema;
   const columns = schema.columns || [];
-  const communesData = ws.communesData || {};
+  const dataJson = ensureEntitiesMap({
+    communes: ws.communesData || {},
+    entities: ws.entitiesData || {},
+    included_entity_keys: ws.included_entity_keys,
+  });
+  const entitiesData = getEntitiesMap(dataJson);
+  const communesData = dataJson.communes || {};
+
+  const entityLists = [
+    ...(ws.municipalities || []),
+    ...(ws.dairas || []),
+    ...(ws.directions || []),
+  ];
 
   const allRows = [];
-  for (const m of ws.municipalities || []) {
-    const entry = communesData[m.code] || {};
-    let rows = entry.rows || [];
-    if (!rows.length) {
-      rows = buildDefaultCommuneRows(columns, m);
-    }
+  for (const ent of entityLists) {
+    const kind = ent.kind || "commune";
+    const key = ent.entity_key || entityKey(kind, ent.code);
+    const entry =
+      entitiesData[key] ||
+      (kind === "commune" ? communesData[ent.code] || {} : {}) ||
+      {};
+    // Bulk starts empty: only emit rows that were already saved (user adds via UI).
+    const rows = entry.rows || [];
+    if (!rows.length) continue;
     for (const r of rows) {
       allRows.push({
         ...r,
-        municipality_code: m.code,
-        _municipality_name_ar: m.name_ar,
-        _municipality_name_fr: m.name_fr,
+        municipality_code: ent.code,
+        _entity_key: key,
+        _entity_kind: kind,
+        _municipality_name_ar: ent.name_ar,
+        _municipality_name_fr: ent.name_fr,
       });
     }
   }
@@ -1267,6 +1301,11 @@ async function getCommuneBulkWorkspace(
 }
 
 async function saveBulkCommuneData(rapportId, payload, actor, req) {
+  const {
+    parseEntityKey,
+    entityKey,
+    ensureEntitiesMap,
+  } = require("./entityKeys");
   await assertRapportAccess(actor, rapportId, "manage");
   const rapport = await rapportService.getRapportDetail(rapportId);
   if (rapport.rapportType?.content_kind !== "commune_list") {
@@ -1278,27 +1317,75 @@ async function saveBulkCommuneData(rapportId, payload, actor, req) {
   const table = payload.tables?.[0];
   const rows = table?.rows || [];
 
-  const communes = { ...(rapport.currentVersion?.data_json?.communes || {}) };
+  const dataJson = ensureEntitiesMap(rapport.currentVersion?.data_json || {});
+  const entities = { ...(dataJson.entities || {}) };
+  const communes = { ...(dataJson.communes || {}) };
 
-  // Group rows by commune
-  const byCommune = {};
+  // Group rows by entity key
+  const byEntity = {};
   for (const r of rows) {
-    const code = r.municipality_code;
-    if (!code) continue;
-    if (!byCommune[code]) byCommune[code] = [];
-    byCommune[code].push(r);
+    let key = typeof r._entity_key === "string" ? r._entity_key : null;
+    if (!key) {
+      const code = r.municipality_code;
+      if (!code) continue;
+      // Legacy bulk rows without _entity_key are treated as communes
+      key = entityKey("commune", code);
+    }
+    if (!byEntity[key]) byEntity[key] = [];
+    byEntity[key].push(r);
   }
 
-  // Update communes data
-  // We keep existing non-row data (rich text, templates, etc.)
-  for (const code of Object.keys(byCommune)) {
-    if (!communes[code]) communes[code] = {};
-    communes[code].rows = byCommune[code];
+  for (const [key, entityRows] of Object.entries(byEntity)) {
+    const parsed = parseEntityKey(key);
+    if (!parsed) continue;
+    const prev =
+      entities[key] ||
+      (parsed.kind === "commune" ? communes[parsed.code] || {} : {}) ||
+      {};
+    const cleaned = entityRows.map((r) => {
+      const next = { ...r };
+      delete next._entity_key;
+      delete next._entity_kind;
+      delete next._municipality_name_ar;
+      delete next._municipality_name_fr;
+      return next;
+    });
+    const nextEntry = { ...prev, rows: cleaned };
+    entities[key] = nextEntry;
+    if (parsed.kind === "commune") {
+      communes[parsed.code] = nextEntry;
+    }
+  }
+
+  // Explicit clears when user removed the last row for an entity in the bulk editor
+  const clearedKeys = Array.isArray(payload.cleared_entity_keys)
+    ? payload.cleared_entity_keys
+    : [];
+  for (const key of clearedKeys) {
+    if (typeof key !== "string" || !key.trim()) continue;
+    if (byEntity[key]) continue;
+    const parsed = parseEntityKey(key.trim());
+    if (!parsed) continue;
+    const prev =
+      entities[key] ||
+      (parsed.kind === "commune" ? communes[parsed.code] || {} : {}) ||
+      {};
+    const nextEntry = { ...prev, rows: [] };
+    entities[key] = nextEntry;
+    if (parsed.kind === "commune") {
+      communes[parsed.code] = nextEntry;
+    }
   }
 
   await rapportService.updateRapportDraft(
     rapportId,
-    { data_json: { ...(rapport.currentVersion?.data_json || {}), communes } },
+    {
+      data_json: {
+        ...dataJson,
+        entities,
+        communes,
+      },
+    },
     actor,
     req,
   );

@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const { Notification, User } = require("../../db");
 const {
   prefTypeForMessageKey,
@@ -113,17 +114,17 @@ const PUSH_COPY = {
     url: (p) => (p.broadcast_id ? `/office/shared/${p.broadcast_id}` : "/office/shared"),
   },
   calendarToday: {
-    title_ar: "حدث اليوم",
-    title_fr: "Événement aujourd'hui",
-    body_ar: "لديك حدث في التقويم اليوم.",
-    body_fr: "Vous avez un événement au calendrier aujourd'hui.",
+    title_ar: "أحداث اليوم",
+    title_fr: "Événements aujourd'hui",
+    body_ar: "لديك أحداث في التقويم اليوم.",
+    body_fr: "Vous avez des événements au calendrier aujourd'hui.",
     url: () => "/wali/calendar",
   },
   calendarTomorrow: {
-    title_ar: "حدث غداً",
-    title_fr: "Événement demain",
-    body_ar: "لديك حدث في التقويم غداً.",
-    body_fr: "Vous avez un événement au calendrier demain.",
+    title_ar: "أحداث غداً",
+    title_fr: "Événements demain",
+    body_ar: "لديك أحداث في التقويم غداً.",
+    body_fr: "Vous avez des événements au calendrier demain.",
     url: () => "/wali/calendar",
   },
 };
@@ -165,6 +166,7 @@ function buildPushPayload(messageKey, fields, overrides = {}) {
  * @param {number|null} [opts.calendar_event_id]
  * @param {object} [opts.push] override title/body/url
  * @param {boolean} [opts.dedupeCalendar] use findOrCreate for calendar keys
+ * @param {boolean} [opts.dedupeCalendarDigest] replace prior digest rows (no calendar_event_id) for this key
  */
 async function notifyUsers(opts) {
   const message_key = opts.message_key;
@@ -199,7 +201,20 @@ async function notifyUsers(opts) {
   };
 
   const created = [];
-  if (opts.dedupeCalendar && base.calendar_event_id) {
+  if (opts.dedupeCalendarDigest) {
+    // Replace ALL prior calendarToday/Tomorrow rows for these users (legacy per-event
+    // rows with calendar_event_id + previous digests with null).
+    await Notification.destroy({
+      where: {
+        user_id: { [Op.in]: allowedIds },
+        message_key,
+      },
+    });
+    const rows = await Notification.bulkCreate(
+      allowedIds.map((user_id) => ({ ...base, user_id, calendar_event_id: null })),
+    );
+    created.push(...rows);
+  } else if (opts.dedupeCalendar && base.calendar_event_id) {
     for (const user_id of allowedIds) {
       const [row, wasCreated] = await Notification.findOrCreate({
         where: {

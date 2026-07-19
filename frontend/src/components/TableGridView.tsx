@@ -539,7 +539,7 @@ export function TableWorkspace({
         <TableGridView
           {...gridProps}
           reorderScope={reorderScope}
-          rowFilterMode={showRowFilters ? filterMode : 'all'}
+          rowFilterMode={filterMode}
           hideColorToolbar
           activeCellColor={activeCellColor}
           onActiveCellColorChange={setActiveCellColor}

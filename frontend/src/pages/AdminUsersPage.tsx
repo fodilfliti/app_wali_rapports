@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
+import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { PageLoading } from '../components/PageLoading'
 import { TablePagination } from '../components/TablePagination'
 import { FieldErrorText } from '../components/FieldErrorText'
@@ -11,7 +12,7 @@ import { useSnackbar } from '../snackbar/SnackbarContext'
 import { userFormSchema, userPatchFormSchema } from '../validation/schemas/forms'
 import { useZodForm } from '../validation/useZodForm'
 
-type Props = { token: string }
+type Props = { token: string; currentUserId: number }
 
 type UserFields = {
   username: string
@@ -31,7 +32,7 @@ function emptyFields(): UserFields {
   return { username: '', name: '', role: 'OFFICE_USER', job_title: '' }
 }
 
-export function AdminUsersPage({ token }: Props) {
+export function AdminUsersPage({ token, currentUserId }: Props) {
   const { t } = useTranslation()
   const snack = useSnackbar()
   const createForm = useZodForm(userFormSchema)
@@ -45,6 +46,8 @@ export function AdminUsersPage({ token }: Props) {
   const [editFields, setEditFields] = useState({ name: '', job_title: '' })
   const [fields, setFields] = useState<UserFields>(emptyFields)
   const [credentialsModal, setCredentialsModal] = useState<api.UserCredentials | null>(null)
+  const [resetTarget, setResetTarget] = useState<{ id: number; username: string } | null>(null)
+  const [resetBusy, setResetBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -137,12 +140,17 @@ export function AdminUsersPage({ token }: Props) {
     }
   }
 
-  async function resetPwd(id: number) {
+  async function confirmResetPwd() {
+    if (!resetTarget) return
+    setResetBusy(true)
     try {
-      const res = await api.resetUserPassword(token, id)
+      const res = await api.resetUserPassword(token, resetTarget.id)
+      setResetTarget(null)
       setCredentialsModal(res.credentials)
     } catch {
       snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setResetBusy(false)
     }
   }
 
@@ -194,12 +202,19 @@ export function AdminUsersPage({ token }: Props) {
                       type="button"
                       className={`btn btn-sm ${r.is_blocked ? 'btn-secondary' : 'btn-danger'}`}
                       onClick={() => toggleBlock(r.id)}
+                      disabled={r.id === currentUserId}
                     >
                       {r.is_blocked ? t('unblock') : t('block')}
                     </button>
-                    <button type="button" className="btn btn-accent btn-sm" onClick={() => resetPwd(r.id)}>
-                      {t('resetPassword')}
-                    </button>
+                    {r.id !== currentUserId ? (
+                      <button
+                        type="button"
+                        className="btn btn-accent btn-sm"
+                        onClick={() => setResetTarget({ id: r.id, username: r.username })}
+                      >
+                        {t('resetPassword')}
+                      </button>
+                    ) : null}
                   </div>
                 </td>
               </tr>
@@ -213,6 +228,20 @@ export function AdminUsersPage({ token }: Props) {
         </table>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+
+      <ConfirmActionModal
+        open={!!resetTarget}
+        title={t('resetPasswordConfirmTitle')}
+        message={t('resetPasswordConfirmMessage', { username: resetTarget?.username || '' })}
+        confirmLabel={t('resetPassword')}
+        variant="danger"
+        loading={resetBusy}
+        onConfirm={confirmResetPwd}
+        onClose={() => {
+          if (!resetBusy) setResetTarget(null)
+        }}
+      />
+
       {modalOpen ? (
         <div className="modalOverlay">
           <div className="modalCard">

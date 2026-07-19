@@ -8,6 +8,7 @@ type Props = HubTileProps & {
   canManageType?: boolean
   onHideType?: (typeId: number) => void | Promise<void>
   onRestoreType?: (typeId: number) => void | Promise<void>
+  onDeleteType?: (typeId: number) => void | Promise<void>
   dimmed?: boolean
   badgeOverlay?: ReactNode
 }
@@ -17,6 +18,7 @@ export function HubTileWithMenu({
   canManageType,
   onHideType,
   onRestoreType,
+  onDeleteType,
   dimmed,
   badgeOverlay,
   badge,
@@ -27,7 +29,9 @@ export function HubTileWithMenu({
     rapportType &&
     onHideType &&
     onRestoreType &&
-    (rapportType.hidden_at || rapportType.content_kind !== 'fiche_lecture')
+    (rapportType.hidden_at ||
+      rapportType.content_kind !== 'fiche_lecture' ||
+      Boolean(rapportType.can_delete && onDeleteType))
 
   const countBadge = badgeOverlay ?? badge
 
@@ -57,6 +61,7 @@ export function HubTileWithMenu({
             canManage={canManageType}
             onHideType={onHideType}
             onRestoreType={onRestoreType}
+            onDeleteType={onDeleteType}
             variant="hub"
           />
         </div>

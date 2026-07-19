@@ -41,7 +41,7 @@ Login, short-lived access JWTs, and long-lived refresh sessions so users stay si
 | `POST` | `/auth/logout` | Access JWT **or** refresh cookie | Revokes current token family; clears cookie. |
 | `GET` | `/auth/me` | Access JWT | Session user (unchanged). |
 | `PATCH` | `/auth/me` | Access JWT | Self-update **name** (required) and **job_title** (optional, nullable to clear). Not username/role. Returns `{ user }`. Zod. Audit `USER_SELF_UPDATE`. |
-| `POST` | `/auth/change-password` | Access JWT | Self password change; **revokes all** refresh sessions for that user. |
+| `POST` | `/auth/change-password` | Access JWT | Self password (الرمز) change. Body: `{ current_code, new_code }` (Zod). Server **must** verify `current_code` against `password_hash` before update; reject with `errorCurrentCodeIncorrect` if wrong. On success: **revokes all** refresh sessions for that user and clears refresh cookie. |
 
 ### Rotation & reuse detection
 
@@ -98,6 +98,7 @@ Blocked users: login and refresh fail; protected routes still use `checkBlocked`
 - All API `fetch` calls use `credentials: 'include'`.
 - On **401** from a protected call: single-flight refresh once, retry; if refresh fails → clear session, show explicit `sessionExpired` message (Arabic/French: session ended — please log in again), and return to the login screen. No device push for this case (user is already in the browser).
 - Logout calls `POST /auth/logout` then clears client state.
+- **Change own code:** profile menu opens a modal that requires **current code** then **new code** (min 8); never offer a self-change path that skips current-code verification. After success, treat session as ended (force re-login).
 - **Multi-tab:** Use `navigator.locks` (`wr-auth-refresh`) so only one tab calls `/auth/refresh` at a time; use `BroadcastChannel('wr-auth')` to share the new access JWT (`{ type: 'access', token }`) and to propagate session expiry (`{ type: 'expired' }`) across tabs. Access JWT remains memory-only per tab (updated via the channel).
 
 ### CORS / deployment

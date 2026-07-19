@@ -290,13 +290,22 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
       const rapRes = await listRapports(token, {
         service_id: sid,
         rapport_type_id: typeId,
+        office_user_id: userId,
         page: listPage,
         pageSize: DEFAULT_PAGE_SIZE,
       })
       setRows(rapRes.rapports)
-      setListTotal(rapRes.total ?? rapRes.rapports.length)
+      const total = Number(rapRes.total ?? rapRes.rapports.length)
+      setListTotal(Number.isFinite(total) ? total : rapRes.rapports.length)
 
-      if (rt && isDirectWorkspaceKind(rt.content_kind) && listPage === 1 && rapRes.total === 1 && rapRes.rapports.length === 1) {
+      // Table / liste types with a single rapport open the view directly (same as office workspace).
+      if (
+        rt &&
+        isDirectWorkspaceKind(rt.content_kind) &&
+        listPage === 1 &&
+        rapRes.rapports.length === 1 &&
+        (total === 1 || !Number.isFinite(Number(rapRes.total)))
+      ) {
         const backTo = `${reviewerUserServicesPath(reviewer, userId)}/${sid}`
         navigate(reviewerRapportViewPath(reviewer, rapRes.rapports[0].id), {
           replace: true,

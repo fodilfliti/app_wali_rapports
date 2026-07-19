@@ -75,7 +75,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 
 - **Hide French content-value inputs (frontend flag):** `ENABLE_FR_VALUE_INPUTS` in `frontend/src/config/features.ts` — when `false`, hide `*_fr` form inputs across all accounts but keep UI language FR toggle, bilingual storage, and empty-FR→AR display fallback; do not overwrite `*_fr` on save — `spec/CORE.md` § Bilingual content fields.
 - **Chef as broadcast recipient:** `CHEF_CABINET` included in Wali share picker and “all” sends; Chef inbox `/chef/shared` — `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`, `CHEF_CABINET.md`.
-- **Office return to draft:** Éditeur may recall a sent rapport (`pending_chef` | `submitted` | `under_review`) to `draft` (same current version; blocked after Wali accept/view) — `spec/modules/RAPPORTS.md`.
+- **Office return to draft:** Éditeur may recall a sent rapport (`pending_chef` | `submitted` | `under_review`) to `draft` (same current version; wipe current-version Chef/Wali remarks + discussion + linked notifications; `chef_gate=required`; older versions kept; blocked after Wali accept/view) — `spec/modules/RAPPORTS.md`.
 - **Guide videos:** Admin uploads guide videos (général + per role); Admin-audience videos hidden from others; `ENABLE_GUIDE_VIDEOS` flag — `spec/modules/GUIDE_VIDEOS.md`.
 - **User credentials PDF:** On user create / password reset, generated handout is **French only** (not bilingual) — `spec/modules/ORGANIZATION.md`.
 - **Button sizing:** Action-row buttons must share one height/size class (`btn` / `btn-sm` / `btn-lg`); no mixed padding in the same row — `spec/CORE.md` § Button sizing & action rows.
@@ -83,7 +83,8 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Refresh sessions:** 15m access JWT + 7d HttpOnly refresh cookie (rotation, reuse detection, revoke on logout/block/password) — `spec/modules/AUTH.md`.
 - **Org ref soft-hide:** admin hide/restore for dairas (cascade communes), communes, directions via `hidden_at` — no hard delete; new entity catalogs exclude hidden — `ORGANIZATION.md`, `RAPPORT_SERVICE_TYPES.md`.
 - **Explicit draft create:** workspace GET / “Nouveau rapport” navigation never inserts a `rapports` row; first **Enregistrer** creates `draft` (leave without save = nothing) — `RAPPORTS.md`, `RAPPORT_SERVICE_TYPES.md`.
-- **Device notifications:** Web Push + per-type user prefs; Chef notified on `pending_chef`, Wali only after Chef accept; optimistic today/tomorrow calendar reminders (no polling) — `spec/modules/DEVICE_NOTIFICATIONS.md`.
+- **Device notifications:** Web Push + per-type user prefs; **all-devices** vs **this-device** toggles; Chef notified on `pending_chef`, Wali only after Chef accept; optimistic today/tomorrow calendar reminders (no polling) — `spec/modules/DEVICE_NOTIFICATIONS.md`.
+- **Hub-guided type create:** office leaf hub add-tiles per content kind (except fiche); جدول wizard = schema+type; unused types hard-deletable — `RAPPORT_SERVICE_TYPES.md`, `SCHEMA_CONFIGURATION.md`.
 
 ### What to do when adding a new feature
 

@@ -16,6 +16,12 @@ export function reorderRowsArray<T>(
 
 export type TableRowReorderScope = 'table' | 'commune'
 
+function rowScopeKey(row: Record<string, unknown> | undefined): string {
+  if (!row) return ''
+  if (typeof row._entity_key === 'string' && row._entity_key) return row._entity_key
+  return String(row.municipality_code || '')
+}
+
 export function canReorderRowTo(
   rows: Record<string, unknown>[],
   fromIdx: number,
@@ -27,9 +33,9 @@ export function canReorderRowTo(
     return false
   }
   if (scope === 'commune') {
-    const fromCode = rows[fromIdx]?.municipality_code
-    const toCode = rows[toIdx]?.municipality_code
-    if (!fromCode || !toCode || fromCode !== toCode) return false
+    const fromKey = rowScopeKey(rows[fromIdx])
+    const toKey = rowScopeKey(rows[toIdx])
+    if (!fromKey || !toKey || fromKey !== toKey) return false
   }
   return true
 }
@@ -39,7 +45,7 @@ export function visibleRowLineNumber(visibleIndex: number) {
   return visibleIndex + 1
 }
 
-/** In commune bulk scope, # restarts at 1 within each municipality block. */
+/** In commune/entity bulk scope, # restarts at 1 within each entity block. */
 export function visibleRowLineNumberForScope(
   rowEntries: { row: Record<string, unknown> }[],
   visibleIndex: number,
@@ -47,11 +53,11 @@ export function visibleRowLineNumberForScope(
 ) {
   if (scope !== 'commune') return visibleRowLineNumber(visibleIndex)
   const current = rowEntries[visibleIndex]?.row
-  const code = current?.municipality_code
-  if (!code) return visibleRowLineNumber(visibleIndex)
+  const key = rowScopeKey(current)
+  if (!key) return visibleRowLineNumber(visibleIndex)
   let n = 0
   for (let i = 0; i <= visibleIndex; i++) {
-    if (rowEntries[i]?.row?.municipality_code === code) n++
+    if (rowScopeKey(rowEntries[i]?.row) === key) n++
   }
   return n
 }

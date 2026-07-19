@@ -31,6 +31,7 @@ type Props = {
   onShowHiddenTypesChange?: (showHidden: boolean) => void
   onHideType?: (typeId: number) => void | Promise<void>
   onRestoreType?: (typeId: number) => void | Promise<void>
+  onDeleteType?: (typeId: number) => void | Promise<void>
 }
 
 export function ServiceRapportTypesHub({
@@ -47,6 +48,7 @@ export function ServiceRapportTypesHub({
   onShowHiddenTypesChange,
   onHideType,
   onRestoreType,
+  onDeleteType,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [page, setPage] = useState(1)
@@ -107,6 +109,7 @@ export function ServiceRapportTypesHub({
             canManageType={canManageTypes}
             onHideType={onHideType}
             onRestoreType={onRestoreType}
+            onDeleteType={onDeleteType}
             className={rapportTypeHubKindClass(rt)}
             badge={
               Number(rt.action_count) > 0 ? (

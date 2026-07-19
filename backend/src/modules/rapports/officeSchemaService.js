@@ -9,15 +9,37 @@ async function listSchemasForOfficeService(serviceId, user) {
   await assertServiceAccess(user, serviceId, "manage");
   const owned = await RapportTableSchema.findAll({
     where: { service_id: serviceId },
-    order: [["slug", "ASC"]]
+    order: [["slug", "ASC"]],
   });
   const templates = await RapportTableSchema.findAll({
     where: {
-      [Op.or]: [{ service_id: null }, { is_system: true }]
+      [Op.or]: [{ service_id: null }, { is_system: true }],
     },
-    order: [["slug", "ASC"]]
+    order: [["slug", "ASC"]],
   });
-  return { schemas: owned, templates };
+
+  const { RapportType } = require("../../db");
+  const types = await RapportType.findAll({
+    attributes: ["schema_json"],
+    raw: true,
+  });
+  const usedSlugs = new Set(
+    types.map((t) => t.schema_json?.table_schema_slug).filter(Boolean),
+  );
+
+  const schemas = owned.map((row) => {
+    const json = row.toJSON ? row.toJSON() : { ...row };
+    return {
+      ...json,
+      can_delete: !row.is_system && !usedSlugs.has(row.slug),
+    };
+  });
+  const templateRows = templates.map((row) => {
+    const json = row.toJSON ? row.toJSON() : { ...row };
+    return { ...json, can_delete: false };
+  });
+
+  return { schemas, templates: templateRows };
 }
 
 async function createSchemaForOfficeService(serviceId, data, user, req) {
@@ -132,14 +154,52 @@ async function restoreRapportTypeForOffice(rapportTypeId, user, req) {
   return schemaConfig.restoreRapportType(rapportTypeId, user, req);
 }
 
+async function deleteRapportTypeForOffice(rapportTypeId, user, req) {
+  const { RapportType } = require("../../db");
+  const row = await RapportType.findByPk(rapportTypeId);
+  if (!row) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  await assertServiceAccess(user, row.service_id, "manage");
+  return schemaConfig.deleteRapportTypeIfUnused(rapportTypeId, user, req);
+}
+
+async function deleteSchemaForOffice(schemaId, user, req) {
+  const row = await RapportTableSchema.findByPk(schemaId);
+  if (!row) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (row.is_system) {
+    const err = new Error("cannotDeleteSystemSchema");
+    err.status = 409;
+    throw err;
+  }
+  if (!row.service_id) {
+    const err = new Error("cannotDeleteSharedSchema");
+    err.status = 409;
+    throw err;
+  }
+  await assertServiceAccess(user, row.service_id, "manage");
+  await schemaConfig.deleteTableSchema(schemaId, user, req, {
+    requireUnused: true,
+  });
+  return { ok: true };
+}
+
 module.exports = {
   listSchemasForOfficeService,
   createSchemaForOfficeService,
   updateSchemaForOffice,
+  deleteSchemaForOffice,
   duplicateSchemaToService,
   listRapportTypesForOffice,
   createRapportTypeForOffice,
   updateRapportTypeForOffice,
   hideRapportTypeForOffice,
   restoreRapportTypeForOffice,
+  deleteRapportTypeForOffice,
 };

@@ -2,27 +2,49 @@ import type { Column } from './tableLayout'
 
 export const COMMUNE_NAME_COL_KEY = '__commune_name'
 
-const communeNameColumn: Column = {
-  key: COMMUNE_NAME_COL_KEY,
-  type: 'text',
-  label_ar: 'البلدية',
-  label_fr: 'Commune',
+const KIND_ORDER: Record<string, number> = {
+  commune: 0,
+  daira: 1,
+  direction: 2,
 }
 
-/** Prepend read-only commune name column; drop duplicate commune_ref columns. */
+const entityNameColumn: Column = {
+  key: COMMUNE_NAME_COL_KEY,
+  type: 'text',
+  label_ar: 'العنصر',
+  label_fr: 'Élément',
+}
+
+export type BulkEntityRef = {
+  code: string
+  name_ar?: string
+  name_fr?: string
+  kind?: string
+  entity_key?: string
+}
+
+/** Prepend read-only entity name column; drop duplicate commune_ref columns. */
 export function withCommuneNameColumn(columns: Column[]): Column[] {
   const dataCols = columns.filter((c) => c.type !== 'commune_ref')
-  return [communeNameColumn, ...dataCols]
+  return [entityNameColumn, ...dataCols]
+}
+
+export function rowEntityKey(row: Record<string, unknown>): string {
+  if (typeof row._entity_key === 'string' && row._entity_key) return row._entity_key
+  const code = String(row.municipality_code || '')
+  const kind = typeof row._entity_kind === 'string' && row._entity_kind ? row._entity_kind : 'commune'
+  return code ? `${kind}:${code}` : ''
 }
 
 export function communeDisplayName(
   row: Record<string, unknown>,
   locale: string,
 ): string {
-  if (locale === 'fr') {
-    return String(row._municipality_name_fr || row._municipality_name_ar || row.municipality_code || '')
-  }
-  return String(row._municipality_name_ar || row._municipality_name_fr || row.municipality_code || '')
+  const name =
+    locale === 'fr'
+      ? String(row._municipality_name_fr || row._municipality_name_ar || row.municipality_code || '')
+      : String(row._municipality_name_ar || row._municipality_name_fr || row.municipality_code || '')
+  return name
 }
 
 export function rowsWithCommuneNames(rows: Record<string, unknown>[], locale: string) {
@@ -39,15 +61,23 @@ export function stripCommuneDisplayFields(row: Record<string, unknown>) {
 }
 
 export function sortRowsByCommune(rows: Record<string, unknown>[]) {
-  return [...rows].sort((a, b) =>
-    String(a.municipality_code || '').localeCompare(String(b.municipality_code || '')),
-  )
+  return [...rows].sort((a, b) => {
+    const kindA = String(a._entity_kind || 'commune')
+    const kindB = String(b._entity_kind || 'commune')
+    const kindCmp = (KIND_ORDER[kindA] ?? 9) - (KIND_ORDER[kindB] ?? 9)
+    if (kindCmp !== 0) return kindCmp
+    const keyCmp = rowEntityKey(a).localeCompare(rowEntityKey(b))
+    if (keyCmp !== 0) return keyCmp
+    return String(a.municipality_code || '').localeCompare(String(b.municipality_code || ''))
+  })
 }
 
 export function buildEmptyCommuneRow(
-  municipality: { code: string; name_ar: string; name_fr: string },
+  entity: BulkEntityRef,
   template?: Record<string, unknown>,
 ) {
+  const kind = entity.kind || 'commune'
+  const key = entity.entity_key || `${kind}:${entity.code}`
   const row: Record<string, unknown> = template
     ? { ...template }
     : {
@@ -56,9 +86,11 @@ export function buildEmptyCommuneRow(
         _wali_visible: true,
         _cell_colors: {},
       }
-  row.municipality_code = municipality.code
-  row._municipality_name_ar = municipality.name_ar
-  row._municipality_name_fr = municipality.name_fr
+  row.municipality_code = entity.code
+  row._entity_key = key
+  row._entity_kind = kind
+  row._municipality_name_ar = entity.name_ar
+  row._municipality_name_fr = entity.name_fr
   Object.keys(row).forEach((k) => {
     if (
       !k.startsWith('_') &&
@@ -71,10 +103,10 @@ export function buildEmptyCommuneRow(
   return row
 }
 
-export function lastRowIndexForCommune(rows: Record<string, unknown>[], code: string) {
+export function lastRowIndexForCommune(rows: Record<string, unknown>[], entityKeyOrCode: string) {
   let idx = -1
   rows.forEach((r, i) => {
-    if (r.municipality_code === code) idx = i
+    if (rowEntityKey(r) === entityKeyOrCode || r.municipality_code === entityKeyOrCode) idx = i
   })
   return idx
 }

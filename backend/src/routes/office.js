@@ -288,6 +288,22 @@ officeRouter.patch(
   },
 );
 
+officeRouter.delete("/schemas/:id", async (req, res, next) => {
+  try {
+    await officeSchemaService.deleteSchemaForOffice(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 404) return res.status(404).json({ error: "Not found" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
 officeRouter.post(
   "/services/:serviceId/schemas/duplicate",
   async (req, res, next) => {
@@ -395,6 +411,22 @@ officeRouter.post("/rapport-types/:id/restore", async (req, res, next) => {
       req,
     );
     res.json({ rapportType });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 404) return res.status(404).json({ error: "Not found" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
+officeRouter.delete("/rapport-types/:id", async (req, res, next) => {
+  try {
+    await officeSchemaService.deleteRapportTypeForOffice(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json({ ok: true });
   } catch (e) {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
     if (e.status === 404) return res.status(404).json({ error: "Not found" });

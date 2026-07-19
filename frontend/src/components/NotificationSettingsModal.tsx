@@ -4,6 +4,7 @@ import * as api from '../api'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import {
   ensurePushSubscription,
+  hasLocalPushSubscription,
   pushSupported,
   removePushSubscription,
 } from '../utils/webPush'
@@ -101,6 +102,7 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
+  const [thisDeviceSubscribed, setThisDeviceSubscribed] = useState(false)
   const [devicePermission, setDevicePermission] = useState<NotificationPermission | 'unsupported'>(
     'default',
   )
@@ -112,11 +114,20 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
   const showFeedback = user.role === 'OFFICE_USER'
   const supported = pushSupported()
 
+  async function refreshThisDeviceState() {
+    if (!supported) {
+      setDevicePermission('unsupported')
+      setThisDeviceSubscribed(false)
+      return
+    }
+    if (typeof Notification !== 'undefined') setDevicePermission(Notification.permission)
+    setThisDeviceSubscribed(await hasLocalPushSubscription())
+  }
+
   useEffect(() => {
     if (!open) return
     setLoading(true)
-    if (!supported) setDevicePermission('unsupported')
-    else if (typeof Notification !== 'undefined') setDevicePermission(Notification.permission)
+    void refreshThisDeviceState()
     api
       .getNotificationPreferences(token)
       .then((res) => setPrefs(res.preferences))
@@ -149,27 +160,53 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
     }
   }
 
-  async function togglePushDevice(on: boolean) {
+  /** Account-wide push delivery (`push_enabled`). Off also unsubscribes this browser. */
+  async function togglePushAllDevices(on: boolean) {
     setPushBusy(true)
     try {
       if (on) {
         await patch({ push_enabled: true }, { silent: true })
+        snack.show(t('notifPushAllEnabled'), 'success')
+      } else {
+        await removePushSubscription(token)
+        await refreshThisDeviceState()
+        await patch({ push_enabled: false }, { silent: true })
+        snack.show(t('notifPushAllDisabled'), 'success')
+      }
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
+  /** Subscribe / unsubscribe this browser only — does not change other devices. */
+  async function toggleThisDevice(on: boolean) {
+    setPushBusy(true)
+    try {
+      if (on) {
         const result = await ensurePushSubscription(token)
         if (typeof Notification !== 'undefined') setDevicePermission(Notification.permission)
         if (result === 'denied') {
           snack.show(t('notifPushDenied'), 'error')
-          await patch({ push_enabled: false }, { silent: true })
           setDevicePermission('denied')
+          setThisDeviceSubscribed(false)
         } else if (result === 'unsupported') {
           snack.show(t('notifPushUnsupported'), 'error')
           setDevicePermission('unsupported')
-        } else {
-          snack.show(t('notifPushEnabled'), 'success')
+          setThisDeviceSubscribed(false)
+        } else if (result === 'granted') {
+          setThisDeviceSubscribed(true)
           setDevicePermission('granted')
+          snack.show(t('notifPushThisEnabled'), 'success')
+        } else {
+          setThisDeviceSubscribed(false)
+          snack.show(t('notifPushDenied'), 'error')
         }
       } else {
         await removePushSubscription(token)
-        await patch({ push_enabled: false }, { silent: true })
+        setThisDeviceSubscribed(false)
+        snack.show(t('notifPushThisDisabled'), 'success')
       }
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -187,17 +224,24 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
     return true
   }
 
-  function deviceStatusLabel() {
+  function allDevicesStatusLabel() {
+    if (!supported || devicePermission === 'unsupported') return t('notifStatusUnsupported')
+    if (prefs?.push_enabled && prefs.enabled) return t('notifStatusOn')
+    return t('notifStatusOff')
+  }
+
+  function thisDeviceStatusLabel() {
     if (!supported || devicePermission === 'unsupported') return t('notifStatusUnsupported')
     if (devicePermission === 'denied') return t('notifStatusDenied')
-    if (prefs?.push_enabled && prefs.enabled && devicePermission === 'granted') {
+    if (prefs?.push_enabled && prefs.enabled && thisDeviceSubscribed && devicePermission === 'granted') {
       return t('notifStatusOn')
     }
     return t('notifStatusOff')
   }
 
   const masterOn = Boolean(prefs?.enabled)
-  const deviceOn = Boolean(prefs?.push_enabled && prefs?.enabled)
+  const pushAllOn = Boolean(prefs?.push_enabled && prefs?.enabled)
+  const thisDeviceOn = Boolean(pushAllOn && thisDeviceSubscribed && devicePermission === 'granted')
 
   return (
     <div className="modalOverlay" role="dialog" aria-modal aria-labelledby="notif-settings-title">
@@ -234,16 +278,28 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
               <h3 id="notif-sec-device" className="notifSettingsSectionTitle">
                 {t('notifSectionDevice')}
               </h3>
-              <SwitchCard
-                variant="device"
-                title={t('notifPushDevice')}
-                help={t('notifPushDeviceHelp')}
-                checked={deviceOn}
-                disabled={saving || !masterOn || !supported}
-                busy={pushBusy}
-                statusLabel={deviceStatusLabel()}
-                onToggle={(next) => togglePushDevice(next)}
-              />
+              <div className="notifTypeCards">
+                <SwitchCard
+                  variant="device"
+                  title={t('notifPushAll')}
+                  help={t('notifPushAllHelp')}
+                  checked={pushAllOn}
+                  disabled={saving || !masterOn || !supported}
+                  busy={pushBusy}
+                  statusLabel={allDevicesStatusLabel()}
+                  onToggle={(next) => togglePushAllDevices(next)}
+                />
+                <SwitchCard
+                  variant="device"
+                  title={t('notifPushThisDevice')}
+                  help={t('notifPushThisDeviceHelp')}
+                  checked={thisDeviceOn}
+                  disabled={saving || !masterOn || !pushAllOn || !supported}
+                  busy={pushBusy}
+                  statusLabel={thisDeviceStatusLabel()}
+                  onToggle={(next) => toggleThisDevice(next)}
+                />
+              </div>
             </section>
 
             <section

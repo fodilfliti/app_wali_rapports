@@ -86,6 +86,135 @@ const WALI_INBOX_STATUSES = [
   "acknowledged",
 ];
 
+/** Default Chef inbox list (never draft / archived). */
+const CHEF_INBOX_STATUSES = [
+  "pending_chef",
+  "submitted",
+  "under_review",
+  "changes_requested",
+  "acknowledged",
+];
+
+const OFFICE_IN_PROGRESS_STATUSES = [
+  "draft",
+  "pending_chef",
+  "submitted",
+  "under_review",
+];
+
+function normalizeStatusGroup(query) {
+  const g = String(query?.status_group || "")
+    .trim()
+    .toLowerCase();
+  if (!g || g === "all") return null;
+  if (["in_progress", "needs_edit", "done", "new"].includes(g)) return g;
+  return null;
+}
+
+/** List sort field: default created_at (DESC). */
+function normalizeListSort(query) {
+  const s = String(query?.sort || "")
+    .trim()
+    .toLowerCase();
+  if (s === "updated_at") return "updated_at";
+  return "created_at";
+}
+
+async function viewedRapportIdsForUser(userId) {
+  if (!userId) return [];
+  const rows = await RapportView.findAll({
+    where: { user_id: userId },
+    attributes: ["rapport_id"],
+    raw: true,
+  });
+  return rows.map((r) => Number(r.rapport_id)).filter(Boolean);
+}
+
+/**
+ * Apply status_group (preferred) or raw status onto `where`.
+ * Role comes from opts: inboxOnly (Wali), chefInbox (Chef), else Office/Admin.
+ */
+async function applyStatusListFilter(where, query, opts = {}) {
+  const group = normalizeStatusGroup(query);
+
+  if (group) {
+    if (opts.inboxOnly) {
+      // Wali
+      if (group === "new") {
+        const viewedIds = await viewedRapportIdsForUser(opts.enrichForWaliUserId);
+        where.status = "submitted";
+        if (viewedIds.length) {
+          where.id = where.id
+            ? { [Op.and]: [where.id, { [Op.notIn]: viewedIds }] }
+            : { [Op.notIn]: viewedIds };
+        }
+        return;
+      }
+      if (group === "in_progress") {
+        const viewedIds = await viewedRapportIdsForUser(opts.enrichForWaliUserId);
+        delete where.status;
+        if (viewedIds.length) {
+          where[Op.or] = [
+            { status: "under_review" },
+            { status: "submitted", id: { [Op.in]: viewedIds } },
+          ];
+        } else {
+          where.status = "under_review";
+        }
+        return;
+      }
+      if (group === "needs_edit") {
+        where.status = "changes_requested";
+        return;
+      }
+      if (group === "done") {
+        where.status = "acknowledged";
+        return;
+      }
+      return;
+    }
+
+    if (opts.chefInbox) {
+      if (group === "new") {
+        where.status = "pending_chef";
+        return;
+      }
+      if (group === "in_progress") {
+        where.status = { [Op.in]: ["submitted", "under_review"] };
+        return;
+      }
+      if (group === "needs_edit") {
+        where.status = "changes_requested";
+        return;
+      }
+      if (group === "done") {
+        where.status = "acknowledged";
+        return;
+      }
+      return;
+    }
+
+    // Office / Admin — no `new` chip; ignore if sent
+    if (group === "new") return;
+    if (group === "in_progress") {
+      where.status = { [Op.in]: OFFICE_IN_PROGRESS_STATUSES };
+      return;
+    }
+    if (group === "needs_edit") {
+      where.status = "changes_requested";
+      return;
+    }
+    if (group === "done") {
+      where.status = "acknowledged";
+    }
+    return;
+  }
+
+  if (query.status) {
+    where.status = query.status;
+  }
+}
+
 /**
  * Rapports that have ≥1 comment, ordered by latest comment time DESC.
  * Returns { ids, lastCommentById, total } after visibility + optional search filters.
@@ -267,9 +396,23 @@ async function attachDiscussionListMeta(rapports, userId, lastCommentById) {
 async function listRapports(query, opts = {}) {
   const { page, pageSize, offset, limit } = parsePagination(query);
   const where = {};
-  if (query.status) where.status = query.status;
+  const statusGroup = normalizeStatusGroup(query);
   if (query.service_id) where.service_id = query.service_id;
   if (query.rapport_type_id) where.rapport_type_id = query.rapport_type_id;
+  const ownerUserId = Number(
+    query.owner_user_id || query.office_user_id || query.owner_office_user_id,
+  );
+  if (Number.isFinite(ownerUserId) && ownerUserId > 0) {
+    where[Op.and] = [
+      ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+      {
+        [Op.or]: [
+          { owner_office_user_id: ownerUserId },
+          { created_by_user_id: ownerUserId },
+        ],
+      },
+    ];
+  }
   if (query.search) {
     where.title = { [Op.iLike]: `%${String(query.search).trim()}%` };
   }
@@ -306,8 +449,8 @@ async function listRapports(query, opts = {}) {
     lastCommentById = discussed.lastCommentById;
     forcedTotal = discussed.total;
     // Visibility already applied in discussedRapportsOrdered; avoid double-filtering status
-    // unless caller passed an explicit status.
-    if (!query.status && opts.inboxOnly) {
+    // unless caller passed an explicit status / status_group.
+    if (!query.status && !statusGroup && opts.inboxOnly) {
       where.status = { [Op.in]: WALI_INBOX_STATUSES };
     }
   } else if (discussionOnly) {
@@ -328,11 +471,26 @@ async function listRapports(query, opts = {}) {
       };
     }
   } else if (opts.inboxOnly) {
-    // Wali inbox / badges: never include pending_chef (Chef has not accepted yet)
-    where.status = {
-      [Op.in]: WALI_INBOX_STATUSES,
-    };
+    // Wali inbox / badges: never include pending_chef (Chef has not accepted yet).
+    // Default set when no status_group / status; group filter narrows below.
+    if (!statusGroup && !query.status) {
+      where.status = { [Op.in]: WALI_INBOX_STATUSES };
+    } else if (!statusGroup && query.status) {
+      if (WALI_INBOX_STATUSES.includes(String(query.status))) {
+        where.status = query.status;
+      } else {
+        where.status = { [Op.in]: [] };
+      }
+    }
     where.hidden_at = null;
+  } else if (opts.chefInbox && !statusGroup && !query.status) {
+    where.status = { [Op.in]: CHEF_INBOX_STATUSES };
+    where.hidden_at = null;
+  }
+
+  // Prefer status_group over raw status (skip when raw status already applied for Wali above).
+  if (!(opts.inboxOnly && !statusGroup && query.status)) {
+    await applyStatusListFilter(where, query, opts);
   }
 
   // Office: only rapports in services the user is granted.
@@ -356,7 +514,9 @@ async function listRapports(query, opts = {}) {
   if (query.hidden_only === "1" || query.hidden_only === "true") {
     where.hidden_at = { [Op.ne]: null };
   } else if (query.include_hidden !== "1" && query.include_hidden !== "true") {
-    where.hidden_at = null;
+    if (where.hidden_at === undefined) {
+      where.hidden_at = null;
+    }
   }
 
   const rapportTypeInclude = {
@@ -416,10 +576,13 @@ async function listRapports(query, opts = {}) {
   }
 
   // When ordering by last comment, we already sliced ids for this page — no offset/limit here.
+  const sortField = normalizeListSort(query);
   const findOpts = {
     where,
-    order: [["updated_at", "DESC"]],
+    order: [[sortField, "DESC"]],
     include: includes,
+    distinct: true,
+    col: "id",
   };
   if (!orderByLastComment) {
     findOpts.offset = offset;
@@ -1069,7 +1232,7 @@ async function submitRapport(id, actor, req) {
   return getRapportDetail(rapport.id);
 }
 
-/** Office recall: undo send on the current version (no fork). */
+/** Office recall: undo send on the current version (no fork). Wipe current-version remarks/chat only. */
 async function returnRapportToDraft(id, actor, req) {
   const rapport = await Rapport.findByPk(id, {
     include: [{ model: RapportType, as: "rapportType" }],
@@ -1114,23 +1277,92 @@ async function returnRapportToDraft(id, actor, req) {
   }
 
   const previousStatus = rapport.status;
-  if (current.submitted_at) {
-    await RapportVersion.update(
-      { submitted_at: null },
-      { where: { id: current.id } },
-    );
-  }
+  const versionId = current.id;
+  const versionWhere = { rapport_version_id: versionId };
 
-  const now = new Date();
-  await rapport.update({ status: "draft", updated_at: now });
+  let wipeCounts = {
+    chef_responses: 0,
+    wali_responses: 0,
+    comments: 0,
+    notifications: 0,
+  };
+
+  await sequelize.transaction(async (transaction) => {
+    const [chefRows, waliRows, commentRows] = await Promise.all([
+      ChefResponse.findAll({
+        where: versionWhere,
+        attributes: ["id"],
+        transaction,
+      }),
+      WaliResponse.findAll({
+        where: versionWhere,
+        attributes: ["id"],
+        transaction,
+      }),
+      RapportComment.findAll({
+        where: versionWhere,
+        attributes: ["id"],
+        transaction,
+      }),
+    ]);
+
+    const chefIds = chefRows.map((r) => r.id);
+    const waliIds = waliRows.map((r) => r.id);
+    const commentIds = commentRows.map((r) => r.id);
+
+    const notifOr = [];
+    if (chefIds.length) notifOr.push({ chef_response_id: { [Op.in]: chefIds } });
+    if (waliIds.length) notifOr.push({ wali_response_id: { [Op.in]: waliIds } });
+    if (commentIds.length) notifOr.push({ comment_id: { [Op.in]: commentIds } });
+
+    if (notifOr.length) {
+      wipeCounts.notifications = await Notification.destroy({
+        where: { [Op.or]: notifOr },
+        transaction,
+      });
+    }
+
+    if (commentIds.length) {
+      wipeCounts.comments = await RapportComment.destroy({
+        where: { id: { [Op.in]: commentIds } },
+        transaction,
+      });
+    }
+    if (chefIds.length) {
+      wipeCounts.chef_responses = await ChefResponse.destroy({
+        where: { id: { [Op.in]: chefIds } },
+        transaction,
+      });
+    }
+    if (waliIds.length) {
+      wipeCounts.wali_responses = await WaliResponse.destroy({
+        where: { id: { [Op.in]: waliIds } },
+        transaction,
+      });
+    }
+
+    if (current.submitted_at) {
+      await RapportVersion.update(
+        { submitted_at: null },
+        { where: { id: versionId }, transaction },
+      );
+    }
+
+    const now = new Date();
+    await rapport.update(
+      { status: "draft", chef_gate: "required", updated_at: now },
+      { transaction },
+    );
+  });
 
   await audit(
     actor.id,
     "RAPPORT_RETURN_TO_DRAFT",
     {
       rapport_id: rapport.id,
-      version_id: current.id,
+      version_id: versionId,
       previous_status: previousStatus,
+      wiped: wipeCounts,
     },
     { req },
   );

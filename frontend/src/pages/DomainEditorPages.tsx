@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
   useNavigate,
@@ -61,6 +61,11 @@ import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderA
 import { ServiceRapportTypesHub } from "../components/ServiceRapportTypesHub";
 import { ServiceContentKindsHub } from "../components/ServiceContentKindsHub";
 import {
+  CreateContentKindTypeModal,
+  type GuidedContentKind,
+} from "../components/CreateContentKindTypeModal";
+import { SchemaBrowserModal } from "../components/SchemaBrowserModal";
+import {
   isDirectWorkspaceKind,
   localizedRapportTypeName,
   officeNewDocumentPath,
@@ -89,6 +94,7 @@ import {
   withCommuneNameColumn,
 } from "../utils/communeBulkTable";
 import { markOfficeRapportOpened } from "../utils/officeRapportList";
+import { CommuneListVersionView } from "../components/CommuneListVersionView";
 
 type Props = { token: string };
 
@@ -190,8 +196,8 @@ export function OfficeTableGridPage({ token }: Props) {
       throw err;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: sid,
-      rapport_type_id: workspace.rapportType.id,
+      service_id: Number(sid),
+      rapport_type_id: Number(workspace.rapportType.id),
       title: trimmed,
       data_json: {
         tables: [
@@ -591,6 +597,8 @@ export function OfficeServiceContentHubPage({ token }: Props) {
   const snack = useSnackbar();
   const [hub, setHub] = useState<any>(null);
   const [showHiddenTypes, setShowHiddenTypes] = useState(false);
+  const [createKind, setCreateKind] = useState<GuidedContentKind | null>(null);
+  const [schemaBrowserOpen, setSchemaBrowserOpen] = useState(false);
 
   const loadHub = useCallback(() => {
     if (!sid) return;
@@ -631,6 +639,18 @@ export function OfficeServiceContentHubPage({ token }: Props) {
     }
   }
 
+  async function deleteType(typeId: number) {
+    try {
+      await api.deleteRapportType(token, typeId);
+      snack.show(t("deleteUnusedRapportTypeDone"), "success");
+      loadHub();
+      notifyHubCountsRefresh();
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "errorGeneric";
+      snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
+    }
+  }
+
   if (!hub?.service) {
     return (
       <div className="page">
@@ -640,25 +660,50 @@ export function OfficeServiceContentHubPage({ token }: Props) {
   }
 
   return (
-    <ServiceContentKindsHub
-      service={hub.service}
-      summaries={hub.contentKindSummaries || []}
-      contentKinds={hub.contentKinds}
-      accessLevel={hub.accessLevel}
-      backTo="/office/services"
-      rapportTypePath={(rt) =>
-        isDirectWorkspaceKind(rt.content_kind)
-          ? officeRapportTypeWorkspacePath(sid, rt)
-          : officeRapportTypeListPath(sid, rt.id)
-      }
-      mode="office"
-      showConfig={hub.accessLevel === "manage"}
-      manageTypes={hub.accessLevel === "manage"}
-      showHiddenTypes={showHiddenTypes}
-      onShowHiddenTypesChange={setShowHiddenTypes}
-      onHideType={hideType}
-      onRestoreType={restoreType}
-    />
+    <>
+      <ServiceContentKindsHub
+        service={hub.service}
+        summaries={hub.contentKindSummaries || []}
+        contentKinds={hub.contentKinds}
+        accessLevel={hub.accessLevel}
+        backTo="/office/services"
+        rapportTypePath={(rt) =>
+          isDirectWorkspaceKind(rt.content_kind)
+            ? officeRapportTypeWorkspacePath(sid, rt)
+            : officeRapportTypeListPath(sid, rt.id)
+        }
+        mode="office"
+        showConfig={hub.accessLevel === "manage"}
+        manageTypes={hub.accessLevel === "manage"}
+        showHiddenTypes={showHiddenTypes}
+        onShowHiddenTypesChange={setShowHiddenTypes}
+        onHideType={hideType}
+        onRestoreType={restoreType}
+        onDeleteType={deleteType}
+        onAddKind={
+          hub.accessLevel === "manage" ? (kind) => setCreateKind(kind) : undefined
+        }
+        onBrowseSchemas={
+          hub.accessLevel === "manage" ? () => setSchemaBrowserOpen(true) : undefined
+        }
+      />
+      {createKind ? (
+        <CreateContentKindTypeModal
+          token={token}
+          serviceId={sid}
+          contentKind={createKind}
+          open={Boolean(createKind)}
+          onClose={() => setCreateKind(null)}
+          onCreated={loadHub}
+        />
+      ) : null}
+      <SchemaBrowserModal
+        token={token}
+        serviceId={sid}
+        open={schemaBrowserOpen}
+        onClose={() => setSchemaBrowserOpen(false)}
+      />
+    </>
   );
 }
 
@@ -710,6 +755,18 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
     }
   }
 
+  async function deleteType(typeId: number) {
+    try {
+      await api.deleteRapportType(token, typeId);
+      snack.show(t("deleteUnusedRapportTypeDone"), "success");
+      loadHub();
+      notifyHubCountsRefresh();
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "errorGeneric";
+      snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
+    }
+  }
+
   if (!hub?.service) {
     return (
       <div className="page">
@@ -734,6 +791,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
       onShowHiddenTypesChange={setShowHiddenTypes}
       onHideType={hideType}
       onRestoreType={restoreType}
+      onDeleteType={deleteType}
     />
   );
 }
@@ -893,6 +951,7 @@ export function OfficeDocumentsPage({
           >
             {t("createRapport")}
           </button>
+          <p className="muted small">{t("createRapportUnderTypeHint")}</p>
         </div>
       ) : null}
 
@@ -1069,6 +1128,9 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     rapportType: any;
   } | null>(null);
   const [loadingNew, setLoadingNew] = useState(isNewDraft);
+  const createdIdRef = useRef<number | null>(
+    Number.isFinite(ridParam) ? ridParam : null,
+  );
 
   const applyDocumentJson = useCallback((dj: any) => {
     const tables = dj?.embedded_tables || [];
@@ -1155,8 +1217,11 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     loadCurrent,
   ]);
 
-  async function ensureDocumentId(): Promise<number> {
+  async function ensureDocumentId(options?: {
+    navigate?: boolean;
+  }): Promise<number> {
     if (rid) return rid;
+    if (createdIdRef.current) return createdIdRef.current;
     if (!newTypeId || !Number.isFinite(sid)) {
       throw new Error("errorGeneric");
     }
@@ -1176,14 +1241,17 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         calendar_events: calendarEvents,
       },
     });
+    createdIdRef.current = created.id as number;
     setRapport(created);
     setPersistedId(created.id);
-    navigate(`/office/rapports/${created.id}/document`, { replace: true });
+    if (options?.navigate !== false) {
+      navigate(`/office/rapports/${created.id}/document`, { replace: true });
+    }
     return created.id as number;
   }
 
   async function persistDocument(): Promise<number> {
-    const id = await ensureDocumentId();
+    const id = await ensureDocumentId({ navigate: false });
     const patched = await patchRapportTitle(token, id, title);
     setTitle(patched.title);
     setRapport(patched.rapport);
@@ -1195,6 +1263,9 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       media_rows: mediaRows,
     });
     await api.saveCalendarEvents(token, id, calendarEvents);
+    if (isNewDraft) {
+      navigate(`/office/rapports/${id}/document`, { replace: true });
+    }
     return id;
   }
 
@@ -1412,6 +1483,14 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           editable
           token={token}
           rapportId={rid || undefined}
+          ensureRapportId={() => ensureDocumentId({ navigate: false })}
+          onUploadError={(err) => {
+            const msg =
+              err instanceof Error && err.message === "rapportTitleRequired"
+                ? "rapportTitleRequired"
+                : "mediaUploadFailed";
+            snack.show(t(msg), "error");
+          }}
           serviceId={rapport?.service_id || newDraftMeta?.service?.id}
           onEmbeddedTablesChange={setEmbeddedTables}
           onChange={(locale, html) =>
@@ -1432,7 +1511,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         />
       )}
 
-      {editable && rid ? (
+      {editable ? (
         <MediaRowsEditor
           rows={mediaRows}
           files={mediaFiles}
@@ -1440,7 +1519,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           editable
           onChange={setMediaRows}
           onUpload={async (file) => {
-            const res = await api.uploadRapportFile(token, rid, file);
+            const id = await ensureDocumentId({ navigate: false });
+            const res = await api.uploadRapportFile(token, id, file);
             setMediaFiles((prev) => ({ ...prev, [res.file.id]: res.file }));
             return res.file;
           }}
@@ -1502,9 +1582,6 @@ export function WaliRapportViewPage({
   const [view, setView] = useState<any>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [respondOpen, setRespondOpen] = useState(false);
-  const [waliCommuneCode, setWaliCommuneCode] = useState<string | null>(null);
-  const [waliCommunePage, setWaliCommunePage] = useState(1);
-  const [waliCommuneViewMode, setWaliCommuneViewMode] = useState<"commune" | "all">("commune");
   const location = useLocation();
   const isWali = audience === "wali";
   const isChef = audience === "chef";
@@ -1551,29 +1628,6 @@ export function WaliRapportViewPage({
   const columns: Column[] = view?.schema?.columns || [];
   const layoutJson: LayoutJson | null = view?.schema?.layout_json || null;
   const tableMeta: TableMeta = view?.tableMeta || {};
-  const isTableCommuneMode =
-    view?.content_kind === "commune_list" &&
-    view?.rapport?.rapportType?.commune_content_kind === "table";
-
-  const waliCommunesWithData = (view?.municipalities || []).filter((m: any) => {
-    const entry = view?.communes?.[m.code];
-    if (!entry) return false;
-    if (entry.rich_html_ar || entry.rich_html_fr) return true;
-    if (entry.blocks?.length) return true;
-    return (entry.rows || []).length > 0;
-  });
-  const waliSelected =
-    waliCommunesWithData.find(
-      (m: any) => m.code === (waliCommuneCode || waliCommunesWithData[0]?.code),
-    ) || null;
-  const waliCommuneEntry = waliSelected
-    ? view?.communes?.[waliSelected.code]
-    : null;
-  const pagedWaliCommunes = paginateSlice(
-    waliCommunesWithData,
-    waliCommunePage,
-    DEFAULT_PAGE_SIZE,
-  );
   const waliResponses = view?.waliResponses || [];
   const chefResponses = view?.chefResponses || view?.rapport?.chefResponses || [];
   const viewRemarksVersionId = useMemo(
@@ -1608,33 +1662,6 @@ export function WaliRapportViewPage({
     embedded_tables: documentDataJson.embedded_tables,
   };
   const documentMediaRows = view?.media_rows ?? documentDataJson.media_rows ?? [];
-
-  const allCommuneTableRows = useMemo(() => {
-    if (!isTableCommuneMode || !view?.communes) return [];
-    const allRows: Record<string, unknown>[] = [];
-    for (const m of view.municipalities || []) {
-      const entry = view.communes[m.code];
-      if (!entry?.rows?.length) continue;
-      for (const r of entry.rows) {
-        allRows.push({
-          ...r,
-          municipality_code: m.code,
-          _municipality_name_ar: m.name_ar,
-          _municipality_name_fr: m.name_fr,
-        });
-      }
-    }
-    return rowsWithCommuneNames(sortRowsByCommune(allRows), i18n.language);
-  }, [isTableCommuneMode, view?.communes, view?.municipalities, i18n.language]);
-
-  useEffect(() => {
-    setWaliCommunePage(1);
-  }, [rid, waliCommunesWithData.length, waliResponses.length]);
-
-  useEffect(() => {
-    setWaliCommuneViewMode("commune");
-    setWaliCommuneCode(null);
-  }, [rid]);
 
   return (
     <div className="page">
@@ -1689,6 +1716,7 @@ export function WaliRapportViewPage({
             layoutJson={layoutJson}
             tableMeta={tableMeta}
             editable={false}
+            rowFilterMode="active"
           />
           <MediaRowsView
             rows={view.media_rows || []}
@@ -1697,113 +1725,26 @@ export function WaliRapportViewPage({
           />
         </div>
       ) : view?.content_kind === "commune_list" ? (
-        <>
-          <p className="muted communeListIntro">{t("communeListIntro")}</p>
-          {isTableCommuneMode ? (
-            <div className="communeViewModeBar">
-              <button
-                type="button"
-                className={`btn btn-secondary btn-sm${waliCommuneViewMode === "commune" ? " active" : ""}`}
-                onClick={() => setWaliCommuneViewMode("commune")}
-              >
-                {t("communeViewByCommune")}
-              </button>
-              <button
-                type="button"
-                className={`btn btn-secondary btn-sm${waliCommuneViewMode === "all" ? " active" : ""}`}
-                onClick={() => setWaliCommuneViewMode("all")}
-              >
-                {t("communeViewAll")}
-              </button>
-            </div>
-          ) : null}
-          {waliCommuneViewMode === "all" && isTableCommuneMode ? (
-            <div className="card tableWrap excelTable communeWaliPanel">
-              <TableTitleBlock
-                tableMeta={{
-                  title_ar: view?.rapport?.title,
-                  title_fr: view?.rapport?.title,
-                }}
-                editable={false}
-              />
-              <TableGridView
-                columns={withCommuneNameColumn(columns)}
-                rows={allCommuneTableRows}
-                layoutJson={layoutJson}
-                editable={false}
-              />
-            </div>
-          ) : (
-            <>
-              <div className="hubGrid communeHubGrid">
-                {pagedWaliCommunes.map((m: any) => (
-                  <HubTile
-                    key={m.code}
-                    icon="communes"
-                    title={i18n.language === "fr" ? m.name_fr : m.name_ar}
-                    subtitle={
-                      m.is_changed ? t("communeChanged") : t("communeFilled")
-                    }
-                    className={`${waliSelected?.code === m.code ? "communeHubTileFilled" : ""} ${
-                      m.is_changed ? "communeHubTileChanged" : ""
-                    }`}
-                    onClick={() => setWaliCommuneCode(m.code)}
-                    badge={
-                      m.is_changed ? (
-                        <span className="badge badge-accent">{t("new")}</span>
-                      ) : null
-                    }
-                  />
-                ))}
-              </div>
-              <TablePagination
-                page={waliCommunePage}
-                total={waliCommunesWithData.length}
-                onPageChange={setWaliCommunePage}
-              />
-              {waliSelected && waliCommuneEntry ? (
-                <div className="card communeWaliPanel">
-                  <h2 className="communeWaliPanelTitle">
-                    {i18n.language === "fr"
-                      ? waliSelected.name_fr
-                      : waliSelected.name_ar}
-                  </h2>
-                  <RichDocumentView
-                    data={{
-                      rich_html_ar: waliCommuneEntry.rich_html_ar,
-                      rich_html_fr: waliCommuneEntry.rich_html_fr,
-                      blocks: waliCommuneEntry.blocks,
-                      embedded_tables: waliCommuneEntry.embedded_tables,
-                    }}
-                    locale={i18n.language}
-                    token={token}
-                    serviceId={view?.rapport?.service_id}
-                  />
-                  {(waliCommuneEntry.rows || []).length ? (
-                    <div className="tableWrap excelTable">
-                      <TableGridView
-                        columns={columns}
-                        rows={waliCommuneEntry.rows || []}
-                        layoutJson={layoutJson}
-                        editable={false}
-                      />
-                    </div>
-                  ) : null}
-                  {(waliCommuneEntry.calendar_events || []).length ? (
-                    <CalendarEventsView events={waliCommuneEntry.calendar_events} />
-                  ) : null}
-                  <MediaRowsView
-                    rows={waliCommuneEntry.media_rows || []}
-                    files={view?.files || {}}
-                    token={token}
-                  />
-                </div>
-              ) : (
-                <p className="muted communeEmptyHint">{t("noResults")}</p>
-              )}
-            </>
-          )}
-        </>
+        <CommuneListVersionView
+          token={token}
+          serviceId={view?.rapport?.service_id}
+          entities={
+            view.entities?.length
+              ? view.entities
+              : [
+                  ...(view.municipalities || []),
+                  ...(view.dairas || []),
+                  ...(view.directions || []),
+                ]
+          }
+          entitiesData={view.entitiesData}
+          communes={view.communes}
+          schema={view.schema}
+          files={view.files || {}}
+          communeContentKind={view.rapport?.rapportType?.commune_content_kind}
+          targetKinds={view.rapport?.rapportType?.entity_target_kinds}
+          tableTitle={view?.rapport?.title}
+        />
       ) : (
         <RichDocumentView
           data={documentViewData}

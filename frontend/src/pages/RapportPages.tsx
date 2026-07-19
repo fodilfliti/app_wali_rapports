@@ -32,6 +32,16 @@ import {
   waliCommentPreview,
   waliResponseLabel,
 } from '../utils/officeRapportList'
+import {
+  parseStatusGroupParam,
+  statusGroupChips,
+  type RapportStatusGroup,
+} from '../utils/rapportStatusGroup'
+import {
+  LIST_SORT_CHIPS,
+  parseListSortParam,
+  type RapportListSort,
+} from '../utils/rapportListSort'
 import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
 import { waliInboxRowClass, waliCanRespondFromList } from '../utils/waliInboxList'
 import { backNavigationState } from '../utils/navigationBack'
@@ -114,21 +124,173 @@ function OfficeRapportStatusCell({ r, t }: { r: any; t: (k: string) => string })
   )
 }
 
+function StatusGroupFilterBar({
+  role,
+  value,
+  onChange,
+  t,
+}: {
+  role: 'office' | 'admin' | 'wali' | 'chef'
+  value: RapportStatusGroup
+  onChange: (next: RapportStatusGroup) => void
+  t: (k: string) => string
+}) {
+  const chips = statusGroupChips(role)
+  return (
+    <div
+      className="inboxViewTabs inboxViewTabs--segment"
+      role="tablist"
+      aria-label={t('statusGroupFilter')}
+    >
+      {chips.map((chip) => (
+        <button
+          key={chip.id}
+          type="button"
+          role="tab"
+          aria-selected={value === chip.id}
+          className={`inboxViewTab${value === chip.id ? ' active' : ''}`}
+          onClick={() => onChange(chip.id)}
+        >
+          {t(chip.labelKey)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ListSortFilterBar({
+  value,
+  onChange,
+  t,
+}: {
+  value: RapportListSort
+  onChange: (next: RapportListSort) => void
+  t: (k: string) => string
+}) {
+  return (
+    <div
+      className="inboxViewTabs inboxViewTabs--segment"
+      role="tablist"
+      aria-label={t('listSortFilter')}
+    >
+      {LIST_SORT_CHIPS.map((chip) => (
+        <button
+          key={chip.id}
+          type="button"
+          role="tab"
+          aria-selected={value === chip.id}
+          className={`inboxViewTab${value === chip.id ? ' active' : ''}`}
+          onClick={() => onChange(chip.id)}
+        >
+          {t(chip.labelKey)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Office: active vs finished (soft-hidden) — same segment style as sort. */
+function ListScopeFilterBar({
+  finished,
+  onChange,
+  t,
+}: {
+  finished: boolean
+  onChange: (finished: boolean) => void
+  t: (k: string) => string
+}) {
+  return (
+    <div
+      className="inboxViewTabs inboxViewTabs--segment inboxViewTabs--scope"
+      role="tablist"
+      aria-label={t('showFinishedRapports')}
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={!finished}
+        className={`inboxViewTab${!finished ? ' active' : ''}`}
+        onClick={() => onChange(false)}
+      >
+        {t('rapportListActive')}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={finished}
+        className={`inboxViewTab${finished ? ' active' : ''}`}
+        onClick={() => onChange(true)}
+      >
+        {t('navFinishedRapports')}
+      </button>
+    </div>
+  )
+}
+
+function RapportListFilterToolbar({
+  role,
+  statusGroup,
+  onStatusGroup,
+  listSort,
+  onListSort,
+  finished,
+  onFinishedChange,
+  t,
+}: {
+  role: 'office' | 'admin' | 'wali' | 'chef'
+  statusGroup: RapportStatusGroup
+  onStatusGroup: (next: RapportStatusGroup) => void
+  listSort: RapportListSort
+  onListSort: (next: RapportListSort) => void
+  finished?: boolean
+  onFinishedChange?: (finished: boolean) => void
+  t: (k: string) => string
+}) {
+  return (
+    <div className="inboxListFiltersRow">
+      <StatusGroupFilterBar role={role} value={statusGroup} onChange={onStatusGroup} t={t} />
+      <ListSortFilterBar value={listSort} onChange={onListSort} t={t} />
+      {onFinishedChange != null ? (
+        <ListScopeFilterBar finished={!!finished} onChange={onFinishedChange} t={t} />
+      ) : null}
+    </div>
+  )
+}
+
+/** Build list URL params preserving status_group + sort (+ optional service_id / finished). */
+function buildRapportListParams(opts: {
+  serviceId?: number
+  statusGroup?: RapportStatusGroup
+  sort?: RapportListSort
+  finished?: boolean
+}): Record<string, string> {
+  const next: Record<string, string> = {}
+  if (opts.finished) next.hidden = '1'
+  if (opts.serviceId) next.service_id = String(opts.serviceId)
+  if (opts.statusGroup && opts.statusGroup !== 'all') next.status_group = opts.statusGroup
+  if (opts.sort === 'updated_at') next.sort = 'updated_at'
+  return next
+}
+
 export function OfficeRapportsListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
   const [searchParams, setSearchParams] = useSearchParams()
   const serviceId = searchParams.get('service_id') ? Number(searchParams.get('service_id')) : undefined
   const discussionView = searchParams.get('view') === 'discussion'
+  const finishedView =
+    searchParams.get('hidden') === '1' || searchParams.get('view') === 'finished'
   const discussionTab = searchParams.get('tab') === 'all' ? 'all' : 'new'
   const discussionAll = discussionView && discussionTab === 'all'
+  const showHidden = finishedView && !discussionView
+  const statusGroup = parseStatusGroupParam(searchParams.get('status_group'))
+  const listSort = parseListSortParam(searchParams.get('sort'))
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [showHidden] = useState(false)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
   const [returningId, setReturningId] = useState<number | null>(null)
   const [importFor, setImportFor] = useState<{ rapportId: number; serviceId: number; typeId: number } | null>(
@@ -140,7 +302,7 @@ export function OfficeRapportsListPage({ token }: Props) {
 
   useEffect(() => {
     setPage(1)
-  }, [serviceId, showHidden, search, discussionView, discussionTab])
+  }, [serviceId, showHidden, search, discussionView, discussionTab, statusGroup, listSort])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -150,6 +312,8 @@ export function OfficeRapportsListPage({ token }: Props) {
         page,
         pageSize: DEFAULT_PAGE_SIZE,
         search: search || undefined,
+        status_group: discussionView ? undefined : statusGroup,
+        sort: discussionView ? undefined : listSort,
         hidden_only: discussionView ? false : showHidden,
         unread_discussion: discussionView && !discussionAll ? true : undefined,
         has_discussion: discussionAll ? true : undefined,
@@ -161,7 +325,7 @@ export function OfficeRapportsListPage({ token }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [token, serviceId, page, search, showHidden, snack, t, discussionView, discussionAll])
+  }, [token, serviceId, page, search, showHidden, snack, t, discussionView, discussionAll, statusGroup, listSort])
 
   useEffect(() => {
     load()
@@ -177,9 +341,51 @@ export function OfficeRapportsListPage({ token }: Props) {
       setSearchParams({ view: 'discussion' }, { replace: true })
       return
     }
-    const nextParams: Record<string, string> = {}
-    if (serviceId) nextParams.service_id = String(serviceId)
-    setSearchParams(nextParams, { replace: true })
+    setSearchParams(
+      buildRapportListParams({
+        serviceId,
+        statusGroup,
+        sort: listSort,
+        finished: finishedView,
+      }),
+      { replace: true },
+    )
+  }
+
+  function setStatusGroup(next: RapportStatusGroup) {
+    setSearchParams(
+      buildRapportListParams({
+        serviceId,
+        statusGroup: next,
+        sort: listSort,
+        finished: showHidden,
+      }),
+      { replace: true },
+    )
+  }
+
+  function setListSort(next: RapportListSort) {
+    setSearchParams(
+      buildRapportListParams({
+        serviceId,
+        statusGroup,
+        sort: next,
+        finished: showHidden,
+      }),
+      { replace: true },
+    )
+  }
+
+  function setFinishedScope(next: boolean) {
+    setSearchParams(
+      buildRapportListParams({
+        serviceId,
+        statusGroup,
+        sort: listSort,
+        finished: next,
+      }),
+      { replace: true },
+    )
   }
 
   function setDiscussionTab(next: 'new' | 'all') {
@@ -323,7 +529,9 @@ export function OfficeRapportsListPage({ token }: Props) {
             ? discussionAll
               ? t('discussionAllHint')
               : t('discussionInboxHint')
-            : t('officeRapportsListHint')}
+            : showHidden
+              ? t('officeFinishedRapportsHint')
+              : t('officeRapportsListHint')}
         </p>
 
         <form className="inboxFilterSearch" onSubmit={submitSearch}>
@@ -340,6 +548,19 @@ export function OfficeRapportsListPage({ token }: Props) {
             {t('search')}
           </button>
         </form>
+
+        {!discussionView ? (
+          <RapportListFilterToolbar
+            role="office"
+            statusGroup={statusGroup}
+            onStatusGroup={setStatusGroup}
+            listSort={listSort}
+            onListSort={setListSort}
+            finished={showHidden}
+            onFinishedChange={setFinishedScope}
+            t={t}
+          />
+        ) : null}
       </section>
 
       {loading ? <PageLoading /> : null}
@@ -719,6 +940,10 @@ export function OfficeServiceRapportListPage({ token }: Props) {
         <BackButton fallbackTo={`/office/services/${sid}`} />
       </div>
 
+      {canEdit && rapportType ? (
+        <p className="muted small">{t('createRapportUnderTypeHint')}</p>
+      ) : null}
+
       <div className="rapportListToolbar">
         <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
       </div>
@@ -869,12 +1094,19 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
   const discussionView = searchParams.get('view') === 'discussion'
   const discussionTab = searchParams.get('tab') === 'all' ? 'all' : 'new'
   const discussionAll = discussionView && discussionTab === 'all'
+  const statusGroup = parseStatusGroupParam(searchParams.get('status_group'))
+  const listSort = parseListSortParam(searchParams.get('sort'))
   const base = reviewer === 'chef' ? '/chef' : '/wali'
+  const listQs = new URLSearchParams(
+    buildRapportListParams({ statusGroup, sort: listSort }),
+  ).toString()
   const inboxPath = discussionView
     ? discussionAll
       ? `${base}/rapports?view=discussion&tab=all`
       : `${base}/rapports?view=discussion`
-    : `${base}/rapports`
+    : listQs
+      ? `${base}/rapports?${listQs}`
+      : `${base}/rapports`
   const hubPath = base
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
@@ -893,7 +1125,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
 
   useEffect(() => {
     setPage(1)
-  }, [search, discussionView, discussionTab])
+  }, [search, discussionView, discussionTab, statusGroup, listSort])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -903,6 +1135,8 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
         page,
         pageSize: DEFAULT_PAGE_SIZE,
         search: search || undefined,
+        status_group: discussionView ? undefined : statusGroup,
+        sort: discussionView ? undefined : listSort,
         unread_discussion: discussionView && !discussionAll ? true : undefined,
         has_discussion: discussionAll ? true : undefined,
       })
@@ -913,7 +1147,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
     } finally {
       setLoading(false)
     }
-  }, [token, page, search, snack, t, reviewer, discussionView, discussionAll])
+  }, [token, page, search, snack, t, reviewer, discussionView, discussionAll, statusGroup, listSort])
 
   useEffect(() => {
     load()
@@ -925,7 +1159,21 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
   }
 
   function setView(next: 'inbox' | 'discussion') {
-    setSearchParams(next === 'discussion' ? { view: 'discussion' } : {}, { replace: true })
+    if (next === 'discussion') {
+      setSearchParams({ view: 'discussion' }, { replace: true })
+      return
+    }
+    setSearchParams(buildRapportListParams({ statusGroup, sort: listSort }), { replace: true })
+  }
+
+  function setStatusGroup(next: RapportStatusGroup) {
+    setSearchParams(buildRapportListParams({ statusGroup: next, sort: listSort }), {
+      replace: true,
+    })
+  }
+
+  function setListSort(next: RapportListSort) {
+    setSearchParams(buildRapportListParams({ statusGroup, sort: next }), { replace: true })
   }
 
   function setDiscussionTab(next: 'new' | 'all') {
@@ -1064,6 +1312,17 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
             {t('search')}
           </button>
         </form>
+
+        {!discussionView ? (
+          <RapportListFilterToolbar
+            role={reviewer === 'chef' ? 'chef' : 'wali'}
+            statusGroup={statusGroup}
+            onStatusGroup={setStatusGroup}
+            listSort={listSort}
+            onListSort={setListSort}
+            t={t}
+          />
+        ) : null}
       </section>
 
       {loading ? <PageLoading /> : null}
@@ -1200,6 +1459,9 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
 export function AdminRapportsListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statusGroup = parseStatusGroupParam(searchParams.get('status_group'))
+  const listSort = parseListSortParam(searchParams.get('sort'))
   const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -1212,7 +1474,7 @@ export function AdminRapportsListPage({ token }: Props) {
 
   useEffect(() => {
     setPage(1)
-  }, [search, showHidden])
+  }, [search, showHidden, statusGroup, listSort])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1221,6 +1483,8 @@ export function AdminRapportsListPage({ token }: Props) {
         page,
         pageSize: DEFAULT_PAGE_SIZE,
         search: search || undefined,
+        status_group: statusGroup,
+        sort: listSort,
         hidden_only: showHidden,
       })
       setRows(res.rapports)
@@ -1232,7 +1496,7 @@ export function AdminRapportsListPage({ token }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [token, page, search, showHidden, snack, t])
+  }, [token, page, search, showHidden, snack, t, statusGroup, listSort])
 
   useEffect(() => {
     load()
@@ -1241,6 +1505,16 @@ export function AdminRapportsListPage({ token }: Props) {
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
     setSearch(searchInput.trim())
+  }
+
+  function setStatusGroup(next: RapportStatusGroup) {
+    setSearchParams(buildRapportListParams({ statusGroup: next, sort: listSort }), {
+      replace: true,
+    })
+  }
+
+  function setListSort(next: RapportListSort) {
+    setSearchParams(buildRapportListParams({ statusGroup, sort: next }), { replace: true })
   }
 
   async function confirmDeleteRapport() {
@@ -1280,6 +1554,14 @@ export function AdminRapportsListPage({ token }: Props) {
         <button type="submit" className="btn btn-secondary rapportListSearchBtn">
           {t('search')}
         </button>
+        <RapportListFilterToolbar
+          role="admin"
+          statusGroup={statusGroup}
+          onStatusGroup={setStatusGroup}
+          listSort={listSort}
+          onListSort={setListSort}
+          t={t}
+        />
       </form>
 
       {loading ? <PageLoading /> : null}

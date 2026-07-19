@@ -96,8 +96,8 @@ const userPatchSchema = z.object({
 });
 
 const rapportCreateSchema = z.object({
-  service_id: z.number().int().positive(),
-  rapport_type_id: z.number().int().positive(),
+  service_id: z.coerce.number().int().positive(),
+  rapport_type_id: z.coerce.number().int().positive(),
   title: z.string().trim().min(1, V.rapportTitleRequired).max(500, V.maxLength),
   reference_date: z.string().nullable().optional(),
   data_json: z.record(z.unknown()).optional()

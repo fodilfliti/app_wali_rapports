@@ -31,6 +31,9 @@ type Props = {
   editable?: boolean
   token: string
   rapportId?: number
+  /** Create/persist draft before upload when rapportId is missing (title required). */
+  ensureRapportId?: () => Promise<number>
+  onUploadError?: (err: unknown) => void
   serviceId?: number
 }
 
@@ -103,6 +106,8 @@ function RichDocumentEditorInner({
   editable = true,
   token,
   rapportId,
+  ensureRapportId,
+  onUploadError,
   serviceId,
 }: Props) {
   const { t, i18n } = useTranslation()
@@ -203,7 +208,7 @@ function RichDocumentEditorInner({
         />
       ) : null}
       <RichTextEditor
-        key={`${rapportId}-${locale}`}
+        key={locale}
         value={html}
         locale={locale}
         editable={editable}
@@ -213,11 +218,13 @@ function RichDocumentEditorInner({
         onInsertTableDone={handleInsertTableDone}
         onOpenSchemaTablePick={serviceId ? () => setPickOpen(true) : undefined}
         onChange={handleHtmlChange}
+        onUploadError={onUploadError}
         onUpload={async (file) => {
-          if (!rapportId) {
+          const id = rapportId || (await ensureRapportId?.())
+          if (!id) {
             throw new Error('rapportTitleRequired')
           }
-          const res = await api.uploadRapportFile(token, rapportId, file)
+          const res = await api.uploadRapportFile(token, id, file)
           // Display URL may include access_token; save path strips it via prepareRichHtmlForSave.
           return { id: res.file.id, url: fileUrl(token, res.file) }
         }}
@@ -247,17 +254,34 @@ export function RichDocumentView({
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
+    el.querySelectorAll('video').forEach((v) => {
+      v.removeAttribute('controls')
+      v.controls = false
+      v.muted = true
+      v.preload = 'metadata'
+    })
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (target.tagName !== 'IMG') return
-      const img = target as HTMLImageElement
-      if (!img.src) return
-      e.preventDefault()
-      lightbox.open(img.src, img.alt || '')
+      if (target.tagName === 'IMG') {
+        const img = target as HTMLImageElement
+        if (!img.src) return
+        e.preventDefault()
+        lightbox.open(img.src, img.alt || '', 'image')
+        return
+      }
+      const video =
+        target.tagName === 'VIDEO'
+          ? (target as HTMLVideoElement)
+          : (target.closest('video') as HTMLVideoElement | null)
+      if (video?.src) {
+        e.preventDefault()
+        e.stopPropagation()
+        lightbox.openVideo(video.currentSrc || video.src)
+      }
     }
     el.addEventListener('click', onClick)
     return () => el.removeEventListener('click', onClick)
-  }, [html, lightbox.open])
+  }, [html, lightbox.open, lightbox.openVideo])
 
   if (!html && !ids.length) return null
 
@@ -275,6 +299,7 @@ export function RichDocumentView({
         <ImageLightbox
           src={lightbox.state?.src || ''}
           alt={lightbox.state?.alt}
+          kind={lightbox.state?.kind}
           open={lightbox.isOpen}
           onClose={lightbox.close}
         />
@@ -293,6 +318,7 @@ export function RichDocumentView({
       <ImageLightbox
         src={lightbox.state?.src || ''}
         alt={lightbox.state?.alt}
+        kind={lightbox.state?.kind}
         open={lightbox.isOpen}
         onClose={lightbox.close}
       />
@@ -303,7 +329,7 @@ export function RichDocumentView({
 export function RichDocumentEditor(props: Props) {
   const initial = props.data?.embedded_tables || []
   return (
-    <SchemaTableProvider key={props.rapportId} initialTables={initial}>
+    <SchemaTableProvider initialTables={initial}>
       <RichDocumentEditorInner {...props} />
     </SchemaTableProvider>
   )

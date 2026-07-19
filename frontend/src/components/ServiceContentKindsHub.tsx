@@ -1,18 +1,22 @@
 import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BackButton } from './BackButton'
 import { HubCountBadge } from './HubCountBadge'
+import { HubTile } from './HubTile'
 import { HubTileWithMenu } from './HubTileWithMenu'
 import { RapportListScopeFilter } from './RapportListScopeFilter'
-import { ENABLE_DOCUMENT_TEMPLATES } from '../config/features'
 import {
   CONTENT_KINDS_ORDER,
+  contentKindHubIcon,
   localizedRapportTypeName,
   rapportTypeHubIcon,
   rapportTypeHubKindClass,
   sortRapportTypesForDisplay,
   type RapportTypeNav,
 } from '../utils/rapportNavigation'
+import type { GuidedContentKind } from './CreateContentKindTypeModal'
+import { RapportKindsExplainer } from './RapportKindsExplainer'
 
 export type ContentKindSummary = {
   content_kind: string
@@ -34,6 +38,17 @@ type Props = {
   onShowHiddenTypesChange?: (showHidden: boolean) => void
   onHideType?: (typeId: number) => void | Promise<void>
   onRestoreType?: (typeId: number) => void | Promise<void>
+  onDeleteType?: (typeId: number) => void | Promise<void>
+  onAddKind?: (kind: GuidedContentKind) => void
+  onBrowseSchemas?: () => void
+}
+
+const ADDABLE_KINDS = new Set<string>(['document_compose', 'table_grid', 'commune_list'])
+
+const ADD_LABEL_KEY: Record<string, string> = {
+  document_compose: 'hubAddDocument',
+  table_grid: 'hubAddTable',
+  commune_list: 'hubAddListe',
 }
 
 export function ServiceContentKindsHub({
@@ -50,48 +65,39 @@ export function ServiceContentKindsHub({
   onShowHiddenTypesChange,
   onHideType,
   onRestoreType,
+  onDeleteType,
+  onAddKind,
+  onBrowseSchemas,
 }: Props) {
   const { t, i18n } = useTranslation()
+  const [explainerOpen, setExplainerOpen] = useState(false)
   const serviceLabel = i18n.language === 'fr' ? service.name_fr : service.name_ar
   const byKind = Object.fromEntries(summaries.map((s) => [s.content_kind, s]))
-  const ordered = CONTENT_KINDS_ORDER.map((kind) => byKind[kind]).filter(Boolean)
   const canManageTypes = mode === 'office' && manageTypes && accessLevel === 'manage'
-  const totalActionCount = ordered.reduce(
-    (sum, s) => sum + (Number(s.action_count) || 0),
-    0,
-  )
+  const totalActionCount = CONTENT_KINDS_ORDER.reduce((sum, kind) => {
+    const s = byKind[kind]
+    return sum + (Number(s?.action_count) || 0)
+  }, 0)
+
+  const kindsToShow = CONTENT_KINDS_ORDER.filter((kind) => {
+    const types = contentKinds[kind] || []
+    if (types.length) return true
+    if (canManageTypes && ADDABLE_KINDS.has(kind)) return true
+    return false
+  })
 
   return (
     <div className="page">
       <div className="pageHeader row">
         <h1>{serviceLabel || t('navServices')}</h1>
         {mode === 'office' && accessLevel === 'view' ? <span className="badge">{t('accessView')}</span> : null}
+        <button type="button" className="btn btn-secondary" onClick={() => setExplainerOpen(true)}>
+          {t('kindsExplainerOpen')}
+        </button>
         {mode === 'office' && showConfig ? (
-          <>
-            <Link
-              className="btn btn-accent"
-              to={`/office/services/${service.id}/config?new=schema`}
-            >
-              {t('createSchema')}
-            </Link>
-            <Link
-              className="btn btn-primary"
-              to={`/office/services/${service.id}/config?new=type`}
-            >
-              {t('createRapportType')}
-            </Link>
-            {ENABLE_DOCUMENT_TEMPLATES ? (
-              <Link
-                className="btn btn-secondary"
-                to={`/office/services/${service.id}/config?new=template`}
-              >
-                {t('createDocumentTemplate')}
-              </Link>
-            ) : null}
-            <Link className="btn btn-secondary" to={`/office/services/${service.id}/config`}>
-              {t('serviceConfig')}
-            </Link>
-          </>
+          <Link className="btn btn-secondary" to={`/office/services/${service.id}/config`}>
+            {t('serviceConfig')}
+          </Link>
         ) : null}
         <BackButton to={backTo} fallbackTo={backTo} replace />
       </div>
@@ -115,19 +121,34 @@ export function ServiceContentKindsHub({
         </div>
       ) : null}
 
-      {!ordered.length ? <p className="muted">{t('noResults')}</p> : null}
+      {!kindsToShow.length ? <p className="muted">{t('noResults')}</p> : null}
 
       <div className="serviceRapportSections">
-        {ordered.map((summary) => {
-          const types = sortRapportTypesForDisplay(contentKinds[summary.content_kind] || [], i18n.language)
-          if (!types.length) return null
+        {kindsToShow.map((kind) => {
+          const summary = byKind[kind]
+          const types = sortRapportTypesForDisplay(contentKinds[kind] || [], i18n.language)
+          const showAdd = canManageTypes && ADDABLE_KINDS.has(kind) && onAddKind
 
           return (
-            <section key={summary.content_kind} className="serviceRapportSection">
+            <section key={kind} className="serviceRapportSection">
               <div className="serviceRapportSectionHeader">
-                <h2 className="serviceRapportSectionTitle">{t(`contentKind_${summary.content_kind}`)}</h2>
-                {Number(summary.action_count) > 0 ? (
-                  <HubCountBadge count={Number(summary.action_count)} variant="inline" />
+                <div className="serviceRapportSectionHeading">
+                  <div className="serviceRapportSectionTitleRow">
+                    <h2 className="serviceRapportSectionTitle">{t(`contentKind_${kind}`)}</h2>
+                    {Number(summary?.action_count) > 0 ? (
+                      <HubCountBadge count={Number(summary.action_count)} variant="inline" />
+                    ) : null}
+                  </div>
+                  <p className="muted small serviceRapportSectionHint">{t(`contentKindSectionHint_${kind}`)}</p>
+                </div>
+                {canManageTypes && kind === 'table_grid' && onBrowseSchemas ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={onBrowseSchemas}
+                  >
+                    {t('schemaBrowserOpen')}
+                  </button>
                 ) : null}
               </div>
               <div className="hubGrid hubGridServices serviceRapportSectionGrid">
@@ -142,6 +163,7 @@ export function ServiceContentKindsHub({
                     canManageType={canManageTypes}
                     onHideType={onHideType}
                     onRestoreType={onRestoreType}
+                    onDeleteType={onDeleteType}
                     className={rapportTypeHubKindClass(rt)}
                     badge={
                       Number(rt.action_count) > 0 ? (
@@ -150,11 +172,44 @@ export function ServiceContentKindsHub({
                     }
                   />
                 ))}
+                {showAdd ? (
+                  <div className="hubTileCard hubTileCard--add">
+                    <HubTile
+                      icon={contentKindHubIcon(kind)}
+                      title={t(ADD_LABEL_KEY[kind])}
+                      className="hubTile--add"
+                      onClick={() => onAddKind(kind as GuidedContentKind)}
+                    />
+                  </div>
+                ) : null}
               </div>
             </section>
           )
         })}
       </div>
+
+      {explainerOpen ? (
+        <div
+          className="modalOverlay"
+          role="presentation"
+          onClick={() => setExplainerOpen(false)}
+        >
+          <div
+            className="modalCard wide kindsExplainerModal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kindsExplainerTitle"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <RapportKindsExplainer bare />
+            <div className="modalActions">
+              <button type="button" className="btn btn-secondary" onClick={() => setExplainerOpen(false)}>
+                {t('close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

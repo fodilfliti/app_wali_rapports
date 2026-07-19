@@ -8,11 +8,11 @@ import {
   TableWorkspace,
 } from "../components/TableGridView";
 import { RichDocumentView } from "../components/RichDocumentEditor";
+import { MediaRowsView } from "../components/MediaBlocks";
 import { CalendarEventsView } from "../components/CalendarEventsEditor";
 import { WaliResponsesSection } from "../components/WaliResponsesSection";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import {
-  buildEmptyCommuneRow,
   rowsWithCommuneNames,
   sortRowsByCommune,
   withCommuneNameColumn,
@@ -34,6 +34,7 @@ import {
 } from "../utils/entityKeys";
 import type { EntityTargetKind } from "../utils/entityTargets";
 import { filterResponsesByVersionId } from "../utils/reviewResponses";
+import { countFinishedRows } from "../utils/tableRowMeta";
 
 type DetailProps = {
   token: string;
@@ -71,18 +72,10 @@ function catalogFromWorkspace(ws: any): EntityCatalogItem[] {
 
 function catalogFromViewRes(viewRes: any): EntityCatalogItem[] {
   if (viewRes?.entities?.length) return catalogFromWorkspace(viewRes);
-  return (viewRes?.municipalities || []).map((m: any) => {
-    const kind = (m.kind as EntityTargetKind) || "commune";
-    const code = String(m.code);
-    const key = m.entity_key || entityKey(kind, code);
-    return {
-      entity_key: key,
-      kind,
-      code,
-      name_ar: m.name_ar,
-      name_fr: m.name_fr,
-      is_changed: m.is_changed,
-    };
+  return catalogFromWorkspace({
+    municipalities: viewRes?.municipalities,
+    dairas: viewRes?.dairas,
+    directions: viewRes?.directions,
   });
 }
 
@@ -125,6 +118,7 @@ export function RapportVersionDetail({
     schema?: { columns?: any[]; layout_json?: any } | null;
     files?: Record<number, MediaFile>;
   } | null>(null);
+  const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
   const [loading, setLoading] = useState(true);
 
   const archiveListPath = versionsListPath(rid, wali, chef);
@@ -156,6 +150,29 @@ export function RapportVersionDetail({
         const maps = snapshotEntityMaps(vRes.version?.data_json);
         setCommuneVersionView(null);
         setEntityCatalog([]);
+        setMediaFiles({});
+
+        if (
+          kind === "document_compose" ||
+          kind === "fiche_lecture" ||
+          kind === "table_grid"
+        ) {
+          try {
+            if (wali || chef) {
+              const viewRes = chef
+                ? await api.getChefRapportView(token, rid, false, vid)
+                : await api.getWaliRapportView(token, rid, false, vid);
+              if (!cancelled) setMediaFiles(viewRes.files || {});
+            } else {
+              const mediaRes = await api
+                .getRapportMediaFiles(token, rid)
+                .catch(() => ({ files: {} }));
+              if (!cancelled) setMediaFiles(mediaRes.files || {});
+            }
+          } catch {
+            if (!cancelled) setMediaFiles({});
+          }
+        }
 
         if (
           kind === "commune_list" &&
@@ -360,9 +377,8 @@ export function RapportVersionDetail({
         if (!entry) continue;
         const nameAr = m.name_ar || entry?.name_ar || m.code;
         const nameFr = m.name_fr || entry?.name_fr || m.code;
-        const communeRows = entry?.rows?.length
-          ? entry.rows
-          : [buildEmptyCommuneRow({ code: m.code, name_ar: nameAr, name_fr: nameFr })];
+        const communeRows = entry?.rows?.length ? entry.rows : [];
+        if (!communeRows.length) continue;
         for (const r of communeRows) {
           allRows.push({
             ...r,
@@ -410,6 +426,9 @@ export function RapportVersionDetail({
   const showDocument =
     !loading && (kind === "document_compose" || kind === "fiche_lecture");
   const docHasBody = documentHasContent(data);
+  const versionFinishedCount = tableContent
+    ? countFinishedRows(tableContent.rows)
+    : 0;
 
   return (
     <div className="page rapportVersionViewPage">
@@ -456,12 +475,18 @@ export function RapportVersionDetail({
               editable={false}
               showRowMeta
               rowCount={tableContent.rows.length}
-              finishedCount={0}
-              filterMode="all"
+              finishedCount={versionFinishedCount}
+              filterMode="active"
               onFilterModeChange={() => {}}
               showHeader={false}
+              showRowFilters={false}
             />
           )}
+          <MediaRowsView
+            rows={data.tables?.[0]?.media_rows || []}
+            files={mediaFiles}
+            token={token}
+          />
         </div>
       ) : null}
 
@@ -482,6 +507,11 @@ export function RapportVersionDetail({
           ) : (
             <p className="muted communeEmptyHint">{t("noResults")}</p>
           )}
+          <MediaRowsView
+            rows={data.media_rows || []}
+            files={mediaFiles}
+            token={token}
+          />
         </div>
       ) : null}
 
@@ -498,6 +528,9 @@ export function RapportVersionDetail({
             communes={communeVersionView.communes}
             schema={communeVersionView.schema}
             files={communeVersionView.files}
+            communeContentKind={rapport?.rapportType?.commune_content_kind}
+            targetKinds={rapport?.rapportType?.entity_target_kinds}
+            tableTitle={rapport?.title}
           />
         </div>
       ) : null}

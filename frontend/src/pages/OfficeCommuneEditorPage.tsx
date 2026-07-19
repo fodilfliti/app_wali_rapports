@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
@@ -68,6 +68,9 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
   const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const createdIdRef = useRef<number | null>(
+    Number.isFinite(rapportIdParam) ? (rapportIdParam as number) : null,
+  );
 
   const listPath = `/office/services/${sid}/communes${
     rapportTypeId || rapportIdParam
@@ -177,6 +180,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
 
   async function ensureCommuneRapportId(): Promise<number> {
     if (workspace?.rapport?.id) return workspace.rapport.id;
+    if (createdIdRef.current) return createdIdRef.current;
     if (!workspace?.rapportType?.id) {
       throw new Error("errorGeneric");
     }
@@ -192,11 +196,12 @@ export function OfficeCommuneEditorPage({ token }: Props) {
       data_json.included_entity_keys = workspace.included_entity_keys;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: sid,
-      rapport_type_id: workspace.rapportType.id,
+      service_id: Number(sid),
+      rapport_type_id: Number(workspace.rapportType.id),
       title: trimmed,
       data_json,
     });
+    createdIdRef.current = rapport.id as number;
     setWorkspace((prev: any) => (prev ? { ...prev, rapport } : prev));
     return rapport.id as number;
   }
@@ -404,6 +409,14 @@ export function OfficeCommuneEditorPage({ token }: Props) {
               editable={isEditable}
               token={token}
               rapportId={rapportId}
+              ensureRapportId={ensureCommuneRapportId}
+              onUploadError={(err) => {
+                const msg =
+                  err instanceof Error && err.message === "rapportTitleRequired"
+                    ? "rapportTitleRequired"
+                    : "mediaUploadFailed";
+                snack.show(t(msg), "error");
+              }}
               serviceId={sid}
               onEmbeddedTablesChange={setEmbeddedTables}
               onChange={(locale, html) =>
@@ -415,7 +428,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
             />
           )}
           {workspace?.rapportType?.commune_content_kind !== "table" ? (
-            isEditable && rapportId ? (
+            isEditable ? (
               <MediaRowsEditor
                 rows={mediaRows}
                 files={mediaFiles}
@@ -423,7 +436,8 @@ export function OfficeCommuneEditorPage({ token }: Props) {
                 editable
                 onChange={setMediaRows}
                 onUpload={async (file) => {
-                  const res = await api.uploadRapportFile(token, rapportId, file);
+                  const id = await ensureCommuneRapportId();
+                  const res = await api.uploadRapportFile(token, id, file);
                   setMediaFiles((prev) => ({ ...prev, [res.file.id]: res.file }));
                   return res.file;
                 }}

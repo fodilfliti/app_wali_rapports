@@ -9,7 +9,7 @@
 ### Roles & rules
 
 - **CHEF_CABINET**: `/chef/*` routes; inbox for `pending_chef`; respond → accept / changes_requested (رفض أو طلب تعديل); read-only instructions list; **recipient** of Wali broadcasts (`/chef/shared`, included in share picker and “all”).
-- **OFFICE_USER**: submit → `pending_chef` when `chef_gate = required`; editable when `draft` or `changes_requested`. May **return to draft** while `pending_chef` (Éditeur / `manage`, confirm UI) — clears current version `submitted_at`, removes from Chef inbox until re-send; blocked after Wali accept/view — see **`RAPPORTS.md`** § Office recall.
+- **OFFICE_USER**: submit → `pending_chef` when `chef_gate = required`; editable when `draft` or `changes_requested`. May **return to draft** while `pending_chef` | `submitted` | `under_review` (Éditeur / `manage`, confirm UI) — clears current version `submitted_at` and current-version chef remarks, resets `chef_gate = required`, removes from Chef inbox until re-send; older-version history kept; blocked after Wali accept/view — see **`RAPPORTS.md`** § Office recall.
 - **WALI**: inbox excludes `pending_chef`; sees rapport only after Chef accept or on bypass resubmit.
 - **ADMIN**: may use chef/wali routes for support.
 
@@ -39,7 +39,8 @@ Chef changes_requested → changes_requested, chef_gate=required
 Wali changes_requested → changes_requested, chef_gate=bypass
 Office resubmit with bypass → submitted (+ notify Chef info-only, no gate)
 Office return-to-draft (while pending_chef | submitted | under_review, before Wali accept/view)
-  → draft (same current version; out of Chef/Wali inbox)
+  → draft + chef_gate=required; wipe current-version chef/wali remarks + discussion only
+    (older versions kept; out of Chef/Wali inbox until re-send)
 ```
 
 ### API endpoints

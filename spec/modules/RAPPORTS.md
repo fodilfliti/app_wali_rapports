@@ -185,7 +185,7 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 2. **Envoyer au wali** → `pending_chef` (chef gate required) or `submitted` + version snapshot (`submitted_at` on current version). Requires a persisted draft (at least one Enregistrer).
 
-3. Wali opens → under_review; may **confirmer**, **demander modification**, or **lu sans commentaire**.
+3. Wali opens (inbox detail or `/wali/rapports/:id/view`) → `submitted` becomes `under_review`; may **confirmer**, **demander modification**, or **lu sans commentaire**. Chef/Admin open does **not** change status.
 
 4. Office notified; if changes requested → edit → new version → resubmit.
 
@@ -194,8 +194,14 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
    - **Who:** `OFFICE_USER` with service **`manage`** (Éditeur) — same ACL as Envoyer.
    - **When:** status ∈ `pending_chef` | `submitted` | `under_review`.
    - **Blocked:** status `acknowledged`, or any `wali_responses` on the **current** version with `decision ∈ {accepted, viewed}`.
-   - **Effect:** clear `submitted_at` on the **current** version (same `version_number` / `current_version_id` — **do not fork**); set `status = draft`. Rapport disappears from Chef/Wali inboxes until re-sent.
-   - **UI:** confirm dialog (AR « تعديل بعد الإرسال » / FR « Modifier après envoi ») explaining return to brouillon and removal from Chef/Wali until re-send.
+   - **Effect (current version only — older versions / archive untouched):**
+     - Clear `submitted_at` on the **current** version (same `version_number` / `current_version_id` — **do not fork**).
+     - Set `status = draft` and `chef_gate = required` (next Envoyer goes Chef → Wali again).
+     - Delete `chef_responses` and `wali_responses` where `rapport_version_id = current_version_id`.
+     - Delete `rapport_comments` where `rapport_version_id = current_version_id`.
+     - Delete notifications linked to those wiped response/comment rows only (not all notifications for the rapport).
+     - Rapport disappears from Chef/Wali inboxes until re-sent.
+   - **UI:** confirm dialog (AR « تعديل بعد الإرسال » / FR « Modifier après envoi ») explaining return to brouillon, wipe of current-cycle Chef/Wali notes + discussion, archive preserved, and removal from Chef/Wali until re-send.
    - Distinct from Chef/Wali `changes_requested` reopen (which forks a new version for versioned types).
 
 
@@ -224,8 +230,13 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 - Office: service tree, draft/save (first Enregistrer creates the row), version archive button, notification bell; **Modifier après envoi** on awaiting Chef/Wali banner (confirm → draft).
 
-- **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**. Discussion inbox: `?view=discussion` (New / All) — see **`RAPPORT_DISCUSSION.md`**.
+- **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**. Primary tabs: **التقارير** / **المناقشة** only. Finished soft-hidden list via segment chips **النشطة** / **المنتهية** (same row as status + sort; `?hidden=1` → `hidden_only`). Discussion inbox: `?view=discussion` (New / All) — see **`RAPPORT_DISCUSSION.md`**.
 - **Global rapport lists** (`/admin/rapports`, `/office/rapports`, `/wali/rapports`, `/chef/rapports`): optional title **search** query param (`search`) filters by rapport title (`iLike`); same search field in UI across roles.
+- **Sort by date** (rapports list mode only — not Discussion): query param `sort` = `created_at` | `updated_at` (default **`created_at`**, always DESC). UI chips: الأحدث إنشاءً / Plus récents (création) · آخر تحديث / Dernière mise à jour. Status + sort chip groups sit on **one row on desktop**, stacked on narrow screens. URL-synced (`?sort=`); omit param when default. Chef default inbox still prioritizes `pending_chef` first, then the chosen date field.
+- **Status group filter** (rapports list mode only — hidden on Discussion tabs): query param `status_group` = `all` | `in_progress` | `needs_edit` | `done` | `new`. Prefer `status_group` over raw `status` when both are sent. Chips in UI (AR / FR): الكل / Tous · جاري / En cours · يحتاج تعديل / À corriger · منتهٍ / Terminé; Wali and Chef also get جديد / Nouveau. Mutually exclusive chips; URL-synced (`?status_group=`).
+  - **Office / Admin:** `all` = no status filter; `in_progress` = `draft` | `pending_chef` | `submitted` | `under_review`; `needs_edit` = `changes_requested`; `done` = `acknowledged`. No `new` chip.
+  - **Wali:** `all` = inbox set (`submitted` | `under_review` | `changes_requested` | `acknowledged`); `new` = `submitted` and not yet opened by this Wali (`is_inbox_new`); `in_progress` = `under_review` or `submitted` already opened (excludes Nouveau); `needs_edit` / `done` as above.
+  - **Chef:** `all` = Chef inbox set (`pending_chef` | `submitted` | `under_review` | `changes_requested` | `acknowledged`); `new` = `pending_chef`; `in_progress` = `submitted` | `under_review`; `needs_edit` / `done` as above.
 
 - **Document/fiche editors:** export menu (preview + download), optional **import template** (replace or append); compact page header.
 
@@ -260,6 +271,7 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 | `RAPPORT_DOCX_EXPORT` | Word download / preview blob |
 | `RAPPORT_TYPE_HIDE` | Office hides rapport type from service hub |
 | `RAPPORT_TYPE_RESTORE` | Office restores hidden rapport type |
+| `RAPPORT_TYPE_DELETE` | Office hard-deletes unused rapport type (never used in a rapport) |
 | `RAPPORT_FINISH` | Office soft-hides individual rapport |
 | `RAPPORT_RESTORE` | Office restores hidden rapport |
 

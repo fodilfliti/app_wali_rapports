@@ -103,17 +103,13 @@ function computeRowSpanMap(rows, mergeColumnKeys = []) {
   return map;
 }
 
-function normalizeMergedRows(rows, mergeColumnKeys = []) {
-  if (!mergeColumnKeys?.length || !rows?.length) return rows;
-  const next = rows.map((r) => ({ ...r }));
-  const spanMap = computeRowSpanMap(next, mergeColumnKeys);
-  for (const colKey of mergeColumnKeys) {
-    const spans = spanMap[colKey] || [];
-    for (let i = 0; i < next.length; i += 1) {
-      if (spans[i] === 0) next[i][colKey] = "";
-    }
-  }
-  return next;
+/**
+ * Merge columns are display/export-only (rowspan in UI / PDF / Excel).
+ * Never blank repeated values in stored row data — callers must keep full cell values
+ * so editing, reload, and rowspan computation keep working.
+ */
+function normalizeMergedRows(rows, _mergeColumnKeys = []) {
+  return rows;
 }
 
 module.exports = {

@@ -9,6 +9,8 @@ export type RapportTypeNav = {
   commune_content_kind?: string | null
   action_count?: number
   hidden_at?: string | null
+  /** Present on office hub when type has zero rapports and is not fiche. */
+  can_delete?: boolean
 }
 
 const FICHE_LECTURE_AR = 'مذكرة استخلاصية'

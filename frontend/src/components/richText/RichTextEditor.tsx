@@ -19,6 +19,7 @@ import { Video } from './videoExtension'
 import { SchemaTable } from './schemaTableExtension'
 import { BorderedBlock } from './borderedBlockExtension'
 import { RichTextToolbar } from './RichTextToolbar'
+import { ImageLightbox, useImageLightbox } from '../ImageLightbox'
 import './richText.css'
 
 const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
@@ -29,6 +30,7 @@ type Props = {
   editable?: boolean
   placeholder?: string
   onUpload?: (file: File) => Promise<{ id: number; url: string }>
+  onUploadError?: (err: unknown) => void
   locale?: string
   insertTableId?: string | null
   onInsertTableDone?: () => void
@@ -56,6 +58,7 @@ export function RichTextEditor({
   editable = true,
   placeholder,
   onUpload,
+  onUploadError,
   locale = 'ar',
   insertTableId,
   onInsertTableDone,
@@ -67,6 +70,10 @@ export function RichTextEditor({
   const videoInputRef = useRef<HTMLInputElement>(null)
   const skipNextUpdate = useRef(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const lightbox = useImageLightbox()
+  const openVideoRef = useRef(lightbox.openVideo)
+  openVideoRef.current = lightbox.openVideo
 
   const editor = useEditor({
     extensions: [
@@ -80,7 +87,9 @@ export function RichTextEditor({
       HorizontalRule,
       BorderedBlock,
       CustomImage.configure({ inline: false, allowBase64: false, HTMLAttributes: { class: 'editor-image' } }),
-      Video,
+      Video.configure({
+        onOpen: (src) => openVideoRef.current(src),
+      }),
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -139,10 +148,18 @@ export function RichTextEditor({
   async function onFilesSelected(files: FileList | null, kind: 'image' | 'video') {
     if (!files?.length || !onUpload || uploading) return
     setUploading(true)
+    setUploadError(null)
     try {
       for (const file of Array.from(files)) {
         await insertUploadedMedia(file, kind)
       }
+    } catch (err) {
+      const key =
+        err instanceof Error && err.message === 'rapportTitleRequired'
+          ? 'rapportTitleRequired'
+          : 'mediaUploadFailed'
+      setUploadError(t(key))
+      onUploadError?.(err)
     } finally {
       setUploading(false)
     }
@@ -167,6 +184,7 @@ export function RichTextEditor({
         />
       ) : null}
       {uploading ? <p className="muted richTextUploadingHint">{t('mediaUploading')}</p> : null}
+      {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
       <EditorContent editor={editor} className="tiptapEditorWrap" dir={locale === 'ar' ? 'rtl' : 'ltr'} />
       <input
         ref={imageInputRef}
@@ -176,7 +194,7 @@ export function RichTextEditor({
         className="srOnly"
         disabled={uploading}
         onChange={(e) => {
-          onFilesSelected(e.target.files, 'image').catch(() => {})
+          void onFilesSelected(e.target.files, 'image')
           e.target.value = ''
         }}
       />
@@ -188,9 +206,16 @@ export function RichTextEditor({
         className="srOnly"
         disabled={uploading}
         onChange={(e) => {
-          onFilesSelected(e.target.files, 'video').catch(() => {})
+          void onFilesSelected(e.target.files, 'video')
           e.target.value = ''
         }}
+      />
+      <ImageLightbox
+        src={lightbox.state?.src || ''}
+        alt={lightbox.state?.alt}
+        kind={lightbox.state?.kind}
+        open={lightbox.isOpen}
+        onClose={lightbox.close}
       />
     </div>
   )

@@ -211,8 +211,8 @@ export function OfficeCommuneListPage({ token }: Props) {
       data_json.included_entity_keys = keys;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: sid,
-      rapport_type_id: workspace.rapportType.id,
+      service_id: Number(sid),
+      rapport_type_id: Number(workspace.rapportType.id),
       title: trimmed,
       data_json,
     });

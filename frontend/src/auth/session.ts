@@ -23,6 +23,8 @@ let sessionExpiredHandler: (() => void) | null = null;
 let accessTokenHandler: ((token: string) => void) | null = null;
 /** Avoid re-broadcasting messages we received from another tab. */
 let applyingRemote = false;
+/** Only fire session-expired UX once until the next successful login/refresh. */
+let sessionExpiredFired = false;
 
 let authChannel: BroadcastChannel | null = null;
 
@@ -72,6 +74,7 @@ export function getAccessToken(): string | null {
 export function setAccessToken(token: string | null) {
   accessToken = token;
   if (token) {
+    sessionExpiredFired = false;
     accessTokenHandler?.(token);
     broadcast({ type: "access", token });
   }
@@ -86,6 +89,8 @@ export function onSessionExpired(handler: (() => void) | null) {
 }
 
 export function notifySessionExpired() {
+  if (sessionExpiredFired) return;
+  sessionExpiredFired = true;
   accessToken = null;
   broadcast({ type: "expired" });
   sessionExpiredHandler?.();

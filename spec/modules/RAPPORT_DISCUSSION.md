@@ -6,7 +6,7 @@ Non-live **comment thread** at the bottom of a rapport so **office**, **Chef cab
 
 - Available only **after first Envoyer** (at least one version with `submitted_at`, or status in `pending_chef` | `submitted` | `under_review` | `changes_requested` | `acknowledged`).
 - Pure drafts (never submitted) → discussion disabled.
-- Append-only (no edit/delete in v1). No live/WebSocket. No attachments in v1.
+- Append-only (no edit/delete in v1), **except** office **return to draft**: deletes `rapport_comments` for the **current** `rapport_version_id` only (older-version comments kept) — see **`RAPPORTS.md`** § Office recall. No live/WebSocket. No attachments in v1.
 
 ### Roles & rules
 

@@ -44,7 +44,7 @@ Admin defines **reusable table column schemas** and **rapport types** per servic
 | ----- | ----- |
 | `title_ar`, `title_fr` | Per-rapport title |
 | `subtitle_ar`, `subtitle_fr` | Per-rapport subtitle |
-| `merge_column_keys[]` | Column keys to vertically merge repeated values |
+| `merge_column_keys[]` | Column keys to **visually** merge consecutive equal values (UI / PDF / Word / Excel rowspan). Stored row cells keep the full value in every row — save must not blank duplicates. |
 | `rows[]` | Row data |
 
 #### `rapport_types` (per service)
@@ -94,12 +94,16 @@ Reusable **rich HTML starters** for `document_compose` and `fiche_lecture` on a 
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| `GET` | `/office/services/:id/schemas` | Service schemas + system templates |
+| `GET` | `/office/services/:id/schemas` | Service schemas + system templates (`can_delete` on owned unused schemas) |
 | `POST` | `/office/services/:id/schemas` | Create schema for service |
 | `PATCH` | `/office/schemas/:id` | Update owned schema (not `is_system`) |
+| `DELETE` | `/office/schemas/:id` | Delete unused owned schema (not `is_system`; no type references slug) |
 | `POST` | `/office/services/:id/schemas/duplicate` | Copy template into service |
 | `GET` | `/office/services/:id/rapport-types` | List types |
 | `POST` | `/office/services/:id/rapport-types` | Add type |
+| `DELETE` | `/office/rapport-types/:id` | Hard-delete unused type (zero rapports; never `fiche_lecture`); may cascade orphan schema |
+
+**Unused type:** no rows in `rapports` with that `rapport_type_id`. **Unused schema (office):** not `is_system`, `service_id` = this service, and no `rapport_types.schema_json.table_schema_slug` equals its slug.
 
 ### Office document-template API (`manage` on service)
 
@@ -116,19 +120,30 @@ Validation: `documentTemplateCreateSchema`, `documentTemplatePatchSchema`, `appl
 
 ### Office data flow
 
-1. Admin creates schema → creates `rapport_type` on service with `table_schema_slug`.
-2. Office opens service hub → **Tableaux** → grid loads schema columns; rows saved in `rapport_versions.data_json`.
+1. **Primary (guided):** office `manage` opens leaf service hub → dashed add tile under **جدول / ملف مركّب / قائمة** → in-hub wizard. For **جدول**, first choose path (new columns / existing schema / schema-only), then complete the steps; user can go back and change path. Then open the type tile → **إنشاء تقرير** fills an instance.
+2. **Advanced:** Configuration page reuses schemas across types (create/edit schema separately, link to type).
 3. Formulas recalculated on save server-side.
 4. **Documents** / **Fiches lecture** use rich HTML JSON (`rich_html_*`, `embedded_tables`) with optional document templates on create/import.
+
+### Vocabulary (UI)
+
+| Concept | User-facing meaning |
+| ------- | ------------------- |
+| Content kind section | Group on hub: جدول / ملف مركّب / مذكرة / قائمة |
+| Rapport type | Named tile under a section (setup once) — « نوع » |
+| Table schema | Column definitions — primary flow: part of « إضافة جدول »; config page may say مخطط / أعمدة الجدول for reuse |
+| Rapport instance | Filled document/table under a type — « تقرير » (`createRapport`) |
 
 ### UI
 
 - French content-value inputs (`name_fr`, column/choice/header `label_fr`, etc.) respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 - Admin hub → **Schémas & types** → `/admin/schemas`
-- Office editor → service hub → **Configuration** → `/office/services/:id/config` — **tabbed** UI (schemas | rapport types | document templates); one list visible at a time; document templates tab with bilingual editor, default flag, scope by type/kind
-- Office service hub (`manage` access): direct shortcuts **create schema**, **create rapport type**, **create document template** → `/office/services/:id/config?new=schema|type|template` (auto-opens the matching create modal); full **Configuration** link remains for list/edit
+- Office editor → service hub → **Configuration** → `/office/services/:id/config` — **tabbed** UI (schemas | rapport types | document templates); advanced path for reuse/edit; `?new=schema|type|template` still supported
+- Office service hub (`manage`): **kind-scoped add tiles** (see `RAPPORT_SERVICE_TYPES.md`); جدول header **مخططات الأعمدة** opens schema browser (search, inline column preview, edit, delete unused); hub header keeps **إعداد المجال** only (no primary « مخطط جديد / نوع تقرير جديد » shortcuts)
+- Office Configuration schemas tab / hub schema browser: **search + select** then **table preview** (same Data/Schema preview as insert-schema flow); edit name inline; edit columns via editor modal; delete unused; **duplicate-from-template** control is **hidden in UI** for now (API remains)
 - Office → service → hub tiles per content kind — **new document/fiche** opens template picker (default pre-selected, or blank)
 - Document editor → **Importer un modèle** (replace or append)
+- Unused type: tile menu **حذف** (confirm); used type: **إخفاء** only
 
 ### Audit
 
@@ -139,6 +154,7 @@ Validation: `documentTemplateCreateSchema`, `documentTemplatePatchSchema`, `appl
 | `TABLE_SCHEMA_DELETE` | DELETE schema |
 | `RAPPORT_TYPE_CREATE` | POST rapport type |
 | `RAPPORT_TYPE_UPDATE` | PATCH rapport type |
+| `RAPPORT_TYPE_DELETE` | Hard-delete unused rapport type |
 | `DOCUMENT_TEMPLATE_CREATE` | POST document template |
 | `DOCUMENT_TEMPLATE_UPDATE` | PATCH document template |
 | `DOCUMENT_TEMPLATE_DELETE` | DELETE document template |

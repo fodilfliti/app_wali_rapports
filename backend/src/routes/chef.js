@@ -118,8 +118,17 @@ chefRouter.get(
         });
         return res.json(result);
       }
-      // Prefer DB filter for chef primary queue
-      if (!req.query.status) {
+      const statusGroup = String(req.query.status_group || "")
+        .trim()
+        .toLowerCase();
+      const hasStatusGroup = statusGroup && statusGroup !== "all";
+      const hasScopeFilter =
+        (req.query.service_id != null && String(req.query.service_id).trim() !== "") ||
+        (req.query.rapport_type_id != null &&
+          String(req.query.rapport_type_id).trim() !== "");
+      // Prefer DB filter for chef primary queue when no status / status_group /
+      // service or type scope (hub type pages must keep service + type filters).
+      if (!req.query.status && !hasStatusGroup && !hasScopeFilter) {
         const { Op } = require("sequelize");
         const { Rapport } = require("../db");
         const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -136,6 +145,15 @@ chefRouter.get(
           },
           hidden_at: null,
         };
+        if (req.query.search) {
+          where.title = {
+            [Op.iLike]: `%${String(req.query.search).trim()}%`,
+          };
+        }
+        const sortField =
+          String(req.query.sort || "").trim().toLowerCase() === "updated_at"
+            ? "updated_at"
+            : "created_at";
         const { rows, count } = await Rapport.findAndCountAll({
           where,
           order: [
@@ -145,7 +163,7 @@ chefRouter.get(
               ),
               "ASC",
             ],
-            ["updated_at", "DESC"],
+            [sortField, "DESC"],
           ],
           offset: (page - 1) * pageSize,
           limit: pageSize,
@@ -186,6 +204,7 @@ chefRouter.get(
       }
       const result = await rapportService.listRapports(req.query, {
         inboxOnly: false,
+        chefInbox: true,
         enrichForOfficeUserId: req.user.id,
       });
       res.json(result);

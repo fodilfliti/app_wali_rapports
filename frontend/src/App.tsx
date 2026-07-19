@@ -207,9 +207,7 @@ function AppShell() {
       setToken(null);
       setMe(null);
       localStorage.removeItem("me");
-      const msg = t("sessionExpired");
-      snack.show(msg, "error");
-      window.alert(msg);
+      snack.show(t("sessionExpired"), "error");
       navigate("/");
     });
     onAccessTokenChange((next) => setToken(next));
@@ -237,16 +235,15 @@ function AppShell() {
     let cancelled = false;
     (async () => {
       try {
-        const { registerAppServiceWorker, ensurePushSubscription } = await import(
+        const { registerAppServiceWorker, refreshExistingPushSubscription } = await import(
           "./utils/webPush"
         );
         await registerAppServiceWorker();
         const prefs = await api.getNotificationPreferences(token);
         if (cancelled || !prefs.preferences.enabled || !prefs.preferences.push_enabled)
           return;
-        if (Notification.permission === "granted") {
-          await ensurePushSubscription(token);
-        }
+        // Upsert only if this browser already subscribed — never auto-create (use settings).
+        await refreshExistingPushSubscription(token);
       } catch {
         /* soft-fail: push optional */
       }
@@ -398,7 +395,7 @@ function AppShell() {
                 element={<AdminDirectionsListPage token={token} />}
               />
               <Route path="/modiriyat" element={<Navigate to="/directions" replace />} />
-              <Route path="/users" element={<AdminUsersPage token={token} />} />
+              <Route path="/users" element={<AdminUsersPage token={token} currentUserId={me.id} />} />
               <Route
                 path="/admin/rapports"
                 element={<AdminRapportsListPage token={token} />}

@@ -27,18 +27,31 @@ function MediaAttachmentPreview({
   token,
   className = 'mediaCell',
   onImageClick,
+  onVideoClick,
 }: {
   file: MediaFile
   token: string
   className?: string
   onImageClick?: (src: string, alt: string) => void
+  onVideoClick?: (src: string, alt: string) => void
 }) {
+  const { t } = useTranslation()
   const url = fileUrl(token, file)
 
   if (file.media_kind === 'video') {
     return (
       <div className={className}>
-        <video controls className="mediaVideo" src={url} preload="metadata" />
+        <button
+          type="button"
+          className="mediaVideoThumb"
+          onClick={() => onVideoClick?.(url, file.original_name)}
+          aria-label={file.original_name || t('mediaVideoPreview')}
+        >
+          <video className="mediaVideo" src={url} preload="metadata" muted playsInline />
+          <span className="mediaVideoPlay" aria-hidden>
+            ▶
+          </span>
+        </button>
         <span className="muted small mediaFileName">{file.original_name}</span>
       </div>
     )
@@ -90,6 +103,7 @@ export function MediaRowsView({ rows, files, token }: ViewProps) {
                 token={token}
                 className="mediaCell mediaFileCard"
                 onImageClick={lightbox.open}
+                onVideoClick={(src, alt) => lightbox.open(src, alt, 'video')}
               />
             )
           })}
@@ -98,6 +112,7 @@ export function MediaRowsView({ rows, files, token }: ViewProps) {
       <ImageLightbox
         src={lightbox.state?.src || ''}
         alt={lightbox.state?.alt}
+        kind={lightbox.state?.kind}
         open={lightbox.isOpen}
         onClose={lightbox.close}
       />
@@ -173,6 +188,7 @@ export function MediaRowsEditor({
                   token={token}
                   className="mediaCellPreview"
                   onImageClick={lightbox.open}
+                  onVideoClick={(src, alt) => lightbox.open(src, alt, 'video')}
                 />
                 {editable ? (
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeFile(id)}>
@@ -201,6 +217,7 @@ export function MediaRowsEditor({
       <ImageLightbox
         src={lightbox.state?.src || ''}
         alt={lightbox.state?.alt}
+        kind={lightbox.state?.kind}
         open={lightbox.isOpen}
         onClose={lightbox.close}
       />

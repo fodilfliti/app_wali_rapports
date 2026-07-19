@@ -21,6 +21,8 @@ Same shape as document `media_row`, appended after the table grid in preview and
 - Table `uploaded_files` — binary stored under `storage/uploads/{storage_key}`
 - Served via authenticated `GET /files/uploads/{storage_key}`
 - Kinds: `image`, `video`, `file` (from MIME)
+- **New complex/fiche drafts:** the attachments block is shown while editable even before the first save. The first inline image/video insert or attachment upload **auto-creates** the draft rapport (title required). If the title is missing, show an error and do not insert.
+- **Inline / attachment videos in UI:** shown as compact thumbnails (~¼ row width, up to 4 per line); click opens a modal player (drag/reorder does not open). Full playback is in the popup only — keeps mobile-portrait videos from dominating the rapport layout. Same behavior for **office**, **Chef**, and **Wali** live views and **version archive** pages.
 
 #### Export (PDF & Word)
 

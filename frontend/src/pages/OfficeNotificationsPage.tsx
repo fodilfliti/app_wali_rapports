@@ -157,6 +157,8 @@ export function OfficeNotificationsPage({ token }: Props) {
     if (key === 'chefAccepted') return t('chefAccepted')
     if (key === 'chefChangesRequested') return t('chefChangesRequested')
     if (key === 'chefFeedback') return t('chefFeedback')
+    if (key === 'calendarToday') return t('calendarToday')
+    if (key === 'calendarTomorrow') return t('calendarTomorrow')
     return t('navNotifications')
   }
 

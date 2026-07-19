@@ -1550,7 +1550,8 @@ label {
   min-width: 0;
 }
 
-.communeBulkAddRowBtn {
+.communeBulkAddRowBtn,
+.communeBulkAddAllBtn {
   flex: 0 0 auto;
   white-space: nowrap;
 }
@@ -1962,6 +1963,15 @@ label {
 
 .rapportListSearchForm {
   align-items: flex-end;
+}
+
+.rapportListSearchForm .inboxListFiltersRow {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.rapportListSearchForm .inboxViewTabs--segment {
+  flex: 0 1 auto;
 }
 
 .rapportListSearch {
@@ -3517,7 +3527,8 @@ label {
 }
 
 .modalCard.wide {
-  max-width: 640px;
+  width: min(920px, 100%);
+  max-width: 920px;
 }
 
 .modalCard label {
@@ -4027,9 +4038,33 @@ label {
 
 .serviceRapportSectionHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.serviceRapportSectionHeading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.serviceRapportSectionTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.serviceRapportSectionTitle {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--color-primary);
+}
+
+.serviceRapportSectionHint {
+  margin: 0.2rem 0 0;
+  line-height: 1.35;
 }
 
 .serviceActionHint {
@@ -4043,10 +4078,206 @@ label {
   line-height: 1.45;
 }
 
-.serviceRapportSectionTitle {
-  margin: 0;
-  font-size: 1.05rem;
+.hubTileCard--add .hubTile--add {
+  border: 2px dashed var(--color-border);
+  background: transparent;
+  box-shadow: none;
   color: var(--color-primary);
+  width: 100%;
+  cursor: pointer;
+}
+
+.hubTileCard--add .hubTile--add:hover {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  transform: none;
+}
+
+.hubTileCard--add .hubTile--add .hubTileIcon {
+  opacity: 0.75;
+}
+
+.hubModeChoiceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin: 0.5rem 0 0;
+}
+
+@media (max-width: 640px) {
+  .hubModeChoiceGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hubTablePathChooser {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.hubTablePathSelectPrompt {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: var(--color-accent-soft, rgba(201, 162, 39, 0.18));
+  border: 1px solid rgba(201, 162, 39, 0.4);
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+
+.hubTablePathGroupTitle {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-primary);
+}
+
+.hubTablePathGroupHint {
+  margin: 0.25rem 0 0.65rem;
+  line-height: 1.4;
+}
+
+.hubTablePathGroup--secondary {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-card);
+  background: var(--color-bg, #f7f8f9);
+  border: 1px dashed var(--color-border);
+}
+
+.hubTablePathGroup--secondary .hubTablePathGroupTitle {
+  color: var(--color-text);
+  font-size: 0.95rem;
+}
+
+.hubTablePathDivider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.hubTablePathDivider::before,
+.hubTablePathDivider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.hubModeChoiceCard {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  text-align: start;
+  padding: 1rem 1.1rem;
+  min-height: 6.5rem;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+}
+
+.hubModeChoiceCard:hover {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+}
+
+.hubModeChoiceCard--secondary {
+  min-height: auto;
+  background: var(--color-surface);
+}
+
+.hubModeChoiceCardTop {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.hubModeChoiceRadio {
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 0 var(--color-primary);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.hubModeChoiceRadio.isOn {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 0.28rem var(--color-primary);
+}
+
+.hubModeChoiceSelectedTag {
+  margin-inline-start: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: rgba(13, 110, 110, 0.1);
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.hubModeChoiceCardHint {
+  padding-inline-start: 1.7rem;
+  line-height: 1.4;
+}
+
+.hubModeChoiceCard.isSelected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+  background: rgba(13, 110, 110, 0.04);
+}
+
+.hubListeSchemaMode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.hubSchemaNameBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg);
+}
+
+.hubSwitchPathLink {
+  margin: 0.25rem 0 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  align-self: flex-start;
+}
+
+.radioLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .serviceRapportSectionGrid {
@@ -4377,7 +4608,7 @@ label {
 
 .mediaAttachmentGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 170px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.85rem;
   align-items: stretch;
   justify-content: start;
@@ -4393,8 +4624,8 @@ label {
 
 .mediaCell {
   width: 100%;
-  min-height: 140px;
-  max-width: 170px;
+  min-height: 0;
+  max-width: none;
   border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 0.75rem;
@@ -4501,11 +4732,42 @@ label {
   border-radius: 6px;
 }
 
+.mediaVideoThumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #0f172a;
+}
+
+.mediaVideoPlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.35rem;
+  background: rgba(15, 23, 42, 0.35);
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
 .mediaVideo {
   width: 100%;
-  max-height: 110px;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
   border-radius: 6px;
   background: #000;
+  pointer-events: none;
+  display: block;
 }
 
 .mediaUploadSlot {
@@ -5105,6 +5367,11 @@ label {
   margin: 0;
 }
 
+.schemasPanelBody {
+  padding: 1rem 1.15rem;
+  background: var(--color-surface);
+}
+
 .serviceConfigTabCount {
   font-weight: 600;
   opacity: 0.85;
@@ -5699,7 +5966,7 @@ label {
     grid-template-columns: 1fr;
   }
   .mediaAttachmentGrid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 160px));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -5814,6 +6081,10 @@ label {
   cursor: zoom-in;
 }
 
+.richDocumentViewZoomable video {
+  cursor: pointer;
+}
+
 .imageLightboxBackdrop {
   position: fixed;
   inset: 0;
@@ -5834,6 +6105,10 @@ label {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.imageLightboxPanel-video {
+  width: min(92vw, 960px);
 }
 
 .imageLightboxToolbar {
@@ -5867,6 +6142,13 @@ label {
   object-fit: contain;
   transform-origin: center center;
   transition: transform 0.15s ease;
+}
+
+.imageLightboxVideo {
+  width: 100%;
+  max-height: 68vh;
+  background: #000;
+  border-radius: 6px;
 }
 
 /* Rapport discussion thread */
@@ -6007,6 +6289,18 @@ label {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.inboxListFiltersRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+}
+
+.inboxListFiltersRow .inboxViewTabs--segment {
+  flex: 0 1 auto;
+  max-width: 100%;
 }
 
 .inboxFilterBarTop {
@@ -6190,13 +6484,41 @@ label {
     align-items: stretch;
   }
 
-  .inboxViewTabs--primary,
-  .inboxViewTabs--segment {
+  /* Filter toolbar: status on row 1; sort (+ scope) on row 2 */
+  .inboxListFiltersRow {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .inboxListFiltersRow .inboxViewTabs--segment:first-child {
+    flex: 1 1 100%;
     width: 100%;
   }
 
-  .inboxViewTabs--primary .inboxViewTab,
-  .inboxViewTabs--segment .inboxViewTab {
+  .inboxListFiltersRow .inboxViewTabs--segment:not(:first-child) {
+    flex: 1 1 calc(50% - 0.5rem);
+    width: auto;
+    min-width: 0;
+  }
+
+  /* Only status + sort (no scope): sort takes full second row */
+  .inboxListFiltersRow .inboxViewTabs--segment:nth-child(2):last-child {
+    flex: 1 1 100%;
+  }
+
+  .inboxListFiltersRow .inboxViewTabs--segment:not(:first-child) .inboxViewTab {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding-inline: 0.45rem;
+    font-size: 0.85rem;
+  }
+
+  .inboxViewTabs--primary {
+    width: 100%;
+  }
+
+  .inboxViewTabs--primary .inboxViewTab {
     flex: 1 1 auto;
     justify-content: center;
   }
@@ -6552,4 +6874,294 @@ label {
   .guideVideoGrid {
     grid-template-columns: 1fr;
   }
+}
+
+.schemaListPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 12rem;
+}
+
+.schemaListSearch {
+  display: block;
+}
+
+.schemaListEmpty {
+  margin: 0.5rem 0;
+}
+
+.schemaList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  max-height: min(55vh, 480px);
+  overflow: auto;
+}
+
+.schemaListItem {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.schemaListItem:last-child {
+  border-bottom: none;
+}
+
+.schemaListRow {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.schemaListRow:hover {
+  background: rgba(13, 110, 110, 0.05);
+}
+
+.schemaListChevron {
+  display: inline-block;
+  width: 1rem;
+  color: var(--color-muted);
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+[dir='rtl'] .schemaListChevron {
+  transform: rotate(90deg);
+}
+
+.schemaListChevron.isOpen,
+[dir='rtl'] .schemaListChevron.isOpen {
+  transform: rotate(0deg);
+}
+
+.schemaListName {
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.schemaListBadge {
+  flex-shrink: 0;
+}
+
+.schemaListColCount {
+  flex-shrink: 0;
+}
+
+.schemaListPreview {
+  padding: 0 0.9rem 0.85rem 2.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.schemaListColumns {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: var(--color-bg, #f7f8f9);
+  border: 1px solid var(--color-border);
+}
+
+.schemaListColumn {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.schemaListColumn:last-child {
+  border-bottom: none;
+}
+
+.schemaListPreviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.schemaBrowserModal .modalActions {
+  margin-top: 1rem;
+}
+
+.schemaPickerPanel {
+  gap: 0.85rem;
+}
+
+.schemaPickerNameFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.schemaPickerActions {
+  justify-content: flex-start;
+  margin-top: 0.25rem;
+}
+
+.kindsExplainer {
+  margin-top: 1.75rem;
+  padding: 1.15rem 1.25rem 1.35rem;
+  background: var(--color-surface);
+}
+
+.kindsExplainerTitle {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  color: var(--color-primary);
+}
+
+.kindsExplainerLead {
+  margin: 0 0 1.15rem;
+  line-height: 1.45;
+}
+
+.kindsExplainerSection {
+  margin-top: 1.15rem;
+}
+
+.kindsExplainerSection:first-of-type {
+  margin-top: 0.5rem;
+}
+
+.kindsExplainerSectionTitle {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.kindsExplainerPair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .kindsExplainerPair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kindsExplainerPairCard {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg, #f7f8f9);
+}
+
+.kindsExplainerPairCard strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.kindsExplainerPairCard p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.kindsExplainerPairCard--versioned {
+  border-color: rgba(13, 110, 110, 0.35);
+  background: rgba(13, 110, 110, 0.05);
+}
+
+.kindsExplainerPairCard--standalone {
+  border-color: rgba(201, 162, 39, 0.4);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+.kindsExplainerSteps {
+  margin: 0.55rem 0 0;
+  padding-inline-start: 1.2rem;
+  line-height: 1.45;
+  font-size: 0.88rem;
+  color: var(--color-text);
+}
+
+.kindsExplainerGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 960px) {
+  .kindsExplainerGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .kindsExplainerGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kindsExplainerKindCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg, #f7f8f9);
+  min-height: 9.5rem;
+}
+
+.kindsExplainerKindIcon {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--color-primary);
+}
+
+.kindsExplainerKindCard p {
+  margin: 0;
+  line-height: 1.4;
+  flex: 1 1 auto;
+}
+
+.kindsExplainerKindBadge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: rgba(13, 110, 110, 0.1);
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.kindsExplainerVersionsWhy {
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+}
+
+.kindsExplainer--bare {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.kindsExplainerModal {
+  max-height: min(90vh, 920px);
+  overflow: auto;
+}
+
+.kindsExplainerModal .kindsExplainerTitle {
+  margin-top: 0;
 }

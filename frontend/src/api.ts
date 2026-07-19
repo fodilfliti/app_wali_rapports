@@ -419,6 +419,8 @@ export function listOfficeRapports(
     rapport_type_id?: number;
     content_kind?: string;
     search?: string;
+    status_group?: string;
+    sort?: string;
     has_version?: boolean;
     importable?: boolean;
     include_hidden?: boolean;
@@ -435,6 +437,10 @@ export function listOfficeRapports(
     q.set("rapport_type_id", String(params.rapport_type_id));
   if (params.content_kind) q.set("content_kind", params.content_kind);
   if (params.search?.trim()) q.set("search", params.search.trim());
+  if (params.status_group && params.status_group !== "all") {
+    q.set("status_group", params.status_group);
+  }
+  if (params.sort === "updated_at") q.set("sort", "updated_at");
   if (params.has_version) q.set("has_version", "1");
   if (params.importable) q.set("importable", "1");
   if (params.include_hidden) q.set("include_hidden", "1");
@@ -456,6 +462,8 @@ export function listAdminRapports(
     pageSize?: number;
     service_id?: number;
     search?: string;
+    status_group?: string;
+    sort?: string;
     hidden_only?: boolean;
     include_hidden?: boolean;
   } = {},
@@ -465,6 +473,10 @@ export function listAdminRapports(
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
   if (params.service_id) q.set("service_id", String(params.service_id));
   if (params.search?.trim()) q.set("search", params.search.trim());
+  if (params.status_group && params.status_group !== "all") {
+    q.set("status_group", params.status_group);
+  }
+  if (params.sort === "updated_at") q.set("sort", "updated_at");
   if (params.hidden_only) q.set("hidden_only", "1");
   if (params.include_hidden) q.set("include_hidden", "1");
   return request<{
@@ -488,7 +500,10 @@ export function listWaliRapports(
     pageSize?: number;
     service_id?: number;
     rapport_type_id?: number;
+    office_user_id?: number;
     search?: string;
+    status_group?: string;
+    sort?: string;
     unread_discussion?: boolean;
     has_discussion?: boolean;
   },
@@ -499,7 +514,13 @@ export function listWaliRapports(
   if (params.service_id) q.set("service_id", String(params.service_id));
   if (params.rapport_type_id)
     q.set("rapport_type_id", String(params.rapport_type_id));
+  if (params.office_user_id)
+    q.set("office_user_id", String(params.office_user_id));
   if (params.search?.trim()) q.set("search", params.search.trim());
+  if (params.status_group && params.status_group !== "all") {
+    q.set("status_group", params.status_group);
+  }
+  if (params.sort === "updated_at") q.set("sort", "updated_at");
   if (params.unread_discussion) q.set("unread_discussion", "1");
   if (params.has_discussion) q.set("has_discussion", "1");
   return request<{
@@ -517,7 +538,10 @@ export function listChefRapports(
     pageSize?: number;
     service_id?: number;
     rapport_type_id?: number;
+    office_user_id?: number;
     search?: string;
+    status_group?: string;
+    sort?: string;
     unread_discussion?: boolean;
     has_discussion?: boolean;
   } = {},
@@ -528,7 +552,13 @@ export function listChefRapports(
   if (params.service_id) q.set("service_id", String(params.service_id));
   if (params.rapport_type_id)
     q.set("rapport_type_id", String(params.rapport_type_id));
+  if (params.office_user_id)
+    q.set("office_user_id", String(params.office_user_id));
   if (params.search?.trim()) q.set("search", params.search.trim());
+  if (params.status_group && params.status_group !== "all") {
+    q.set("status_group", params.status_group);
+  }
+  if (params.sort === "updated_at") q.set("sort", "updated_at");
   if (params.unread_discussion) q.set("unread_discussion", "1");
   if (params.has_discussion) q.set("has_discussion", "1");
   return request<{
@@ -943,6 +973,13 @@ export function hideRapportType(token: string, rapportTypeId: number) {
 export function restoreRapportType(token: string, rapportTypeId: number) {
   return request<{ rapportType: any }>(`/office/rapport-types/${rapportTypeId}/restore`, {
     method: 'POST',
+    token,
+  })
+}
+
+export function deleteRapportType(token: string, rapportTypeId: number) {
+  return request<{ ok: boolean }>(`/office/rapport-types/${rapportTypeId}`, {
+    method: 'DELETE',
     token,
   })
 }
@@ -1380,6 +1417,13 @@ export function patchOfficeSchema(
     method: "PATCH",
     token,
     body: JSON.stringify(body),
+  });
+}
+
+export function deleteOfficeSchema(token: string, schemaId: number) {
+  return request<{ ok: boolean }>(`/office/schemas/${schemaId}`, {
+    method: "DELETE",
+    token,
   });
 }
 

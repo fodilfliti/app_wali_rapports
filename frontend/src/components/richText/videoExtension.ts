@@ -1,7 +1,10 @@
 import { Node, mergeAttributes } from '@tiptap/core'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+import { VideoNodeView } from './VideoNodeView'
 
 export type VideoOptions = {
   HTMLAttributes: Record<string, unknown>
+  onOpen: ((src: string) => void) | null
 }
 
 declare module '@tiptap/core' {
@@ -19,7 +22,10 @@ export const Video = Node.create<VideoOptions>({
   draggable: true,
 
   addOptions() {
-    return { HTMLAttributes: { class: 'editor-video' } }
+    return {
+      HTMLAttributes: { class: 'editor-video' },
+      onOpen: null,
+    }
   },
 
   addAttributes() {
@@ -38,7 +44,11 @@ export const Video = Node.create<VideoOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['video', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { controls: 'true' })]
+    return ['video', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)]
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(VideoNodeView)
   },
 
   addCommands() {
