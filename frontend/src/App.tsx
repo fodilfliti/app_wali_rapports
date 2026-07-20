@@ -7,6 +7,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { QueryClientProvider } from "@tanstack/react-query";
 import * as api from "./api";
 import {
   logoutRemote,
@@ -15,6 +16,7 @@ import {
   refreshSession,
   setAccessToken,
 } from "./auth/session";
+import { queryClient } from "./query/queryClient";
 import "./theme/tokens.css";
 import "./App.css";
 import { GuestLoginPage } from "./components/GuestLoginPage";
@@ -204,6 +206,7 @@ function AppShell() {
 
   useEffect(() => {
     onSessionExpired(() => {
+      queryClient.clear();
       setToken(null);
       setMe(null);
       localStorage.removeItem("me");
@@ -281,6 +284,7 @@ function AppShell() {
 
   async function logout() {
     await logoutRemote(token);
+    queryClient.clear();
     setToken(null);
     setMe(null);
     localStorage.removeItem("me");
@@ -370,6 +374,7 @@ function AppShell() {
         open={changeCodeOpen}
         onClose={() => setChangeCodeOpen(false)}
         onChanged={() => {
+          queryClient.clear();
           setAccessToken(null);
           setToken(null);
           setMe(null);
@@ -671,8 +676,10 @@ function AppShell() {
 
 export default function App() {
   return (
-    <SnackbarProvider>
-      <AppShell />
-    </SnackbarProvider>
+    <QueryClientProvider client={queryClient}>
+      <SnackbarProvider>
+        <AppShell />
+      </SnackbarProvider>
+    </QueryClientProvider>
   );
 }

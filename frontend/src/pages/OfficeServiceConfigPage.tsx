@@ -35,6 +35,7 @@ import { needsLinkedTableSchema } from "../utils/rapportTypeSchema";
 import { SchemaListPanel } from "../components/SchemaListPanel";
 import { ConfirmActionModal } from "../components/ConfirmActionModal";
 import { RapportKindsExplainer } from "../components/RapportKindsExplainer";
+import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
 
 type Props = { token: string };
 
@@ -149,6 +150,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       }
       closeSchemaModal();
       load();
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
     } catch {
       snack.show(t("errorGeneric"), "error");
@@ -227,6 +229,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       });
       setTypeModal(false);
       load();
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
@@ -256,6 +259,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       setEditTypeModal(false);
       setEditingType(null);
       load();
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
@@ -273,6 +277,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       });
       setDuplicateModal(false);
       load();
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
     } catch {
       snack.show(t("errorGeneric"), "error");
@@ -284,6 +289,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       await api.deleteOfficeSchema(token, schemaId);
       snack.show(t("deleteUnusedSchemaDone"), "success");
       await load();
+      notifyHubCountsRefresh();
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
       snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
@@ -299,6 +305,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
       snack.show(t("deleteUnusedRapportTypeDone"), "success");
       setPendingDeleteType(null);
       await load();
+      notifyHubCountsRefresh();
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
       snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");

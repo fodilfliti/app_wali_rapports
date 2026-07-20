@@ -20,9 +20,23 @@ import { SchemaTable } from './schemaTableExtension'
 import { BorderedBlock } from './borderedBlockExtension'
 import { RichTextToolbar } from './RichTextToolbar'
 import { ImageLightbox, useImageLightbox } from '../ImageLightbox'
+import { UploadProgressBar } from '../UploadProgressBar'
+import { MediaUploadError, prepareFileForUpload } from '../../utils/media'
+import { blendedBatchPercent, runUploadQueue } from '../../utils/uploadQueue'
+import type { UploadProgress } from '../../utils/uploadFile'
 import './richText.css'
 
 const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
+const IMAGE_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000
+const VIDEO_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000
+
+type UploadPhase = 'idle' | 'preparing' | 'uploading'
+
+type UploadOpts = {
+  onProgress?: (p: UploadProgress) => void
+  signal?: AbortSignal
+  timeoutMs?: number
+}
 
 function isEmptyRichHtml(html: string | null | undefined): boolean {
   if (!html) return true
@@ -40,7 +54,7 @@ type Props = {
   onChange: (html: string) => void
   editable?: boolean
   placeholder?: string
-  onUpload?: (file: File) => Promise<{ id: number; url: string }>
+  onUpload?: (file: File, opts?: UploadOpts) => Promise<{ id: number; url: string }>
   onUploadError?: (err: unknown) => void
   locale?: string
   insertTableId?: string | null
@@ -80,11 +94,26 @@ export function RichTextEditor({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
   const skipNextUpdate = useRef(false)
-  const [uploading, setUploading] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+  const perFileProgressRef = useRef<number[]>([])
+  const [phase, setPhase] = useState<UploadPhase>('idle')
+  const [uploadPercent, setUploadPercent] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [preparingVideo, setPreparingVideo] = useState(false)
   const lightbox = useImageLightbox()
   const openVideoRef = useRef(lightbox.openVideo)
   openVideoRef.current = lightbox.openVideo
+
+  const mediaBusy = phase !== 'idle'
+
+  const resetUploadState = useCallback(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    perFileProgressRef.current = []
+    setPhase('idle')
+    setUploadPercent(0)
+    setPreparingVideo(false)
+  }, [])
 
   const editor = useEditor({
     extensions: [
@@ -126,18 +155,16 @@ export function RichTextEditor({
       skipNextUpdate.current = false
       return
     }
-    // Parent re-renders during upload must not replace live document content.
-    if (uploading) return
+    if (mediaBusy) return
     const current = editor.getHTML()
     const next = value || '<p></p>'
     const currentLooksEmpty = isEmptyRichHtml(current)
     const nextLooksEmpty = isEmptyRichHtml(next)
-    // Never blank a non-empty editor with an empty parent value (data-loss guard).
     if (nextLooksEmpty && !currentLooksEmpty) return
     if (next !== current) {
       editor.commands.setContent(next, { emitUpdate: false })
     }
-  }, [editor, value, uploading])
+  }, [editor, value, mediaBusy])
 
   useEffect(() => {
     if (!editor || !insertTableId) return
@@ -150,10 +177,28 @@ export function RichTextEditor({
     return () => window.clearTimeout(timer)
   }, [editor, insertTableId, onInsertTableDone])
 
+  useEffect(() => () => abortRef.current?.abort(), [])
+
   const insertUploadedMedia = useCallback(
-    async (file: File, kind: 'image' | 'video') => {
+    async (
+      file: File,
+      kind: 'image' | 'video',
+      fileIndex: number,
+      totalFiles: number,
+      signal: AbortSignal,
+    ) => {
       if (!editor || !onUpload) return
-      const uploaded = await onUpload(file)
+      const timeoutMs = kind === 'video' ? VIDEO_UPLOAD_TIMEOUT_MS : IMAGE_UPLOAD_TIMEOUT_MS
+      const uploaded = await onUpload(file, {
+        signal,
+        timeoutMs,
+        onProgress: (p) => {
+          perFileProgressRef.current[fileIndex] = p.percent
+          setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+        },
+      })
+      perFileProgressRef.current[fileIndex] = 100
+      setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
       if (kind === 'image') {
         editor.chain().focus().setImage({ src: uploaded.url, fileId: uploaded.id } as any).run()
       } else {
@@ -164,44 +209,92 @@ export function RichTextEditor({
   )
 
   async function onFilesSelected(files: FileList | null, kind: 'image' | 'video') {
-    if (!files?.length || !onUpload || uploading) return
-    setUploading(true)
+    if (!files?.length || !onUpload || mediaBusy) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const list = Array.from(files)
+    const totalFiles = list.length
+    perFileProgressRef.current = new Array(totalFiles).fill(0)
+
+    setPhase('preparing')
+    setUploadPercent(0)
     setUploadError(null)
+    setPreparingVideo(kind === 'video')
+
     try {
-      for (const file of Array.from(files)) {
-        await insertUploadedMedia(file, kind)
-      }
+      const prepared = await Promise.all(
+        list.map((file) =>
+          prepareFileForUpload(file, { onCompressing: () => setPhase('preparing') }),
+        ),
+      )
+
+      setPhase('uploading')
+      setPreparingVideo(false)
+
+      await runUploadQueue(
+        prepared.map((file, fileIndex) => () =>
+          insertUploadedMedia(file, kind, fileIndex, totalFiles, controller.signal),
+        ),
+        3,
+      )
+      setUploadPercent(100)
     } catch (err) {
-      const key =
-        err instanceof Error && err.message === 'rapportTitleRequired'
-          ? 'rapportTitleRequired'
-          : 'mediaUploadFailed'
-      setUploadError(t(key))
+      if (controller.signal.aborted && !(err instanceof MediaUploadError)) {
+        setUploadError(t('mediaUploadFailed'))
+      } else {
+        const key =
+          err instanceof MediaUploadError
+            ? err.key
+            : err instanceof Error && err.message === 'rapportTitleRequired'
+              ? 'rapportTitleRequired'
+              : 'mediaUploadFailed'
+        setUploadError(t(key, err instanceof MediaUploadError ? err.params : undefined))
+      }
       onUploadError?.(err)
     } finally {
-      setUploading(false)
+      resetUploadState()
     }
   }
 
   if (!editor) return null
 
+  const statusHint =
+    phase === 'preparing'
+      ? preparingVideo
+        ? t('mediaVideoPreparing')
+        : t('mediaCompressing')
+      : phase === 'uploading'
+        ? t('mediaUploading')
+        : null
+
   return (
     <div
       className={`tiptapShell richTextEditorWrap${editable ? '' : ' tiptapShell-readonly'}${
-        uploading ? ' isUploading' : ''
+        mediaBusy ? ' isUploading' : ''
       }`}
     >
       {editable ? (
         <RichTextToolbar
           editor={editor}
           fontSizes={FONT_SIZES}
-          uploading={uploading}
+          mediaBusy={mediaBusy}
           onPickImages={() => imageInputRef.current?.click()}
           onPickVideos={() => videoInputRef.current?.click()}
           onInsertSchemaTable={enableSchemaTables && onOpenSchemaTablePick ? onOpenSchemaTablePick : undefined}
         />
       ) : null}
-      {uploading ? <p className="muted richTextUploadingHint">{t('mediaUploading')}</p> : null}
+      {mediaBusy ? (
+        <>
+          {statusHint ? <p className="muted richTextUploadingHint">{statusHint}</p> : null}
+          <UploadProgressBar
+            percent={uploadPercent}
+            label={t('mediaUploadProgress', { percent: uploadPercent })}
+          />
+        </>
+      ) : null}
       {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
       <EditorContent editor={editor} className="tiptapEditorWrap" dir={locale === 'ar' ? 'rtl' : 'ltr'} />
       <input
@@ -210,7 +303,7 @@ export function RichTextEditor({
         accept="image/*"
         multiple
         className="srOnly"
-        disabled={uploading}
+        disabled={mediaBusy}
         onChange={(e) => {
           void onFilesSelected(e.target.files, 'image')
           e.target.value = ''
@@ -222,7 +315,7 @@ export function RichTextEditor({
         accept="video/*"
         multiple
         className="srOnly"
-        disabled={uploading}
+        disabled={mediaBusy}
         onChange={(e) => {
           void onFilesSelected(e.target.files, 'video')
           e.target.value = ''

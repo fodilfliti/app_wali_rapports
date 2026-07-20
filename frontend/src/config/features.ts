@@ -19,6 +19,9 @@ export const ENABLE_SERVICE_FOLDERS = false
  */
 export const ENABLE_GUIDE_VIDEOS = true
 
+/** Client-side ffmpeg.wasm video re-encode before upload (guide videos + rapport videos). */
+export const ENABLE_CLIENT_VIDEO_TRANSCODE = false
+
 /** Content field locale for editors: always Arabic when FR value inputs are hidden. */
 export function contentLocale(uiLang?: string | null): 'ar' | 'fr' {
   if (!ENABLE_FR_VALUE_INPUTS) return 'ar'

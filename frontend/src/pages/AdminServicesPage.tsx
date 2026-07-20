@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { ENABLE_FR_VALUE_INPUTS, ENABLE_SERVICE_FOLDERS } from '../config/features'
@@ -10,6 +10,9 @@ import { localizedName } from '../utils/schemaColumns'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
+import { useAdminOfficeUsersQuery, useAdminServicesQuery } from '../hooks/queries/useListQueries'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { QueryListShell } from '../components/QueryListShell'
 
 type Props = { token: string }
 
@@ -26,8 +29,18 @@ const emptyForm = () => ({
 export function AdminServicesPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
-  const [services, setServices] = useState<any[]>([])
-  const [officeUsers, setOfficeUsers] = useState<any[]>([])
+  const invalidate = useInvalidateAppQueries()
+  const servicesQuery = useAdminServicesQuery(token)
+  const officeUsersQuery = useAdminOfficeUsersQuery(token)
+  const services = servicesQuery.data?.services ?? []
+  const officeUsers = officeUsersQuery.data ?? []
+  const isInitialLoading =
+    (servicesQuery.isLoading && !servicesQuery.data) ||
+    (officeUsersQuery.isLoading && officeUsersQuery.data === undefined)
+  const isRefreshing =
+    (servicesQuery.isFetching && !servicesQuery.isLoading) ||
+    (officeUsersQuery.isFetching && !officeUsersQuery.isLoading)
+
   const [createOpen, setCreateOpen] = useState(false)
   const [grantsOpen, setGrantsOpen] = useState(false)
   const [page, setPage] = useState(1)
@@ -41,22 +54,9 @@ export function AdminServicesPage({ token }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const load = useCallback(async () => {
-    try {
-      const [svcRes, usersRes] = await Promise.all([
-        api.listAdminServices(token),
-        api.listAdminOfficeUsers(token),
-      ])
-      setServices(svcRes.services)
-      setOfficeUsers(usersRes.users)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    }
-  }, [token, snack, t])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  async function refreshAdminServices() {
+    await invalidate({ adminRef: true, serviceTrees: true })
+  }
 
   function openCreateModal() {
     setForm(emptyForm())
@@ -82,7 +82,7 @@ export function AdminServicesPage({ token }: Props) {
         sort_order: Number(form.sort_order) || 0,
       })
       setCreateOpen(false)
-      load()
+      await refreshAdminServices()
       snack.show(t('save'), 'success')
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -112,7 +112,7 @@ export function AdminServicesPage({ token }: Props) {
         department_id: null,
       })
       setEditOpen(false)
-      load()
+      await refreshAdminServices()
       snack.show(t('save'), 'success')
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -151,7 +151,7 @@ export function AdminServicesPage({ token }: Props) {
           .map((r) => ({ user_id: r.user_id, access_level: r.access_level })),
       )
       setGrantsOpen(false)
-      load()
+      await refreshAdminServices()
       snack.show(t('save'), 'success')
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -164,7 +164,7 @@ export function AdminServicesPage({ token }: Props) {
     try {
       await api.deleteAdminService(token, deleteTarget.id)
       setDeleteTarget(null)
-      load()
+      await refreshAdminServices()
       snack.show(t('deleteServiceDone'), 'success')
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -198,6 +198,7 @@ export function AdminServicesPage({ token }: Props) {
         </ol>
       </div>
 
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card tableWrap">
         <table>
           <thead>
@@ -254,6 +255,7 @@ export function AdminServicesPage({ token }: Props) {
         </table>
       </div>
       <TablePagination page={page} total={services.length} onPageChange={setPage} />
+      </QueryListShell>
 
       {createOpen ? (
         <div className="modalOverlay">

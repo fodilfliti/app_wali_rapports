@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import * as api from '../api'
-import { HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
+import { CACHE } from '../query/cachePolicy'
+import { queryKeys } from '../query/queryKeys'
 
 const emptyOfficeCounts: api.OfficeHubCounts = {
   unread_notifications: 0,
@@ -26,84 +27,70 @@ const emptyChefCounts: api.ChefHubCounts = {
 }
 
 export function useOfficeHubCounts(token: string) {
-  const location = useLocation()
-  const [counts, setCounts] = useState<api.OfficeHubCounts>(emptyOfficeCounts)
+  const query = useQuery({
+    queryKey: queryKeys.hubCounts('office'),
+    queryFn: () => api.getOfficeHubCounts(token),
+    enabled: !!token,
+    staleTime: CACHE.hubCounts.staleTime,
+    gcTime: CACHE.hubCounts.gcTime,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    placeholderData: emptyOfficeCounts,
+  })
 
+  const queryClient = useQueryClient()
   const refresh = useCallback(() => {
-    api.getOfficeHubCounts(token).then(setCounts).catch(() => setCounts(emptyOfficeCounts))
-  }, [token])
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.hubCounts('office'),
+      refetchType: 'all',
+    })
+  }, [queryClient])
 
-  useEffect(() => {
-    refresh()
-  }, [refresh, location.pathname])
-
-  useEffect(() => {
-    const onFocus = () => refresh()
-    window.addEventListener('focus', onFocus)
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    }
-  }, [refresh])
-
-  return { counts, refresh }
+  return { counts: query.data ?? emptyOfficeCounts, refresh, isFetching: query.isFetching }
 }
 
 export function useWaliHubCounts(token: string) {
-  const location = useLocation()
-  const [counts, setCounts] = useState<api.WaliHubCounts>(emptyWaliCounts)
+  const query = useQuery({
+    queryKey: queryKeys.hubCounts('wali'),
+    queryFn: () => api.getWaliHubCounts(token),
+    enabled: !!token,
+    staleTime: CACHE.hubCounts.staleTime,
+    gcTime: CACHE.hubCounts.gcTime,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    placeholderData: emptyWaliCounts,
+  })
 
+  const queryClient = useQueryClient()
   const refresh = useCallback(() => {
-    if (!token) {
-      setCounts(emptyWaliCounts)
-      return
-    }
-    api.getWaliHubCounts(token).then(setCounts).catch(() => setCounts(emptyWaliCounts))
-  }, [token])
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.hubCounts('wali'),
+      refetchType: 'all',
+    })
+  }, [queryClient])
 
-  useEffect(() => {
-    refresh()
-  }, [refresh, location.pathname])
-
-  useEffect(() => {
-    const onFocus = () => refresh()
-    window.addEventListener('focus', onFocus)
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    }
-  }, [refresh])
-
-  return { counts, refresh }
+  return { counts: query.data ?? emptyWaliCounts, refresh, isFetching: query.isFetching }
 }
 
 export function useChefHubCounts(token: string) {
-  const location = useLocation()
-  const [counts, setCounts] = useState<api.ChefHubCounts>(emptyChefCounts)
+  const query = useQuery({
+    queryKey: queryKeys.hubCounts('chef'),
+    queryFn: () => api.getChefHubCounts(token),
+    enabled: !!token,
+    staleTime: CACHE.hubCounts.staleTime,
+    gcTime: CACHE.hubCounts.gcTime,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    placeholderData: emptyChefCounts,
+  })
 
+  const queryClient = useQueryClient()
   const refresh = useCallback(() => {
-    if (!token) {
-      setCounts(emptyChefCounts)
-      return
-    }
-    api.getChefHubCounts(token).then(setCounts).catch(() => setCounts(emptyChefCounts))
-  }, [token])
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.hubCounts('chef'),
+      refetchType: 'all',
+    })
+  }, [queryClient])
 
-  useEffect(() => {
-    refresh()
-  }, [refresh, location.pathname])
-
-  useEffect(() => {
-    const onFocus = () => refresh()
-    window.addEventListener('focus', onFocus)
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    }
-  }, [refresh])
-
-  return { counts, refresh }
+  return { counts: query.data ?? emptyChefCounts, refresh, isFetching: query.isFetching }
 }

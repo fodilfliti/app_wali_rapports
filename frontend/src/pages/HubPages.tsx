@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
 import { useTranslation } from 'react-i18next'
 
@@ -20,13 +20,11 @@ import { TablePagination } from '../components/TablePagination'
 
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 
-import { HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
+import { QueryListShell } from '../components/QueryListShell'
 
-import { PageLoading } from '../components/PageLoading'
+import { useOfficeServiceTreeQuery } from '../hooks/queries/useListQueries'
 
 import { ENABLE_GUIDE_VIDEOS } from '../config/features'
-
-import * as api from '../api'
 
 
 
@@ -312,40 +310,16 @@ export function OfficeServicesPage({ token }: { token: string }) {
 
   const { folderId } = useParams()
 
-  const location = useLocation()
-
   const fid = folderId ? Number(folderId) : undefined
 
   const { t, i18n } = useTranslation()
 
-  const [services, setServices] = useState<any[]>([])
-
   const [page, setPage] = useState(1)
 
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    api
-      .listOfficeServiceTree(token)
-      .then((r) => setServices(r.services))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [token, location.pathname])
-
-  useEffect(() => {
-
-    const refresh = () => {
-
-      api.listOfficeServiceTree(token).then((r) => setServices(r.services)).catch(() => {})
-
-    }
-
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-
-    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-
-  }, [token])
+  const treeQuery = useOfficeServiceTreeQuery(token)
+  const services = treeQuery.data ?? []
+  const isInitialLoading = treeQuery.isLoading && !treeQuery.data
+  const isRefreshing = treeQuery.isFetching && !treeQuery.isLoading
 
   useEffect(() => {
     setPage(1)
@@ -377,7 +351,7 @@ export function OfficeServicesPage({ token }: { token: string }) {
 
       </div>
 
-      {loading ? <PageLoading /> : null}
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
 
       <div className="hubGrid hubGridServices">
 
@@ -413,9 +387,11 @@ export function OfficeServicesPage({ token }: { token: string }) {
 
       </div>
 
-      {!items.length ? <p className="muted">{t('noResults')}</p> : null}
+      {!items.length && !isInitialLoading ? <p className="muted">{t('noResults')}</p> : null}
 
       <TablePagination page={page} total={items.length} onPageChange={setPage} />
+
+      </QueryListShell>
 
     </div>
 

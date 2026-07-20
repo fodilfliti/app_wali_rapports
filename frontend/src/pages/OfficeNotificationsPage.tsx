@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { TablePagination } from '../components/TablePagination'
+import { QueryListShell } from '../components/QueryListShell'
 import { waliResponseBodyText } from '../components/WaliRespondModal'
 import { HubIcon } from '../components/HubIcons'
 import { useOfficeHubCounts } from '../hooks/useHubCounts'
-import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { useOfficeNotificationsListQuery } from '../hooks/queries/useListQueries'
 import { waliDecisionLabel } from '../utils/waliDecision'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
-import { isDedicatedNotificationKey } from '../utils/notificationKeys'
 
 type Props = { token: string }
 
@@ -107,27 +108,18 @@ export function OfficeNotificationsPage({ token }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { counts, refresh } = useOfficeHubCounts(token)
-  const [rows, setRows] = useState<any[]>([])
+  const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
-
-  const load = useCallback(async () => {
-    try {
-      const res = await api.listOfficeNotifications(token, false)
-      setRows(res.notifications.filter((n) => !isDedicatedNotificationKey(n.message_key)))
-    } catch {
-      /* ignore */
-    }
-  }, [token])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const listQuery = useOfficeNotificationsListQuery(token)
+  const rows = listQuery.data ?? []
+  const isInitialLoading = listQuery.isLoading && listQuery.data === undefined
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   async function openNotification(n: any) {
     try {
       if (!n.read_at) {
         await api.markNotificationRead(token, n.id)
-        notifyHubCountsRefresh()
+        await invalidate({ hubCounts: 'office', officeNotifications: true })
         refresh()
       }
     } catch {
@@ -177,8 +169,9 @@ export function OfficeNotificationsPage({ token }: Props) {
         </div>
         <BackButton fallbackTo="/office" />
       </div>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card notificationPageCard">
-        {!rows.length ? <p className="muted notificationPageEmpty">{t('noResults')}</p> : null}
+        {!rows.length && !isInitialLoading ? <p className="muted notificationPageEmpty">{t('noResults')}</p> : null}
         <ul className="notificationList">
           {pagedRows.map((n) => {
             const body = notificationBody(n)
@@ -205,6 +198,7 @@ export function OfficeNotificationsPage({ token }: Props) {
         </ul>
       </div>
       <TablePagination page={page} total={rows.length} onPageChange={setPage} />
+      </QueryListShell>
     </div>
   )
 }

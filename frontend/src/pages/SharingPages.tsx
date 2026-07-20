@@ -12,10 +12,13 @@ import {
   SharedBroadcastListCard,
 } from '../components/BroadcastSharedUi'
 import { TablePagination } from '../components/TablePagination'
-import { fileUrl } from '../utils/media'
+import { QueryListShell } from '../components/QueryListShell'
+import { fileUrl, MediaUploadError, prepareFileForUpload } from '../utils/media'
+import { UploadProgressBar } from '../components/UploadProgressBar'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
-import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { useBroadcastsListQuery } from '../hooks/queries/useListQueries'
 import { bilingualPairForSave, hasBilingualText, pickBilingualText } from '../utils/bilingual'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 
@@ -23,13 +26,11 @@ type Props = { token: string }
 
 export function WaliBroadcastsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
-  const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
-
-  useEffect(() => {
-    api.listWaliBroadcasts(token).then((r) => setRows(r.broadcasts)).catch(() => {})
-  }, [token])
-
+  const listQuery = useBroadcastsListQuery(token, 'wali')
+  const rows = listQuery.data ?? []
+  const isInitialLoading = listQuery.isLoading && listQuery.data === undefined
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
   const pagedRows = paginateSlice(rows, page, DEFAULT_PAGE_SIZE)
 
   return (
@@ -41,8 +42,9 @@ export function WaliBroadcastsPage({ token }: Props) {
         </Link>
         <BackButton to="/wali" fallbackTo="/wali" />
       </div>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card sharedFilesPageCard">
-        {!rows.length ? <p className="muted sharedFilesPageEmpty">{t('noResults')}</p> : null}
+        {!rows.length && !isInitialLoading ? <p className="muted sharedFilesPageEmpty">{t('noResults')}</p> : null}
         <div className="sharedFilesGrid">
           {pagedRows.map((b) => {
             const title = pickBilingualText(b.title_ar, b.title_fr, i18n.language)
@@ -62,6 +64,7 @@ export function WaliBroadcastsPage({ token }: Props) {
         </div>
       </div>
       <TablePagination page={page} total={rows.length} onPageChange={setPage} />
+      </QueryListShell>
     </div>
   )
 }
@@ -70,6 +73,7 @@ export function WaliBroadcastCreatePage({ token }: Props) {
   const { t } = useTranslation()
   const snack = useSnackbar()
   const navigate = useNavigate()
+  const invalidate = useInvalidateAppQueries()
   const [users, setUsers] = useState<any[]>([])
   const [allUsers, setAllUsers] = useState(true)
   const [selected, setSelected] = useState<number[]>([])
@@ -78,7 +82,12 @@ export function WaliBroadcastCreatePage({ token }: Props) {
   const [titleFr, setTitleFr] = useState('')
   const [message, setMessage] = useState('')
   const [allowComments, setAllowComments] = useState(true)
-  const [file, setFile] = useState<File | null>(null)
+  const [uploadedFileId, setUploadedFileId] = useState<number | null>(null)
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [userPage, setUserPage] = useState(1)
 
   useEffect(() => {
@@ -111,11 +120,40 @@ export function WaliBroadcastCreatePage({ token }: Props) {
     setSelected([])
   }
 
+  async function handleFilePick(raw: File | null) {
+    if (!raw) return
+    setUploadError(null)
+    setUploadedFileId(null)
+    try {
+      setCompressing(true)
+      const prepared = await prepareFileForUpload(raw, { onCompressing: () => setCompressing(true) })
+      setCompressing(false)
+      setUploading(true)
+      setUploadPercent(0)
+      const res = await api.uploadWaliFile(token, prepared, {
+        onProgress: (p) => setUploadPercent(p.percent),
+      })
+      setUploadedFileId(res.file.id)
+      setUploadedFileName(res.file.original_name)
+      setUploadPercent(100)
+    } catch (e) {
+      if (e instanceof MediaUploadError) {
+        setUploadError(t(e.key, e.params))
+      } else {
+        setUploadError(t('mediaUploadFailed'))
+      }
+    } finally {
+      setUploading(false)
+      setCompressing(false)
+    }
+  }
+
   async function submit() {
-    if (!file) {
+    if (!uploadedFileId) {
       snack.show(t('fileRequired'), 'error')
       return
     }
+    if (uploading || compressing) return
     if (!allUsers && selected.length === 0) {
       snack.show(t('shareRecipientsRequired'), 'error')
       return
@@ -126,7 +164,7 @@ export function WaliBroadcastCreatePage({ token }: Props) {
     }
     try {
       const titles = bilingualPairForSave(titleAr, titleFr)
-      await api.createWaliBroadcast(token, file, {
+      await api.createWaliBroadcast(token, {
         all_users: allUsers,
         recipient_user_ids: allUsers ? [] : selected,
         title_ar: titles.ar,
@@ -134,7 +172,9 @@ export function WaliBroadcastCreatePage({ token }: Props) {
         message_ar: message,
         message_fr: message,
         allow_comments: allowComments,
+        uploaded_file_id: uploadedFileId,
       })
+      await invalidate({ broadcasts: true, hubCounts: true })
       snack.show(t('save'), 'success')
       navigate('/wali/shared')
     } catch {
@@ -165,7 +205,20 @@ export function WaliBroadcastCreatePage({ token }: Props) {
         </label>
         <label className="formField">
           <span>{t('shareFile')}</span>
-          <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          <input
+            type="file"
+            disabled={uploading || compressing}
+            onChange={(e) => {
+              void handleFilePick(e.target.files?.[0] || null)
+              e.target.value = ''
+            }}
+          />
+          {uploadedFileName ? <p className="muted small">{uploadedFileName}</p> : null}
+          {compressing ? <p className="muted small">{t('mediaCompressing')}</p> : null}
+          {uploading && !compressing ? (
+            <UploadProgressBar percent={uploadPercent} label={t('mediaUploadProgress', { percent: uploadPercent })} />
+          ) : null}
+          {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
         </label>
 
         <fieldset className="shareRecipientsSection">
@@ -385,10 +438,6 @@ function sharedBasePath(audience: SharedAudience) {
   return audience === 'chef' ? '/chef/shared' : '/office/shared'
 }
 
-function listBroadcasts(token: string, audience: SharedAudience) {
-  return audience === 'chef' ? api.listChefBroadcasts(token) : api.listOfficeBroadcasts(token)
-}
-
 function getBroadcast(token: string, id: number, audience: SharedAudience) {
   return audience === 'chef' ? api.getChefBroadcast(token, id) : api.getOfficeBroadcast(token, id)
 }
@@ -405,15 +454,13 @@ function addBroadcastComment(token: string, id: number, body: string, audience: 
 
 export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFilesProps) {
   const { t, i18n } = useTranslation()
-  const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const base = sharedBasePath(audience)
   const hub = audience === 'chef' ? '/chef' : '/office'
-
-  useEffect(() => {
-    listBroadcasts(token, audience).then((r) => setRows(r.broadcasts)).catch(() => {})
-  }, [token, audience])
-
+  const listQuery = useBroadcastsListQuery(token, audience)
+  const rows = listQuery.data ?? []
+  const isInitialLoading = listQuery.isLoading && listQuery.data === undefined
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
   const pagedRows = paginateSlice(rows, page, DEFAULT_PAGE_SIZE)
 
   return (
@@ -422,8 +469,9 @@ export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFile
         <h1>{t('navSharedFiles')}</h1>
         <BackButton to={hub} fallbackTo={hub} />
       </div>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card sharedFilesPageCard">
-        {!rows.length ? <p className="muted sharedFilesPageEmpty">{t('noResults')}</p> : null}
+        {!rows.length && !isInitialLoading ? <p className="muted sharedFilesPageEmpty">{t('noResults')}</p> : null}
         <div className="sharedFilesGrid">
           {pagedRows.map((b) => {
             const title = pickBilingualText(b.title_ar, b.title_fr, i18n.language)
@@ -444,6 +492,7 @@ export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFile
         </div>
       </div>
       <TablePagination page={page} total={rows.length} onPageChange={setPage} />
+      </QueryListShell>
     </div>
   )
 }
@@ -453,6 +502,7 @@ export function OfficeSharedFileDetailPage({ token, audience = 'office' }: Share
   const bid = Number(id)
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const [b, setB] = useState<any>(null)
   const [comment, setComment] = useState('')
   const [commentPage, setCommentPage] = useState(1)
@@ -466,7 +516,7 @@ export function OfficeSharedFileDetailPage({ token, audience = 'office' }: Share
       setB(res.broadcast)
       if (!res.broadcast.read_at) {
         await markBroadcastRead(token, bid, audience)
-        notifyHubCountsRefresh()
+        await invalidate({ hubCounts: audience === 'chef' ? 'chef' : 'office', broadcasts: true })
       }
     } catch {
       setB(null)

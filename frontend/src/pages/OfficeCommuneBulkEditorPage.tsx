@@ -184,6 +184,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
         ],
         cleared_entity_keys,
       });
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
       load();
     } catch (e) {
@@ -289,7 +290,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
     setReturningToDraft(true);
     try {
       await api.returnRapportToDraft(token, workspace.rapport.id);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("returnToDraftDone"), "success");
       load();
     } catch {

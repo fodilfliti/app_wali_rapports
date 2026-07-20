@@ -1,8 +1,10 @@
 const fs = require("fs");
+const fsp = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
 const { storageRoot, ensureStorageDirs } = require("./storage");
 const { UploadedFile } = require("../db");
+const { getLogger } = require("../logger");
 
 const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const VIDEO_MIMES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
@@ -54,6 +56,17 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
+function uploadsTempDir() {
+  return path.join(storageRoot(), "uploads", ".tmp");
+}
+
+function ensureUploadTempDir() {
+  ensureStorageDirs();
+  const dir = uploadsTempDir();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function classifyMime(mime) {
   if (IMAGE_MIMES.has(mime)) return "image";
   if (VIDEO_MIMES.has(mime)) return "video";
@@ -76,7 +89,6 @@ function isAllowedUpload(mime, originalName) {
     return false;
   }
   if (!ALLOWED_MIMES.has(m) && ext && ALLOWED_EXT.has(ext)) {
-    // Some browsers send octet-stream — allow by extension only for known safe types.
     return true;
   }
   return ALLOWED_MIMES.has(m);
@@ -95,27 +107,7 @@ function sanitizeFilename(name) {
     .slice(0, 200);
 }
 
-async function saveUploadedBuffer({ buffer, originalName, mimeType, rapportId, actor, req }) {
-  ensureStorageDirs();
-  const mime = mimeType || "application/octet-stream";
-  if (!isAllowedUpload(mime, originalName)) {
-    const err = new Error("File type not allowed");
-    err.status = 400;
-    throw err;
-  }
-  if (sniffLooksDangerous(buffer)) {
-    const err = new Error("File type not allowed");
-    err.status = 400;
-    throw err;
-  }
-  const max = maxBytesForMime(mime);
-  if (!buffer || buffer.length > max) {
-    const err = new Error("File too large");
-    err.status = 413;
-    throw err;
-  }
-
-  const storageKey = crypto.randomUUID().replace(/-/g, "");
+function resolveExtension(originalName, mime) {
   let ext = path.extname(originalName || "").slice(0, 12).toLowerCase();
   if (!ALLOWED_EXT.has(ext)) {
     ext = IMAGE_MIMES.has(mime)
@@ -131,22 +123,7 @@ async function saveUploadedBuffer({ buffer, originalName, mimeType, rapportId, a
       throw err;
     }
   }
-  const rel = path.join("uploads", `${storageKey}${ext}`);
-  const abs = path.join(storageRoot(), rel);
-  fs.writeFileSync(abs, buffer);
-
-  const row = await UploadedFile.create({
-    storage_key: storageKey,
-    rapport_id: rapportId || null,
-    uploaded_by_user_id: actor.id,
-    original_name: sanitizeFilename(originalName),
-    mime_type: ALLOWED_MIMES.has(mime) ? mime : contentTypeGuess(ext),
-    size_bytes: buffer.length,
-    media_kind: classifyMime(mime),
-    storage_rel_path: rel.replace(/\\/g, "/"),
-  });
-
-  return serializeFile(row);
+  return ext;
 }
 
 function contentTypeGuess(ext) {
@@ -166,6 +143,128 @@ function contentTypeGuess(ext) {
   return map[ext] || "application/octet-stream";
 }
 
+function logUploadComplete({ req, mediaKind, sizeBytes, durationMs }) {
+  const logger = req?.log || getLogger();
+  logger.info(
+    {
+      upload: { media_kind: mediaKind, size_bytes: sizeBytes, duration_ms: durationMs },
+      userId: req?.user?.id,
+      requestId: req?.requestId,
+    },
+    "upload complete",
+  );
+}
+
+async function removeDiskFile(relPath) {
+  if (!relPath) return;
+  const abs = path.join(storageRoot(), relPath);
+  try {
+    await fsp.unlink(abs);
+  } catch (err) {
+    if (err?.code !== "ENOENT") throw err;
+  }
+}
+
+async function deleteUploadedFileById(fileId) {
+  const row = await UploadedFile.findByPk(Number(fileId));
+  if (!row) return false;
+  await removeDiskFile(row.storage_rel_path);
+  await row.destroy();
+  return true;
+}
+
+async function readFileHead(sourcePath, max = 256) {
+  const handle = await fsp.open(sourcePath, "r");
+  try {
+    const stat = await handle.stat();
+    const len = Math.min(max, stat.size);
+    const buf = Buffer.alloc(len);
+    await handle.read(buf, 0, len, 0);
+    return { head: buf, size: stat.size };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function saveUploadedFile({
+  sourcePath,
+  buffer,
+  originalName,
+  mimeType,
+  rapportId,
+  actor,
+  req,
+  startedAt,
+}) {
+  ensureStorageDirs();
+  const mime = mimeType || "application/octet-stream";
+  if (!isAllowedUpload(mime, originalName)) {
+    const err = new Error("File type not allowed");
+    err.status = 400;
+    throw err;
+  }
+
+  let sizeBytes;
+  let headBuffer;
+  if (sourcePath) {
+    const { head, size } = await readFileHead(sourcePath);
+    headBuffer = head;
+    sizeBytes = size;
+  } else {
+    headBuffer = buffer;
+    sizeBytes = buffer?.length || 0;
+  }
+
+  if (sniffLooksDangerous(headBuffer)) {
+    const err = new Error("File type not allowed");
+    err.status = 400;
+    throw err;
+  }
+
+  const max = maxBytesForMime(mime);
+  if (!sizeBytes || sizeBytes > max) {
+    const err = new Error("File too large");
+    err.status = 413;
+    throw err;
+  }
+
+  const storageKey = crypto.randomUUID().replace(/-/g, "");
+  const ext = resolveExtension(originalName, mime);
+  const rel = path.join("uploads", `${storageKey}${ext}`).replace(/\\/g, "/");
+  const abs = path.join(storageRoot(), rel);
+
+  if (sourcePath) {
+    await fsp.rename(sourcePath, abs);
+  } else {
+    await fsp.writeFile(abs, buffer);
+  }
+
+  const row = await UploadedFile.create({
+    storage_key: storageKey,
+    rapport_id: rapportId || null,
+    uploaded_by_user_id: actor.id,
+    original_name: sanitizeFilename(originalName),
+    mime_type: ALLOWED_MIMES.has(mime) ? mime : contentTypeGuess(ext),
+    size_bytes: sizeBytes,
+    media_kind: classifyMime(mime),
+    storage_rel_path: rel,
+  });
+
+  const durationMs = startedAt ? Date.now() - startedAt : undefined;
+  logUploadComplete({
+    req,
+    mediaKind: classifyMime(mime),
+    sizeBytes,
+    durationMs,
+  });
+
+  return serializeFile(row);
+}
+
+async function saveUploadedBuffer(opts) {
+  return saveUploadedFile({ ...opts, buffer: opts.buffer, sourcePath: null });
+}
+
 function serializeFile(row) {
   const plain = row.toJSON ? row.toJSON() : row;
   return {
@@ -177,7 +276,7 @@ function serializeFile(row) {
     size_bytes: plain.size_bytes,
     media_kind: plain.media_kind,
     storage_rel_path: plain.storage_rel_path,
-    url_path: `/files/${plain.storage_rel_path}`
+    url_path: `/files/${plain.storage_rel_path}`,
   };
 }
 
@@ -254,11 +353,11 @@ async function enrichDataJsonWithFiles(dataJson, rapportId) {
 
   const storagePaths = new Set([
     ...collectStoragePathsFromRichHtml(dataJson?.rich_html_ar),
-    ...collectStoragePathsFromRichHtml(dataJson?.rich_html_fr)
+    ...collectStoragePathsFromRichHtml(dataJson?.rich_html_fr),
   ]);
   if (storagePaths.size) {
     const byPath = await UploadedFile.findAll({
-      where: { storage_rel_path: [...storagePaths] }
+      where: { storage_rel_path: [...storagePaths] },
     });
     for (const row of byPath) ids.add(Number(row.id));
   }
@@ -268,8 +367,31 @@ async function enrichDataJsonWithFiles(dataJson, rapportId) {
   return { dataJson, files: fileMap };
 }
 
+async function cleanupTempFile(sourcePath) {
+  if (!sourcePath) return;
+  try {
+    await fsp.unlink(sourcePath);
+  } catch (err) {
+    if (err?.code !== "ENOENT") throw err;
+  }
+}
+
+function multerFileInput(file) {
+  if (!file) return null;
+  return {
+    sourcePath: file.path || null,
+    buffer: file.buffer || null,
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+  };
+}
+
 module.exports = {
   saveUploadedBuffer,
+  saveUploadedFile,
+  deleteUploadedFileById,
+  cleanupTempFile,
+  multerFileInput,
   serializeFile,
   getFilesByIds,
   collectFileIdsFromDataJson,
@@ -278,4 +400,6 @@ module.exports = {
   classifyMime,
   maxBytesForMime,
   isAllowedUpload,
+  ensureUploadTempDir,
+  uploadsTempDir,
 };

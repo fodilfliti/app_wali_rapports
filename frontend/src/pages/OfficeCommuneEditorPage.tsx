@@ -222,6 +222,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
         media_rows: mediaRows,
         rows: rows,
       });
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
       load();
     } catch (e) {
@@ -299,7 +300,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
     setReturningToDraft(true);
     try {
       await api.returnRapportToDraft(token, rapportId);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("returnToDraftDone"), "success");
       load();
     } catch {
@@ -435,9 +436,9 @@ export function OfficeCommuneEditorPage({ token }: Props) {
                 token={token}
                 editable
                 onChange={setMediaRows}
-                onUpload={async (file) => {
+                onUpload={async (file, opts) => {
                   const id = await ensureCommuneRapportId();
-                  const res = await api.uploadRapportFile(token, id, file);
+                  const res = await api.uploadRapportFile(token, id, file, { onProgress: opts?.onProgress });
                   setMediaFiles((prev) => ({ ...prev, [res.file.id]: res.file }));
                   return res.file;
                 }}

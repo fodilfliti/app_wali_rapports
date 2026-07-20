@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
 import { ConfirmActionModal } from '../components/ConfirmActionModal'
-import { PageLoading } from '../components/PageLoading'
+import { QueryListShell } from '../components/QueryListShell'
 import { TablePagination } from '../components/TablePagination'
 import { FieldErrorText } from '../components/FieldErrorText'
 import { FormErrorBlock } from '../components/FormErrorBlock'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { userFormSchema, userPatchFormSchema } from '../validation/schemas/forms'
 import { useZodForm } from '../validation/useZodForm'
+import { useAdminUsersQuery } from '../hooks/queries/useListQueries'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
 
 type Props = { token: string; currentUserId: number }
 
@@ -35,10 +37,9 @@ function emptyFields(): UserFields {
 export function AdminUsersPage({ token, currentUserId }: Props) {
   const { t } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const createForm = useZodForm(userFormSchema)
   const editForm = useZodForm(userPatchFormSchema)
-  const [rows, setRows] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [q, setQ] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -48,25 +49,19 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
   const [credentialsModal, setCredentialsModal] = useState<api.UserCredentials | null>(null)
   const [resetTarget, setResetTarget] = useState<{ id: number; username: string } | null>(null)
   const [resetBusy, setResetBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await api.listUsers(token, { page, q })
-      setRows(res.users)
-      setTotal(res.total)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, page, q, snack, t])
+  const listQuery = useAdminUsersQuery(token, { page, q })
+  const rows = listQuery.data?.users ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [listQuery.isError, snack, t])
 
   function openCreate() {
     setFields(emptyFields())
@@ -98,7 +93,7 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
       const res = await api.createUser(token, userPayload(fields))
       setModalOpen(false)
       setCredentialsModal(res.credentials)
-      load()
+      await invalidate({ adminRef: true })
     } catch (e) {
       if (e instanceof api.ApiError) {
         if (e.fieldErrors) createForm.setFieldErrorsFromApi(e.fieldErrors)
@@ -121,7 +116,7 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
         job_title: jobTitle || null,
       })
       setEditOpen(null)
-      load()
+      await invalidate({ adminRef: true })
       snack.show(t('save'), 'success')
     } catch (e) {
       if (e instanceof api.ApiError && e.fieldErrors) editForm.setFieldErrorsFromApi(e.fieldErrors)
@@ -134,7 +129,7 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
   async function toggleBlock(id: number) {
     try {
       await api.toggleBlockUser(token, id)
-      load()
+      await invalidate({ adminRef: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -161,7 +156,7 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
         <button type="button" className="btn btn-primary" onClick={openCreate}>
           {t('createUser')}
         </button>
-        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
+        <button type="button" className="btn btn-secondary" onClick={() => listQuery.refetch()} disabled={listQuery.isFetching}>
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
@@ -171,7 +166,7 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
         <input placeholder={t('search')} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
-      {loading ? <PageLoading /> : null}
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
 
       <div className="card tableWrap">
         <table>
@@ -219,7 +214,7 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
                 </td>
               </tr>
             ))}
-            {!loading && !rows.length ? (
+            {!isInitialLoading && !rows.length ? (
               <tr>
                 <td colSpan={6}>{t('noResults')}</td>
               </tr>
@@ -228,6 +223,7 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
         </table>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
 
       <ConfirmActionModal
         open={!!resetTarget}

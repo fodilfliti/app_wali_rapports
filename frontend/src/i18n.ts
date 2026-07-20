@@ -96,6 +96,7 @@ const resources = {
       mediaVideoPreview: "معاينة الفيديو",
       refresh: "تحديث",
       loading: "جاري التحميل…",
+      updating: "جاري التحديث…",
       saving: "جاري الحفظ…",
       submitting: "جاري الإرسال…",
       communeWorkspaceError: "تعذّر تحميل قائمة البلديات لهذا المجال.",
@@ -1073,6 +1074,9 @@ const resources = {
       mediaImageReadFailed: "تعذر قراءة الصورة.",
       mediaUploadFailed: "فشل رفع الملف.",
       mediaUploading: "جاري الرفع…",
+      mediaCompressing: "جاري ضغط الملف…",
+      mediaUploadProgress: "{{percent}}٪",
+      mediaVideoPreparing: "جاري تجهيز الفيديو…",
       remove: "حذف",
       calendarEvents: "تواريخ الرزنامة",
       calendarEventsHelp:
@@ -1294,6 +1298,7 @@ const resources = {
       mediaVideoPreview: "Aperçu de la vidéo",
       refresh: "Actualiser",
       loading: "Chargement…",
+      updating: "Mise à jour…",
       saving: "Enregistrement…",
       submitting: "Envoi…",
       communeWorkspaceError:
@@ -2340,6 +2345,9 @@ const resources = {
       mediaImageReadFailed: "Impossible de lire l'image.",
       mediaUploadFailed: "Échec du téléversement.",
       mediaUploading: "Téléversement…",
+      mediaCompressing: "Compression du fichier…",
+      mediaUploadProgress: "{{percent}} %",
+      mediaVideoPreparing: "Préparation de la vidéo…",
       remove: "Supprimer",
       calendarEvents: "Dates calendrier",
       calendarEventsHelp:

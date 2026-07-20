@@ -219,12 +219,17 @@ function RichDocumentEditorInner({
         onOpenSchemaTablePick={serviceId ? () => setPickOpen(true) : undefined}
         onChange={handleHtmlChange}
         onUploadError={onUploadError}
-        onUpload={async (file) => {
+        onUpload={async (file, opts) => {
           const id = rapportId || (await ensureRapportId?.())
           if (!id) {
             throw new Error('rapportTitleRequired')
           }
-          const res = await api.uploadRapportFile(token, id, file)
+          const isVideo = file.type.startsWith('video/')
+          const res = await api.uploadRapportFile(token, id, file, {
+            onProgress: opts?.onProgress,
+            signal: opts?.signal,
+            timeoutMs: opts?.timeoutMs ?? (isVideo ? 15 * 60 * 1000 : 5 * 60 * 1000),
+          })
           // Display URL may include access_token; save path strips it via prepareRichHtmlForSave.
           return { id: res.file.id, url: fileUrl(token, res.file) }
         }}

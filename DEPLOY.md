@@ -253,7 +253,35 @@ Frontend uses relative `VITE_API_URL=/api` so API calls stay same-origin (no COR
 | CORS errors | `CORS_ORIGIN` must match exact site origin (`https://…`) |
 | Blank page on refresh of a route | Missing SPA `.htaccess` |
 | Uploads fail | `FILE_STORAGE_ROOT` missing or not writable |
+| Upload fails at ~50–100 MB | LiteSpeed/proxy **max request body** smaller than app limit — ask host or reduce video size client-side |
+| Upload timeout on slow mobile | Node/proxy idle timeout — prefer client compression; retry once (built into frontend) |
 | Migrate works but app has no env | Env only in `.env` — also set in Node.js App UI |
+
+---
+
+## Upload hosting checks (one-time)
+
+Large uploads (guide videos up to 100 MB) can fail **before Node** if the reverse proxy rejects the body size or times out.
+
+| Check | Action |
+| ----- | ------ |
+| Proxy max body | If uploads fail with 413/502 and nothing in Node logs, ask DZSecurity to raise LiteSpeed `max_request_body` (or equivalent) above 100 MB |
+| Disk quota | Monitor `~/wali-storage/uploads/` growth |
+| Node timeout | If uploads stall then fail, increase app/proxy read timeout for `/api` |
+| Server tools (optional) | SSH/cPanel terminal — see if native helpers exist before enabling server-side transcode |
+
+```bash
+cd ~/wali-api
+# sharp (image processing) — optional future server-side normalize
+npm ls sharp 2>/dev/null || npm i sharp --no-save && node -e "require('sharp'); console.log('sharp ok')"
+
+# ffmpeg (video transcode) — often unavailable on shared hosting
+which ffmpeg; ffmpeg -version
+```
+
+Backend logs upload metrics at `info` when complete: `{ upload: { media_kind, size_bytes, duration_ms } }` — use for before/after tuning.
+
+Client-side: images are compressed in-browser before POST; optional video re-encode via `ENABLE_CLIENT_VIDEO_TRANSCODE` in frontend build (`frontend/src/config/features.ts`, default `false`).
 | Old frontend after upload | Browser cache; confirm `assets/` hashes changed |
 
 ---

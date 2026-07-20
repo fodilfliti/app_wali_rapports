@@ -1,6 +1,13 @@
 const { Op } = require("sequelize");
 const { GuideVideo, UploadedFile } = require("../../db");
-const { saveUploadedBuffer, serializeFile, classifyMime } = require("../../services/uploadService");
+const {
+  saveUploadedFile,
+  serializeFile,
+  classifyMime,
+  deleteUploadedFileById,
+  multerFileInput,
+  cleanupTempFile,
+} = require("../../services/uploadService");
 const { audit } = require("../../services/audit");
 const { hasBilingualText } = require("../../validation/bilingual");
 const {
@@ -96,8 +103,52 @@ async function assertVideoFile(fileRow) {
   }
 }
 
-async function createGuideVideo({ fileBuffer, originalName, mimeType, body }, actor, req) {
-  const parsed = guideVideoCreateSchema.safeParse(body || {});
+async function resolveVideoFileId({ fileInput, uploadedFileId, actor, req, startedAt }) {
+  if (fileInput?.sourcePath || fileInput?.buffer) {
+    if (classifyMime(fileInput.mimeType) !== "video") {
+      const err = new Error("Video file required");
+      err.status = 400;
+      throw err;
+    }
+    const fileRow = await saveUploadedFile({
+      ...fileInput,
+      rapportId: null,
+      actor,
+      req,
+      startedAt,
+    });
+    await assertVideoFile(fileRow);
+    return fileRow.id;
+  }
+  if (uploadedFileId) {
+    const row = await UploadedFile.findByPk(Number(uploadedFileId));
+    if (!row || row.uploaded_by_user_id !== actor.id) {
+      const err = new Error("File not found");
+      err.status = 400;
+      throw err;
+    }
+    await assertVideoFile(serializeFile(row));
+    return row.id;
+  }
+  const err = new Error("Video file required");
+  err.status = 400;
+  throw err;
+}
+
+function normalizeGuideVideoBody(body) {
+  const out = { ...(body || {}) };
+  if (out.is_new !== undefined) out.is_new = parseBool(out.is_new, false);
+  if (out.sort_order !== undefined && out.sort_order !== "") {
+    out.sort_order = Number(out.sort_order);
+  }
+  if (out.uploaded_file_id !== undefined && out.uploaded_file_id !== "") {
+    out.uploaded_file_id = Number(out.uploaded_file_id);
+  }
+  return out;
+}
+
+async function createGuideVideo({ fileInput, body }, actor, req) {
+  const parsed = guideVideoCreateSchema.safeParse(normalizeGuideVideoBody(body));
   if (!parsed.success) {
     const err = new Error(parsed.error.issues[0]?.message || "Validation failed");
     err.status = 400;
@@ -105,21 +156,13 @@ async function createGuideVideo({ fileBuffer, originalName, mimeType, body }, ac
   }
   const data = parsed.data;
 
-  if (classifyMime(mimeType) !== "video") {
-    const err = new Error("Video file required");
-    err.status = 400;
-    throw err;
-  }
-
-  const fileRow = await saveUploadedBuffer({
-    buffer: fileBuffer,
-    originalName,
-    mimeType,
-    rapportId: null,
+  const fileId = await resolveVideoFileId({
+    fileInput,
+    uploadedFileId: data.uploaded_file_id,
     actor,
-    req
+    req,
+    startedAt: req.uploadStartedAt,
   });
-  await assertVideoFile(fileRow);
 
   const now = new Date();
   const row = await GuideVideo.create({
@@ -128,7 +171,7 @@ async function createGuideVideo({ fileBuffer, originalName, mimeType, body }, ac
     description_ar: data.description_ar || null,
     description_fr: data.description_fr || null,
     audience: data.audience,
-    uploaded_file_id: fileRow.id,
+    uploaded_file_id: fileId,
     is_new: data.is_new,
     sort_order: data.sort_order ?? 0,
     created_by_user_id: actor.id,
@@ -157,7 +200,7 @@ async function getGuideVideoById(id, viewerRole) {
   return serializeGuideVideo(row);
 }
 
-async function patchGuideVideo(id, { fileBuffer, originalName, mimeType, body }, actor, req) {
+async function patchGuideVideo(id, { fileInput, body }, actor, req) {
   const row = await GuideVideo.findByPk(id);
   if (!row) {
     const err = new Error("Not found");
@@ -165,7 +208,7 @@ async function patchGuideVideo(id, { fileBuffer, originalName, mimeType, body },
     throw err;
   }
 
-  const raw = { ...(body || {}) };
+  const raw = normalizeGuideVideoBody(body);
   if (raw.is_new !== undefined) raw.is_new = parseBool(raw.is_new, row.is_new);
   if (raw.sort_order !== undefined) raw.sort_order = Number(raw.sort_order);
 
@@ -187,22 +230,18 @@ async function patchGuideVideo(id, { fileBuffer, originalName, mimeType, body },
     }
   }
 
-  if (fileBuffer) {
-    if (classifyMime(mimeType) !== "video") {
-      const err = new Error("Video file required");
-      err.status = 400;
-      throw err;
-    }
-    const fileRow = await saveUploadedBuffer({
-      buffer: fileBuffer,
-      originalName,
-      mimeType,
-      rapportId: null,
+  const previousFileId = row.uploaded_file_id;
+  if (fileInput?.sourcePath || fileInput?.buffer || data.uploaded_file_id) {
+    row.uploaded_file_id = await resolveVideoFileId({
+      fileInput,
+      uploadedFileId: data.uploaded_file_id,
       actor,
-      req
+      req,
+      startedAt: req.uploadStartedAt,
     });
-    await assertVideoFile(fileRow);
-    row.uploaded_file_id = fileRow.id;
+    if (previousFileId && Number(previousFileId) !== Number(row.uploaded_file_id)) {
+      await deleteUploadedFileById(previousFileId);
+    }
   }
 
   if (data.title_ar !== undefined) row.title_ar = data.title_ar;
@@ -226,7 +265,9 @@ async function deleteGuideVideo(id, actor, req) {
     err.status = 404;
     throw err;
   }
+  const fileId = row.uploaded_file_id;
   await row.destroy();
+  if (fileId) await deleteUploadedFileById(fileId);
   await audit(actor.id, "GUIDE_VIDEO_DELETE", { guide_video_id: Number(id) }, { req });
   return { ok: true };
 }
@@ -238,12 +279,8 @@ function parseMultipartBody(req) {
   } catch {
     body = { ...req.body };
   }
-  if (body.is_new !== undefined) body.is_new = parseBool(body.is_new, false);
-  if (body.sort_order !== undefined && body.sort_order !== "") {
-    body.sort_order = Number(body.sort_order);
-  }
   delete body.payload;
-  return body;
+  return normalizeGuideVideoBody(body);
 }
 
 module.exports = {
@@ -255,5 +292,5 @@ module.exports = {
   deleteGuideVideo,
   getGuideVideoById,
   parseMultipartBody,
-  parseBool
+  parseBool,
 };

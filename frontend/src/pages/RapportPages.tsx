@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { RapportListScopeFilter } from '../components/RapportListScopeFilter'
@@ -45,13 +46,22 @@ import {
 import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
 import { waliInboxRowClass, waliCanRespondFromList } from '../utils/waliInboxList'
 import { backNavigationState } from '../utils/navigationBack'
-import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import {
+  useAdminRapportsListQuery,
+  useOfficeRapportsListQuery,
+  useOfficeServiceHubQuery,
+  useReviewerRapportsListQuery,
+} from '../hooks/queries/useListQueries'
+import { queryKeys } from '../query/queryKeys'
 import { useChefHubCounts, useOfficeHubCounts, useWaliHubCounts } from '../hooks/useHubCounts'
 import { localizedName } from '../utils/schemaColumns'
 import { RapportExportButtons } from '../components/ExportPdfButton'
 import { BusyButton } from '../components/BusyButton'
 import { ReturnRapportToDraftConfirm } from '../components/ReturnRapportToDraftConfirm'
 import { PageLoading } from '../components/PageLoading'
+import { QueryListShell } from '../components/QueryListShell'
+import { ListRefreshIndicator } from '../components/ListRefreshIndicator'
 import { DEFAULT_PAGE_SIZE } from '../utils/pagination'
 
 type Props = { token: string }
@@ -63,9 +73,13 @@ function isDocumentKind(r: any) {
 function openOfficeRapport(
   token: string,
   rapportId: number,
-  setRows: Dispatch<SetStateAction<any[]>>,
+  queryClient: ReturnType<typeof useQueryClient>,
+  listKey: ReturnType<typeof queryKeys.rapports>,
 ) {
-  setRows((prev) => patchRapportUnread(prev, rapportId))
+  queryClient.setQueryData(listKey, (old: { rapports?: any[]; total?: number } | undefined) => {
+    if (!old?.rapports) return old
+    return { ...old, rapports: patchRapportUnread(old.rapports, rapportId) }
+  })
   void markOfficeRapportOpened(token, rapportId)
 }
 
@@ -275,6 +289,8 @@ function buildRapportListParams(opts: {
 export function OfficeRapportsListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const queryClient = useQueryClient()
+  const invalidate = useInvalidateAppQueries()
   const [searchParams, setSearchParams] = useSearchParams()
   const serviceId = searchParams.get('service_id') ? Number(searchParams.get('service_id')) : undefined
   const discussionView = searchParams.get('view') === 'discussion'
@@ -285,10 +301,7 @@ export function OfficeRapportsListPage({ token }: Props) {
   const showHidden = finishedView && !discussionView
   const statusGroup = parseStatusGroupParam(searchParams.get('status_group'))
   const listSort = parseListSortParam(searchParams.get('sort'))
-  const [rows, setRows] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [submittingId, setSubmittingId] = useState<number | null>(null)
@@ -300,36 +313,33 @@ export function OfficeRapportsListPage({ token }: Props) {
   const unreadDiscussion = counts.unread_discussion || 0
   const unreadLabel = unreadDiscussion > 99 ? '99+' : String(unreadDiscussion)
 
+  const listParams = {
+    service_id: discussionView ? undefined : serviceId,
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    search: search || undefined,
+    status_group: discussionView ? undefined : statusGroup,
+    sort: discussionView ? undefined : listSort,
+    hidden_only: discussionView ? false : showHidden,
+    unread_discussion: discussionView && !discussionAll ? true : undefined,
+    has_discussion: discussionAll ? true : undefined,
+  }
+  const listKey = queryKeys.rapports('office', listParams as Record<string, unknown>)
+  const listQuery = useOfficeRapportsListQuery(token, listParams)
+  const rows = listQuery.data?.rapports ?? []
+  const total = listQuery.data?.total ?? rows.length
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
+
   useEffect(() => {
     setPage(1)
   }, [serviceId, showHidden, search, discussionView, discussionTab, statusGroup, listSort])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const rapportsRes = await api.listOfficeRapports(token, {
-        service_id: discussionView ? undefined : serviceId,
-        page,
-        pageSize: DEFAULT_PAGE_SIZE,
-        search: search || undefined,
-        status_group: discussionView ? undefined : statusGroup,
-        sort: discussionView ? undefined : listSort,
-        hidden_only: discussionView ? false : showHidden,
-        unread_discussion: discussionView && !discussionAll ? true : undefined,
-        has_discussion: discussionAll ? true : undefined,
-      })
-      setRows(rapportsRes.rapports)
-      setTotal(rapportsRes.total ?? rapportsRes.rapports.length)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, serviceId, page, search, showHidden, snack, t, discussionView, discussionAll, statusGroup, listSort])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [listQuery.isError, snack, t])
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -406,9 +416,13 @@ export function OfficeRapportsListPage({ token }: Props) {
   async function finishRapport(id: number) {
     try {
       await api.finishRapport(token, id)
-      notifyHubCountsRefresh()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office' },
+      })
       snack.show(t('finishRapportDone'), 'success')
-      load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -417,9 +431,13 @@ export function OfficeRapportsListPage({ token }: Props) {
   async function restoreRapport(id: number) {
     try {
       await api.restoreRapport(token, id)
-      notifyHubCountsRefresh()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office' },
+      })
       snack.show(t('restoreRapportDone'), 'success')
-      load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -429,8 +447,12 @@ export function OfficeRapportsListPage({ token }: Props) {
     setSubmittingId(id)
     try {
       await api.submitRapport(token, id)
-      notifyHubCountsRefresh()
-      load()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office' },
+      })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -442,9 +464,13 @@ export function OfficeRapportsListPage({ token }: Props) {
     setReturningId(id)
     try {
       await api.returnRapportToDraft(token, id)
-      notifyHubCountsRefresh()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office' },
+      })
       snack.show(t('returnToDraftDone'), 'success')
-      load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -456,7 +482,7 @@ export function OfficeRapportsListPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{discussionView ? t('navDiscussion') : t('navRapports')}</h1>
-        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
+        <button type="button" className="btn btn-secondary" onClick={() => listQuery.refetch()} disabled={listQuery.isFetching}>
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
@@ -563,7 +589,8 @@ export function OfficeRapportsListPage({ token }: Props) {
         ) : null}
       </section>
 
-      {loading ? <PageLoading /> : null}
+      {isInitialLoading ? <PageLoading /> : null}
+      {!isInitialLoading ? <ListRefreshIndicator show={isRefreshing} /> : null}
 
       {ENABLE_DOCUMENT_TEMPLATES && importFor ? (
         <DocumentTemplatePickModal
@@ -580,7 +607,7 @@ export function OfficeRapportsListPage({ token }: Props) {
             try {
               await api.applyDocumentTemplate(token, rapportId, templateId, mode || 'replace')
               snack.show(t('documentTemplateImported'), 'success')
-              load()
+              await invalidate({ rapports: true })
             } catch {
               snack.show(t('errorGeneric'), 'error')
             }
@@ -653,7 +680,7 @@ export function OfficeRapportsListPage({ token }: Props) {
                                 : 'btn-secondary'
                           }`}
                           to={officeRapportWorkspacePath(r)!}
-                          onClick={() => openOfficeRapport(token, r.id, setRows)}
+                          onClick={() => openOfficeRapport(token, r.id, queryClient, listKey)}
                         >
                           {discussionView
                             ? t('openDiscussion')
@@ -722,7 +749,7 @@ export function OfficeRapportsListPage({ token }: Props) {
                 </tr>
               )
             })}
-            {!loading && !rows.length ? (
+            {!isInitialLoading && !rows.length ? (
               <tr>
                 <td colSpan={3} className={discussionView ? 'discussionInboxEmptyCell' : undefined}>
                   {discussionView
@@ -750,59 +777,56 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
   const navigate = useNavigate()
-  const [hub, setHub] = useState<any>(null)
-  const [rapportType, setRapportType] = useState<RapportTypeNav | null>(null)
-  const [rows, setRows] = useState<any[]>([])
+  const queryClient = useQueryClient()
+  const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
   const [createPickOpen, setCreatePickOpen] = useState(false)
   const [importFor, setImportFor] = useState<{ rapportId: number; typeId: number } | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
   const [returningId, setReturningId] = useState<number | null>(null)
 
+  const hubQuery = useOfficeServiceHubQuery(token, sid)
+  const hub = hubQuery.data
+  const rapportType =
+    hub?.rapportTypes?.find((x: RapportTypeNav) => Number(x.id) === typeId) || null
+
+  const listParams = {
+    service_id: sid,
+    rapport_type_id: typeId,
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    hidden_only: showHidden,
+  }
+  const listKey = queryKeys.rapports('office', listParams as Record<string, unknown>)
+  const listQuery = useOfficeRapportsListQuery(token, listParams)
+  const rows = listQuery.data?.rapports ?? []
+  const total = listQuery.data?.total ?? rows.length
+  const isInitialLoading =
+    (hubQuery.isLoading && !hub) || (listQuery.isLoading && !listQuery.data)
+  const isRefreshing =
+    (hubQuery.isFetching && !hubQuery.isLoading) || (listQuery.isFetching && !listQuery.isLoading)
+
   useEffect(() => {
     setPage(1)
   }, [sid, typeId, showHidden])
 
-  const load = useCallback(async () => {
-    if (!sid || !typeId) return
-    setLoading(true)
-    try {
-      const [hubRes, rapportsRes] = await Promise.all([
-        api.getServiceContentHub(token, sid),
-        api.listOfficeRapports(token, {
-          service_id: sid,
-          rapport_type_id: typeId,
-          page,
-          pageSize: DEFAULT_PAGE_SIZE,
-          hidden_only: showHidden,
-        }),
-      ])
-      setHub(hubRes)
-      const rt =
-        hubRes.rapportTypes?.find((x: RapportTypeNav) => Number(x.id) === typeId) || null
-      setRapportType(rt)
-      setRows(rapportsRes.rapports)
-      setTotal(rapportsRes.total ?? rapportsRes.rapports.length)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, sid, typeId, page, showHidden, snack, t])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (hubQuery.isError || listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [hubQuery.isError, listQuery.isError, snack, t])
 
   async function finishRapportRow(id: number) {
     try {
       await api.finishRapport(token, id)
-      notifyHubCountsRefresh()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
       snack.show(t('finishRapportDone'), 'success')
-      load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -811,18 +835,22 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   async function restoreRapportRow(id: number) {
     try {
       await api.restoreRapport(token, id)
-      notifyHubCountsRefresh()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
       snack.show(t('restoreRapportDone'), 'success')
-      load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
   }
 
-  async function hideTypeFromPage(typeId: number) {
+  async function hideTypeFromPage(hideTypeId: number) {
     try {
-      await api.hideRapportType(token, typeId)
-      notifyHubCountsRefresh()
+      await api.hideRapportType(token, hideTypeId)
+      await invalidate({ hubCounts: 'office', serviceTrees: true, serviceHub: { scope: 'office', serviceId: sid } })
       snack.show(t('hideRapportTypeDone'), 'success')
       navigate(`/office/services/${sid}`)
     } catch {
@@ -830,12 +858,16 @@ export function OfficeServiceRapportListPage({ token }: Props) {
     }
   }
 
-  async function restoreTypeFromPage(typeId: number) {
+  async function restoreTypeFromPage(restoreTypeId: number) {
     try {
-      await api.restoreRapportType(token, typeId)
-      notifyHubCountsRefresh()
+      await api.restoreRapportType(token, restoreTypeId)
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
       snack.show(t('restoreRapportTypeDone'), 'success')
-      load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -845,8 +877,12 @@ export function OfficeServiceRapportListPage({ token }: Props) {
     setSubmittingId(id)
     try {
       await api.submitRapport(token, id)
-      notifyHubCountsRefresh()
-      load()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -858,9 +894,13 @@ export function OfficeServiceRapportListPage({ token }: Props) {
     setReturningId(id)
     try {
       await api.returnRapportToDraft(token, id)
-      notifyHubCountsRefresh()
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
       snack.show(t('returnToDraftDone'), 'success')
-      load()
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -890,10 +930,12 @@ export function OfficeServiceRapportListPage({ token }: Props) {
         : hub.service.name_ar
       : t('navRapports')
 
-  if (loading) {
+  if (isInitialLoading) {
     return (
       <div className="page">
-        <PageLoading />
+        <QueryListShell isInitialLoading>
+          <span />
+        </QueryListShell>
       </div>
     )
   }
@@ -944,6 +986,8 @@ export function OfficeServiceRapportListPage({ token }: Props) {
         <p className="muted small">{t('createRapportUnderTypeHint')}</p>
       ) : null}
 
+      <ListRefreshIndicator show={isRefreshing} />
+
       <div className="rapportListToolbar">
         <RapportListScopeFilter showHidden={showHidden} onChange={setShowHidden} />
       </div>
@@ -978,7 +1022,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
             try {
               await api.applyDocumentTemplate(token, rapportId, templateId, mode || 'replace')
               snack.show(t('documentTemplateImported'), 'success')
-              load()
+              await invalidate({ rapports: true })
             } catch {
               snack.show(t('errorGeneric'), 'error')
             }
@@ -1013,7 +1057,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                     <Link
                       className={`btn btn-sm ${canOfficeEditRapport(r.status) ? 'btn-primary' : 'btn-secondary'}`}
                       to={officeRapportWorkspacePath(r) || officeRapportTypeWorkspacePath(sid, rapportType!, r.id)}
-                      onClick={() => openOfficeRapport(token, r.id, setRows)}
+                      onClick={() => openOfficeRapport(token, r.id, queryClient, listKey)}
                     >
                       {canOfficeEditRapport(r.status) ? t('edit') : t('details')}
                     </Link>
@@ -1072,7 +1116,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                 </td>
               </tr>
             ))}
-            {!loading && !rows.length ? (
+            {!isInitialLoading && !rows.length ? (
               <tr>
                 <td colSpan={3}>{t('noResults')}</td>
               </tr>
@@ -1090,6 +1134,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
 export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { reviewer?: import('../utils/reviewerMode').ReviewerMode }) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const [searchParams, setSearchParams] = useSearchParams()
   const discussionView = searchParams.get('view') === 'discussion'
   const discussionTab = searchParams.get('tab') === 'all' ? 'all' : 'new'
@@ -1108,13 +1153,10 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
       ? `${base}/rapports?${listQs}`
       : `${base}/rapports`
   const hubPath = base
-  const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [respondId, setRespondId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
   const waliCounts = useWaliHubCounts(reviewer === 'wali' ? token : '')
   const chefCounts = useChefHubCounts(reviewer === 'chef' ? token : '')
   const unreadDiscussion =
@@ -1123,35 +1165,30 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
       : waliCounts.counts.unread_discussion || 0
   const unreadLabel = unreadDiscussion > 99 ? '99+' : String(unreadDiscussion)
 
+  const listParams = {
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    search: search || undefined,
+    status_group: discussionView ? undefined : statusGroup,
+    sort: discussionView ? undefined : listSort,
+    unread_discussion: discussionView && !discussionAll ? true : undefined,
+    has_discussion: discussionAll ? true : undefined,
+  }
+  const listQuery = useReviewerRapportsListQuery(token, reviewer, listParams)
+  const rows = listQuery.data?.rapports ?? []
+  const total = listQuery.data?.total ?? rows.length
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
+
   useEffect(() => {
     setPage(1)
   }, [search, discussionView, discussionTab, statusGroup, listSort])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const listRapports = reviewer === 'chef' ? api.listChefRapports : api.listWaliRapports
-      const res = await listRapports(token, {
-        page,
-        pageSize: DEFAULT_PAGE_SIZE,
-        search: search || undefined,
-        status_group: discussionView ? undefined : statusGroup,
-        sort: discussionView ? undefined : listSort,
-        unread_discussion: discussionView && !discussionAll ? true : undefined,
-        has_discussion: discussionAll ? true : undefined,
-      })
-      setRows(res.rapports)
-      setTotal(res.total ?? res.rapports.length)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, page, search, snack, t, reviewer, discussionView, discussionAll, statusGroup, listSort])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [listQuery.isError, snack, t])
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -1193,8 +1230,13 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
       const respond = reviewer === 'chef' ? api.chefRespond : api.waliRespond
       await respond(token, respondId, payload)
       setRespondId(null)
-      notifyHubCountsRefresh()
-      load()
+      await invalidate({
+        rapports: true,
+        hubCounts: reviewer === 'chef' ? 'chef' : 'wali',
+        officeUsers: reviewer,
+        serviceTrees: true,
+        serviceHub: { scope: reviewer === 'chef' ? 'chef' : 'wali' },
+      })
     } catch {
       snack.show(t('errorGeneric'), 'error')
       throw new Error('respond failed')
@@ -1225,7 +1267,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
     <div className="page">
       <div className="pageHeader row">
         <h1>{discussionView ? t('navDiscussion') : t('navInbox')}</h1>
-        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
+        <button type="button" className="btn btn-secondary" onClick={() => listQuery.refetch()} disabled={listQuery.isFetching}>
           {t('refresh')}
         </button>
         <BackButton to={hubPath} fallbackTo={hubPath} />
@@ -1325,7 +1367,8 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
         ) : null}
       </section>
 
-      {loading ? <PageLoading /> : null}
+      {isInitialLoading ? <PageLoading /> : null}
+      {!isInitialLoading ? <ListRefreshIndicator show={isRefreshing} /> : null}
 
       <div className={`card tableWrap${discussionView ? ' discussionInboxTable' : ''}`}>
         <table>
@@ -1428,7 +1471,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
                 </tr>
               )
             })}
-            {!loading && !rows.length ? (
+            {!isInitialLoading && !rows.length ? (
               <tr>
                 <td colSpan={5} className="discussionInboxEmptyCell">
                   {discussionView
@@ -1459,48 +1502,40 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
 export function AdminRapportsListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const [searchParams, setSearchParams] = useSearchParams()
   const statusGroup = parseStatusGroupParam(searchParams.get('status_group'))
   const listSort = parseListSortParam(searchParams.get('sort'))
-  const [rows, setRows] = useState<any[]>([])
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [showHidden] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
+
+  const listParams = {
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    search: search || undefined,
+    status_group: statusGroup,
+    sort: listSort,
+    hidden_only: showHidden,
+  }
+  const listQuery = useAdminRapportsListQuery(token, listParams)
+  const rows = listQuery.data?.rapports ?? []
+  const total = listQuery.data?.total ?? rows.length
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   useEffect(() => {
     setPage(1)
   }, [search, showHidden, statusGroup, listSort])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await api.listAdminRapports(token, {
-        page,
-        pageSize: DEFAULT_PAGE_SIZE,
-        search: search || undefined,
-        status_group: statusGroup,
-        sort: listSort,
-        hidden_only: showHidden,
-      })
-      setRows(res.rapports)
-      setTotal(res.total ?? res.rapports.length)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-      setRows([])
-      setTotal(0)
-    } finally {
-      setLoading(false)
-    }
-  }, [token, page, search, showHidden, snack, t, statusGroup, listSort])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [listQuery.isError, snack, t])
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -1524,7 +1559,7 @@ export function AdminRapportsListPage({ token }: Props) {
       await api.deleteAdminRapport(token, deleteTarget.id)
       snack.show(t('deleteRapportAdminDone'), 'success')
       setDeleteTarget(null)
-      load()
+      await invalidate({ rapports: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -1536,7 +1571,7 @@ export function AdminRapportsListPage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navRapports')}</h1>
-        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
+        <button type="button" className="btn btn-secondary" onClick={() => listQuery.refetch()} disabled={listQuery.isFetching}>
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
@@ -1564,7 +1599,8 @@ export function AdminRapportsListPage({ token }: Props) {
         />
       </form>
 
-      {loading ? <PageLoading /> : null}
+      {isInitialLoading ? <PageLoading /> : null}
+      {!isInitialLoading ? <ListRefreshIndicator show={isRefreshing} /> : null}
 
       <div className="card tableWrap">
         <table>
@@ -1605,7 +1641,7 @@ export function AdminRapportsListPage({ token }: Props) {
                 </td>
               </tr>
             ))}
-            {!loading && !rows.length ? (
+            {!isInitialLoading && !rows.length ? (
               <tr>
                 <td colSpan={5} className="muted">
                   {t('noResults')}

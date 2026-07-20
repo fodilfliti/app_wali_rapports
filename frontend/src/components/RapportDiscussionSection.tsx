@@ -93,7 +93,7 @@ export function RapportDiscussionSection({ token, rapportId, mode, enabled = tru
         setComments((prev) => [...prev, comment])
         setTotal((n) => n + 1)
       }
-      notifyHubCountsRefresh()
+      await notifyHubCountsRefresh()
       await load()
     } catch (e) {
       const msg =

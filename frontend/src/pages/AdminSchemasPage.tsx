@@ -47,6 +47,7 @@ import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
 import { EntityTargetKindsField } from '../components/EntityTargetKindsField'
 import { defaultEntityTargetKinds } from '../utils/entityTargets'
 import { needsLinkedTableSchema } from '../utils/rapportTypeSchema'
+import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
 
 
 
@@ -334,6 +335,8 @@ export function AdminSchemasPage({ token }: Props) {
 
       loadSchemas()
 
+      notifyHubCountsRefresh()
+
       snack.show(t('save'), 'success')
 
     } catch {
@@ -361,6 +364,8 @@ export function AdminSchemasPage({ token }: Props) {
       closeSchemaModal()
 
       loadSchemas()
+
+      notifyHubCountsRefresh()
 
       snack.show(t('save'), 'success')
 
@@ -416,6 +421,8 @@ export function AdminSchemasPage({ token }: Props) {
       setTypeModal(false)
 
       loadRapportTypes()
+
+      notifyHubCountsRefresh()
 
       snack.show(t('save'), 'success')
 

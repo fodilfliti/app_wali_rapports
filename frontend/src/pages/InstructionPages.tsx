@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
@@ -6,12 +6,18 @@ import { apiFileUrl } from '../api'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
 import { TablePagination } from '../components/TablePagination'
+import { QueryListShell } from '../components/QueryListShell'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { hasBilingualText, bilingualPairForSave, pickBilingualText } from '../utils/bilingual'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { useInstructionsListQuery } from '../hooks/queries/useListQueries'
 import { useOfficeHubCounts } from '../hooks/useHubCounts'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
+import { MediaUploadError, prepareFileForUpload } from '../utils/media'
+import { blendedBatchPercent, runUploadQueue } from '../utils/uploadQueue'
+import { UploadProgressBar } from '../components/UploadProgressBar'
 
 type Props = { token: string }
 
@@ -86,7 +92,7 @@ function InstructionViewModal({
       .then((r) => {
         if (cancelled) return
         setRow(r.instruction)
-        if (audience === 'office') notifyHubCountsRefresh()
+        notifyHubCountsRefresh()
       })
       .catch(() => {
         if (!cancelled) setRow(null)
@@ -191,24 +197,13 @@ function InstructionDetailRedirect({ listPath }: { listPath: string }) {
 
 export function WaliInstructionsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
-  const [rows, setRows] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const { openId, setOpenId } = useOpenInstructionFromState()
-
-  const load = useCallback(async () => {
-    try {
-      const res = await api.listWaliInstructions(token, { page, pageSize: DEFAULT_PAGE_SIZE })
-      setRows(res.instructions)
-      setTotal(res.total)
-    } catch {
-      /* ignore */
-    }
-  }, [token, page])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const listQuery = useInstructionsListQuery(token, 'wali', { page, pageSize: DEFAULT_PAGE_SIZE })
+  const rows = listQuery.data?.instructions ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   return (
     <div className="page instructionsPage">
@@ -220,8 +215,9 @@ export function WaliInstructionsPage({ token }: Props) {
         <BackButton fallbackTo="/wali" />
       </div>
       <p className="muted small instructionsListHint">{t('instructionsListHint')}</p>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card instructionsListCard">
-        {!rows.length ? <p className="muted instructionsEmpty">{t('instructionsEmpty')}</p> : null}
+        {!rows.length && !isInitialLoading ? <p className="muted instructionsEmpty">{t('instructionsEmpty')}</p> : null}
         <ul className="instructionsList">
           {rows.map((row) => {
             const recipientsLabel = row.recipients?.length
@@ -251,6 +247,7 @@ export function WaliInstructionsPage({ token }: Props) {
         </ul>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
 
       {openId ? (
         <InstructionViewModal
@@ -268,6 +265,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
   const { t } = useTranslation()
   const snack = useSnackbar()
   const navigate = useNavigate()
+  const invalidate = useInvalidateAppQueries()
   const [users, setUsers] = useState<any[]>([])
   const [allUsers, setAllUsers] = useState(true)
   const [selected, setSelected] = useState<number[]>([])
@@ -276,7 +274,12 @@ export function WaliInstructionCreatePage({ token }: Props) {
   const [titleFr, setTitleFr] = useState('')
   const [bodyAr, setBodyAr] = useState('')
   const [bodyFr, setBodyFr] = useState('')
-  const [files, setFiles] = useState<File[]>([])
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: number; name: string }[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const perFileProgressRef = useRef<number[]>([])
   const [userPage, setUserPage] = useState(1)
   const [saving, setSaving] = useState(false)
 
@@ -308,7 +311,51 @@ export function WaliInstructionCreatePage({ token }: Props) {
     )
   }
 
+  async function handleFilesPick(list: FileList | null) {
+    if (!list?.length) return
+    setUploadError(null)
+    const raw = Array.from(list)
+    const totalFiles = raw.length
+    perFileProgressRef.current = new Array(totalFiles).fill(0)
+    try {
+      setCompressing(true)
+      setUploadPercent(0)
+      const prepared = await Promise.all(
+        raw.map((file) => prepareFileForUpload(file, { onCompressing: () => setCompressing(true) })),
+      )
+      setCompressing(false)
+      setUploading(true)
+      setUploadPercent(0)
+      const results = await runUploadQueue(
+        prepared.map((file, fileIndex) => async () => {
+          const res = await api.uploadWaliFile(token, file, {
+            onProgress: (p) => {
+              perFileProgressRef.current[fileIndex] = p.percent
+              setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+            },
+          })
+          perFileProgressRef.current[fileIndex] = 100
+          setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+          return { id: Number(res.file.id), name: res.file.original_name }
+        }),
+        3,
+      )
+      setUploadedFiles((prev) => [...prev, ...results])
+      setUploadPercent(100)
+    } catch (e) {
+      if (e instanceof MediaUploadError) {
+        setUploadError(t(e.key, e.params))
+      } else {
+        setUploadError(t('mediaUploadFailed'))
+      }
+    } finally {
+      setUploading(false)
+      setCompressing(false)
+    }
+  }
+
   async function submit() {
+    if (uploading || compressing) return
     if (!hasBilingualText(titleAr, titleFr)) {
       snack.show(t('bilingualLabelRequired'), 'error')
       return
@@ -320,14 +367,16 @@ export function WaliInstructionCreatePage({ token }: Props) {
     setSaving(true)
     try {
       const titles = bilingualPairForSave(titleAr, titleFr)
-      await api.createWaliInstruction(token, files, {
+      await api.createWaliInstruction(token, {
         title_ar: titles.ar,
         title_fr: titles.fr,
         body_ar: bodyAr.trim() || null,
         body_fr: bodyFr.trim() || null,
         all_office: allUsers,
         recipient_ids: allUsers ? [] : selected,
+        uploaded_file_ids: uploadedFiles.map((f) => f.id),
       })
+      await invalidate({ instructions: true, hubCounts: true })
       snack.show(t('save'), 'success')
       navigate('/wali/instructions')
     } catch {
@@ -369,11 +418,26 @@ export function WaliInstructionCreatePage({ token }: Props) {
           <input
             type="file"
             multiple
-            onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            disabled={uploading || compressing}
+            onChange={(e) => {
+              void handleFilesPick(e.target.files)
+              e.target.value = ''
+            }}
           />
-          {files.length ? (
-            <p className="muted small">{files.map((f) => f.name).join(' · ')}</p>
+          {uploadedFiles.length ? (
+            <p className="muted small">{uploadedFiles.map((f) => f.name).join(' · ')}</p>
           ) : null}
+          {compressing || uploading ? (
+            <UploadProgressBar
+              percent={compressing ? 0 : uploadPercent}
+              label={
+                compressing
+                  ? t('mediaCompressing')
+                  : t('mediaUploadProgress', { percent: uploadPercent })
+              }
+            />
+          ) : null}
+          {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
         </label>
         <label className="checkboxLabel">
           <input
@@ -422,24 +486,14 @@ export function WaliInstructionDetailPage(_props: Props) {
 export function OfficeInstructionsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const { counts, refresh } = useOfficeHubCounts(token)
-  const [rows, setRows] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
+  const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
   const { openId, setOpenId } = useOpenInstructionFromState()
-
-  const load = useCallback(async () => {
-    try {
-      const res = await api.listOfficeInstructions(token, { page, pageSize: DEFAULT_PAGE_SIZE })
-      setRows(res.instructions)
-      setTotal(res.total)
-    } catch {
-      /* ignore */
-    }
-  }, [token, page])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const listQuery = useInstructionsListQuery(token, 'office', { page, pageSize: DEFAULT_PAGE_SIZE })
+  const rows = listQuery.data?.instructions ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   useEffect(() => {
     refresh()
@@ -447,7 +501,7 @@ export function OfficeInstructionsPage({ token }: Props) {
 
   async function closeModal() {
     setOpenId(null)
-    await load()
+    await invalidate({ hubCounts: 'office', instructions: true })
     refresh()
   }
 
@@ -463,8 +517,9 @@ export function OfficeInstructionsPage({ token }: Props) {
         <BackButton fallbackTo="/office" />
       </div>
       <p className="muted small instructionsListHint">{t('instructionsListHintOffice')}</p>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card instructionsListCard">
-        {!rows.length ? <p className="muted instructionsEmpty">{t('noResults')}</p> : null}
+        {!rows.length && !isInitialLoading ? <p className="muted instructionsEmpty">{t('noResults')}</p> : null}
         <ul className="instructionsList">
           {rows.map((row) => (
             <li key={row.id} className={row.read_at ? 'instructionListRow read' : 'instructionListRow unread'}>
@@ -493,6 +548,7 @@ export function OfficeInstructionsPage({ token }: Props) {
         </ul>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
 
       {openId ? (
         <InstructionViewModal
@@ -514,24 +570,13 @@ export function OfficeInstructionDetailPage(_props: Props) {
 
 export function ChefInstructionsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
-  const [rows, setRows] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const { openId, setOpenId } = useOpenInstructionFromState()
-
-  const load = useCallback(async () => {
-    try {
-      const res = await api.listChefInstructions(token, { page, pageSize: DEFAULT_PAGE_SIZE })
-      setRows(res.instructions)
-      setTotal(res.total)
-    } catch {
-      /* ignore */
-    }
-  }, [token, page])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const listQuery = useInstructionsListQuery(token, 'chef', { page, pageSize: DEFAULT_PAGE_SIZE })
+  const rows = listQuery.data?.instructions ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   return (
     <div className="page instructionsPage">
@@ -540,8 +585,9 @@ export function ChefInstructionsPage({ token }: Props) {
         <BackButton fallbackTo="/chef" />
       </div>
       <p className="muted small instructionsListHint">{t('instructionsListHintChef')}</p>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card instructionsListCard">
-        {!rows.length ? <p className="muted instructionsEmpty">{t('instructionsEmptyChef')}</p> : null}
+        {!rows.length && !isInitialLoading ? <p className="muted instructionsEmpty">{t('instructionsEmptyChef')}</p> : null}
         <ul className="instructionsList">
           {rows.map((row) => (
             <li key={row.id}>
@@ -565,6 +611,7 @@ export function ChefInstructionsPage({ token }: Props) {
         </ul>
       </div>
       <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
 
       {openId ? (
         <InstructionViewModal

@@ -27,7 +27,12 @@ const {
   rapportTypePatchSchema
 } = require("../validation/schemas/schemaConfig");
 const { serviceCreateSchema, servicePatchSchema, serviceGrantsSchema, departmentCreateSchema, departmentPatchSchema } = require("../validation/schemas/serviceAdmin");
-const { singleUpload } = require("../middleware/upload");
+const { singleUpload, optionalSingleUpload } = require("../middleware/upload");
+const {
+  saveUploadedFile,
+  multerFileInput,
+  cleanupTempFile,
+} = require("../services/uploadService");
 const guideVideoService = require("../modules/guideVideos/guideVideoService");
 
 const adminRouter = express.Router();
@@ -537,44 +542,70 @@ adminRouter.get("/guide-videos", async (req, res, next) => {
   }
 });
 
-adminRouter.post("/guide-videos", singleUpload("file"), async (req, res, next) => {
+adminRouter.post("/uploads", singleUpload("file"), async (req, res, next) => {
   try {
-    if (!req.file?.buffer) return res.status(400).json({ error: "File required" });
-    const body = guideVideoService.parseMultipartBody(req);
-    const video = await guideVideoService.createGuideVideo(
-      {
-        fileBuffer: req.file.buffer,
-        originalName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        body
-      },
-      req.user,
-      req
-    );
-    res.status(201).json({ video });
+    const input = multerFileInput(req.file);
+    if (!input?.sourcePath && !input?.buffer) {
+      return res.status(400).json({ error: "File required" });
+    }
+    const file = await saveUploadedFile({
+      ...input,
+      rapportId: null,
+      actor: req.user,
+      req,
+      startedAt: req.uploadStartedAt,
+    });
+    res.status(201).json({ file });
   } catch (e) {
+    const input = multerFileInput(req.file);
+    if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
     if (e.status === 413) return res.status(413).json({ error: e.message });
     if (e.status === 400) return res.status(400).json({ error: e.message });
     next(e);
   }
 });
 
-adminRouter.patch("/guide-videos/:id", singleUpload("file"), async (req, res, next) => {
+adminRouter.post("/guide-videos", optionalSingleUpload("file"), async (req, res, next) => {
   try {
-    const body = guideVideoService.parseMultipartBody(req);
+    const body = req.is("multipart/form-data")
+      ? guideVideoService.parseMultipartBody(req)
+      : req.body;
+    const video = await guideVideoService.createGuideVideo(
+      {
+        fileInput: multerFileInput(req.file),
+        body,
+      },
+      req.user,
+      req,
+    );
+    res.status(201).json({ video });
+  } catch (e) {
+    const input = multerFileInput(req.file);
+    if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
+    if (e.status === 413) return res.status(413).json({ error: e.message });
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+adminRouter.patch("/guide-videos/:id", optionalSingleUpload("file"), async (req, res, next) => {
+  try {
+    const body = req.is("multipart/form-data")
+      ? guideVideoService.parseMultipartBody(req)
+      : req.body;
     const video = await guideVideoService.patchGuideVideo(
       req.params.id,
       {
-        fileBuffer: req.file?.buffer || null,
-        originalName: req.file?.originalname,
-        mimeType: req.file?.mimetype,
-        body
+        fileInput: multerFileInput(req.file),
+        body,
       },
       req.user,
-      req
+      req,
     );
     res.json({ video });
   } catch (e) {
+    const input = multerFileInput(req.file);
+    if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
     if (e.status === 413) return res.status(413).json({ error: e.message });
     if (e.status === 400) return res.status(400).json({ error: e.message });
     if (e.status === 404) return res.status(404).json({ error: e.message });

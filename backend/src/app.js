@@ -13,6 +13,7 @@ const { waliRouter } = require("./routes/wali");
 const { chefRouter } = require("./routes/chef");
 const { requestContext } = require("./middleware/requestContext");
 const { errorHandler } = require("./middleware/errorHandler");
+const { multerErrorHandler } = require("./middleware/upload");
 const { getEnv } = require("./config/env");
 const { getLogger } = require("./logger");
 
@@ -113,6 +114,7 @@ api.use("/wali", waliRouter);
 api.use("/chef", chefRouter);
 
 app.use(apiBase, api);
+app.use(multerErrorHandler);
 app.use(errorHandler);
 
 module.exports = { app };

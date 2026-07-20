@@ -1,4 +1,7 @@
 import { getApiBase } from "./utils/apiBase";
+import { ApiError } from "./utils/apiError";
+import type { UploadOptions } from "./utils/uploadFile";
+import { uploadFormData } from "./utils/uploadFile";
 import {
   getAccessToken,
   notifySessionExpired,
@@ -22,20 +25,7 @@ export function apiFileUrl(filePath: string, token: string) {
 
 export type UserCredentials = { code8: string; pdf_url: string };
 
-export class ApiError extends Error {
-  status: number;
-  fieldErrors?: Record<string, string>;
-
-  constructor(
-    status: number,
-    error: string,
-    fieldErrors?: Record<string, string>,
-  ) {
-    super(error);
-    this.status = status;
-    this.fieldErrors = fieldErrors;
-  }
-}
+export { ApiError } from "./utils/apiError";
 
 function isAuthPath(path: string) {
   return (
@@ -1486,14 +1476,41 @@ export function uploadRapportFile(
   token: string,
   rapportId: number,
   file: File,
+  opts: UploadOptions = {},
 ) {
-  const fd = new FormData();
-  fd.append("file", file);
-  return request<{ file: any }>(`/office/rapports/${rapportId}/uploads`, {
-    method: "POST",
-    token,
-    body: fd,
-  });
+  return uploadFormData<{ file: any }>(
+    `/office/rapports/${rapportId}/uploads`,
+    () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return fd;
+    },
+    { ...opts, token, method: "POST" },
+  );
+}
+
+export function uploadAdminFile(token: string, file: File, opts: UploadOptions = {}) {
+  return uploadFormData<{ file: any }>(
+    "/admin/uploads",
+    () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return fd;
+    },
+    { ...opts, token, method: "POST" },
+  );
+}
+
+export function uploadWaliFile(token: string, file: File, opts: UploadOptions = {}) {
+  return uploadFormData<{ file: any }>(
+    "/wali/uploads",
+    () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return fd;
+    },
+    { ...opts, token, method: "POST" },
+  );
 }
 
 export function getRapportMediaFiles(token: string, rapportId: number) {
@@ -1561,16 +1578,26 @@ export function listWaliShareUsers(token: string) {
 
 export function createWaliBroadcast(
   token: string,
-  file: File,
   body: Record<string, unknown>,
+  file?: File | null,
+  opts: UploadOptions = {},
 ) {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("payload", JSON.stringify(body));
+  if (file) {
+    return uploadFormData<{ broadcast: any }>(
+      "/wali/broadcasts",
+      () => {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("payload", JSON.stringify(body));
+        return fd;
+      },
+      { ...opts, token, method: "POST" },
+    );
+  }
   return request<{ broadcast: any }>("/wali/broadcasts", {
     method: "POST",
     token,
-    body: fd,
+    body: JSON.stringify(body),
   });
 }
 
@@ -1666,16 +1693,26 @@ export function getWaliInstruction(token: string, id: number) {
 
 export function createWaliInstruction(
   token: string,
-  files: File[],
   body: Record<string, unknown>,
+  files: File[] = [],
+  opts: UploadOptions = {},
 ) {
-  const fd = new FormData();
-  for (const file of files) fd.append("files", file);
-  fd.append("payload", JSON.stringify(body));
+  if (files.length) {
+    return uploadFormData<{ instruction: any }>(
+      "/wali/instructions",
+      () => {
+        const fd = new FormData();
+        for (const file of files) fd.append("files", file);
+        fd.append("payload", JSON.stringify(body));
+        return fd;
+      },
+      { ...opts, token, method: "POST" },
+    );
+  }
   return request<{ instruction: any }>("/wali/instructions", {
     method: "POST",
     token,
-    body: fd,
+    body: JSON.stringify(body),
   });
 }
 
@@ -1938,6 +1975,8 @@ export function createWaliRapportComment(
   });
 }
 
+export type { UploadOptions, UploadProgress } from "./utils/uploadFile";
+
 export type GuideVideoAudience =
   | "general"
   | "ADMIN"
@@ -1974,16 +2013,26 @@ export function listGuideVideos(
 
 export function createGuideVideo(
   token: string,
-  file: File,
   body: Record<string, unknown>,
+  file?: File | null,
+  opts: UploadOptions = {},
 ) {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("payload", JSON.stringify(body));
+  if (file) {
+    return uploadFormData<{ video: any }>(
+      "/admin/guide-videos",
+      () => {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("payload", JSON.stringify(body));
+        return fd;
+      },
+      { ...opts, token, method: "POST" },
+    );
+  }
   return request<{ video: any }>("/admin/guide-videos", {
     method: "POST",
     token,
-    body: fd,
+    body: JSON.stringify(body),
   });
 }
 
@@ -1992,16 +2041,19 @@ export function patchGuideVideo(
   id: number,
   body: Record<string, unknown>,
   file?: File | null,
+  opts: UploadOptions = {},
 ) {
   if (file) {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("payload", JSON.stringify(body));
-    return request<{ video: any }>(`/admin/guide-videos/${id}`, {
-      method: "PATCH",
-      token,
-      body: fd,
-    });
+    return uploadFormData<{ video: any }>(
+      `/admin/guide-videos/${id}`,
+      () => {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("payload", JSON.stringify(body));
+        return fd;
+      },
+      { ...opts, token, method: "PATCH" },
+    );
   }
   return request<{ video: any }>(`/admin/guide-videos/${id}`, {
     method: "PATCH",

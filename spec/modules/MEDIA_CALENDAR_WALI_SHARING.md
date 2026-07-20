@@ -122,8 +122,8 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 
 | Method | Path | Role |
 | ------ | ---- | ---- |
-| POST | `/office/rapports/:id/uploads` | Office upload (multipart) |
-| POST | `/wali/uploads` | Wali upload for broadcast |
+| POST | `/office/rapports/:id/uploads` | Office upload (multipart `file`) |
+| POST | `/wali/uploads` | Wali pre-upload (multipart `file`) → `{ file }` for broadcast/instruction create with `uploaded_file_id` / `uploaded_file_ids` |
 | GET/PATCH | `/office/rapports/:id/calendar-events` | List / replace events |
 | GET | `/wali/calendar` | Events in date range |
 | GET | `/wali/rapports/:id/views` | Who viewed rapport |

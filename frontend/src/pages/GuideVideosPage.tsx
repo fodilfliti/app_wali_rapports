@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
-import { PageLoading } from '../components/PageLoading'
 import { TablePagination } from '../components/TablePagination'
+import { QueryListShell } from '../components/QueryListShell'
 import { FieldErrorText } from '../components/FieldErrorText'
 import { FormErrorBlock } from '../components/FormErrorBlock'
+import { UploadProgressBar } from '../components/UploadProgressBar'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { guideVideoFormSchema } from '../validation/schemas/forms'
 import { useZodForm } from '../validation/useZodForm'
 import { bilingualPairForSave, pickBilingualText } from '../utils/bilingual'
-import { fileUrl, formatBytes, MEDIA_MAX_VIDEO_BYTES } from '../utils/media'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { useGuideVideosListQuery } from '../hooks/queries/useListQueries'
+import {
+  fileUrl,
+  formatBytes,
+  MEDIA_MAX_VIDEO_BYTES,
+  MediaUploadError,
+  prepareFileForUpload,
+  type MediaFile,
+} from '../utils/media'
 
 type Audience = api.GuideVideoAudience
 type ListRole = api.GuideVideoListRole
@@ -58,49 +68,49 @@ function audienceLabelKey(audience: Audience): string {
 export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const form = useZodForm(guideVideoFormSchema)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
   const [audience, setAudience] = useState<Audience>('general')
-  const [rows, setRows] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
+  const listQuery = useGuideVideosListQuery(token, listRole, { page, pageSize: 20, audience })
+  const rows = listQuery.data?.videos ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
   const [saving, setSaving] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [fields, setFields] = useState<FormFields>(EMPTY_FORM)
-  const [file, setFile] = useState<File | null>(null)
+  const [uploadedFile, setUploadedFile] = useState<MediaFile | null>(null)
+  const [existingFile, setExistingFile] = useState<MediaFile | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [playing, setPlaying] = useState<any | null>(null)
 
   const tabs = audienceTabs(canManage || listRole === 'admin')
   const locale = i18n.language === 'fr' ? 'fr' : 'ar'
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await api.listGuideVideos(token, listRole, {
-        page,
-        pageSize: 20,
-        audience,
-      })
-      setRows(res.videos)
-      setTotal(res.total)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, listRole, page, audience, snack, t])
+  useEffect(() => {
+    setPage(1)
+  }, [audience])
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [listQuery.isError, snack, t])
 
   function openCreate() {
     setEditId(null)
     setFields({ ...EMPTY_FORM, audience })
-    setFile(null)
+    setUploadedFile(null)
+    setExistingFile(null)
+    setUploadError(null)
+    setUploadPercent(0)
     form.clearErrors()
     setModalOpen(true)
   }
@@ -115,29 +125,56 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
       audience: row.audience,
       is_new: Boolean(row.is_new),
     })
-    setFile(null)
+    setUploadedFile(null)
+    setExistingFile(row.file || null)
+    setUploadError(null)
+    setUploadPercent(0)
     form.clearErrors()
     setModalOpen(true)
   }
 
+  async function handleVideoPick(raw: File | null) {
+    if (!raw) return
+    setUploadError(null)
+    if (!raw.type.startsWith('video/')) {
+      setUploadError(t('guideVideoFileRequired'))
+      return
+    }
+    try {
+      setCompressing(true)
+      const prepared = await prepareFileForUpload(raw, { onCompressing: () => setCompressing(true) })
+      setCompressing(false)
+      setUploading(true)
+      setUploadPercent(0)
+      const res = await api.uploadAdminFile(token, prepared, {
+        onProgress: (p) => setUploadPercent(p.percent),
+      })
+      setUploadedFile(res.file)
+      setUploadPercent(100)
+    } catch (e) {
+      if (e instanceof MediaUploadError) {
+        setUploadError(t(e.key, e.params))
+      } else {
+        setUploadError(t('mediaUploadFailed'))
+      }
+    } finally {
+      setUploading(false)
+      setCompressing(false)
+    }
+  }
+
   async function save() {
     if (!form.validate(fields, t, ['title_ar', 'title_fr', 'audience'])) return
-    if (!editId && !file) {
+    const fileReady = uploadedFile || (!editId ? null : existingFile)
+    if (!fileReady) {
       snack.show(t('guideVideoFileRequired'), 'error')
       return
     }
-    if (file && file.size > MEDIA_MAX_VIDEO_BYTES) {
-      snack.show(t('mediaFileTooLarge', { max: formatBytes(MEDIA_MAX_VIDEO_BYTES) }), 'error')
-      return
-    }
-    if (file && !file.type.startsWith('video/')) {
-      snack.show(t('guideVideoFileRequired'), 'error')
-      return
-    }
+    if (uploading || compressing) return
 
     const titles = bilingualPairForSave(fields.title_ar, fields.title_fr)
     const descs = bilingualPairForSave(fields.description_ar, fields.description_fr)
-    const body = {
+    const body: Record<string, unknown> = {
       title_ar: titles.ar,
       title_fr: titles.fr,
       description_ar: descs.ar || null,
@@ -145,18 +182,19 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
       audience: fields.audience,
       is_new: fields.is_new,
     }
+    if (uploadedFile) body.uploaded_file_id = Number(uploadedFile.id)
 
     setSaving(true)
     try {
       if (editId) {
-        await api.patchGuideVideo(token, editId, body, file)
+        await api.patchGuideVideo(token, editId, body)
         snack.show(t('done'), 'success')
       } else {
-        await api.createGuideVideo(token, file!, body)
+        await api.createGuideVideo(token, body)
         snack.show(t('done'), 'success')
       }
       setModalOpen(false)
-      await load()
+      await invalidate({ guideVideos: true })
     } catch (e: any) {
       snack.show(e?.message === 'bilingualLabelRequired' ? t('bilingualLabelRequired') : t('errorGeneric'), 'error')
     } finally {
@@ -169,7 +207,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
     try {
       await api.deleteGuideVideo(token, id)
       snack.show(t('done'), 'success')
-      await load()
+      await invalidate({ guideVideos: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -178,7 +216,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
   async function toggleNew(row: any) {
     try {
       await api.patchGuideVideo(token, row.id, { is_new: !row.is_new })
-      await load()
+      await invalidate({ guideVideos: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -191,6 +229,9 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
     if (el.requestFullscreen) el.requestFullscreen()
     else if (anyEl.webkitRequestFullscreen) anyEl.webkitRequestFullscreen()
   }
+
+  const displayFile = uploadedFile || existingFile
+  const fileBusy = uploading || compressing
 
   return (
     <div className="page">
@@ -224,9 +265,8 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
         ))}
       </div>
 
-      {loading ? (
-        <PageLoading />
-      ) : rows.length === 0 ? (
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
+      {rows.length === 0 && !isInitialLoading ? (
         <p className="muted">{t('guideVideosEmpty')}</p>
       ) : (
         <div className="guideVideoGrid">
@@ -291,12 +331,8 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
         </div>
       )}
 
-      <TablePagination
-        page={page}
-        pageSize={20}
-        total={total}
-        onPageChange={setPage}
-      />
+      <TablePagination page={page} pageSize={20} total={total} onPageChange={setPage} />
+      </QueryListShell>
 
       {playing ? (
         <div className="modalOverlay guideVideoPlayerOverlay" onClick={() => setPlaying(null)}>
@@ -334,6 +370,35 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
         <div className="modalOverlay" onClick={() => setModalOpen(false)}>
           <div className="modalCard guideVideoFormCard" onClick={(e) => e.stopPropagation()}>
             <h2>{editId ? t('guideVideoEdit') : t('guideVideoUpload')}</h2>
+            <label>
+              {editId ? t('guideVideoReplaceFile') : t('guideVideoFile')}
+              <input
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime"
+                disabled={fileBusy || saving}
+                onChange={(e) => {
+                  void handleVideoPick(e.target.files?.[0] || null)
+                  e.target.value = ''
+                }}
+              />
+              <span className="muted small">
+                {t('guideVideoFileHint', { max: formatBytes(MEDIA_MAX_VIDEO_BYTES) })}
+              </span>
+              {displayFile ? (
+                <p className="muted small">
+                  {displayFile.original_name}
+                  {displayFile.size_bytes ? ` · ${formatBytes(displayFile.size_bytes)}` : ''}
+                </p>
+              ) : null}
+              {compressing ? <p className="muted small">{t('mediaCompressing')}</p> : null}
+              {uploading && !compressing ? (
+                <UploadProgressBar
+                  percent={uploadPercent}
+                  label={t('mediaUploadProgress', { percent: uploadPercent })}
+                />
+              ) : null}
+              {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
+            </label>
             <label>
               {t('guideVideoTitleAr')}
               <input
@@ -399,20 +464,16 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
               />
               <span>{t('guideVideoMarkNew')}</span>
             </label>
-            <label>
-              {editId ? t('guideVideoReplaceFile') : t('guideVideoFile')}
-              <input
-                type="file"
-                accept="video/mp4,video/webm,video/quicktime"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-              />
-              <span className="muted small">
-                {t('guideVideoFileHint', { max: formatBytes(MEDIA_MAX_VIDEO_BYTES) })}
-              </span>
-            </label>
             <FormErrorBlock message={form.formError} />
             <div className="modalActions">
-              <BusyButton type="button" className="btn btn-primary" busy={saving} busyLabel={t('saving')} onClick={save}>
+              <BusyButton
+                type="button"
+                className="btn btn-primary"
+                busy={saving}
+                busyLabel={t('saving')}
+                disabled={fileBusy || (!uploadedFile && !existingFile)}
+                onClick={save}
+              >
                 {t('save')}
               </BusyButton>
               <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)} disabled={saving}>

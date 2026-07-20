@@ -6,7 +6,7 @@ const {
   User,
   Notification
 } = require("../../db");
-const { saveUploadedBuffer, serializeFile } = require("../../services/uploadService");
+const { saveUploadedFile, serializeFile, multerFileInput } = require("../../services/uploadService");
 const { audit } = require("../../services/audit");
 const { Op } = require("sequelize");
 const { notifyUsers } = require("../notifications/notifyService");
@@ -80,20 +80,40 @@ async function createInstruction({ files = [], body }, actor, req) {
   });
 
   const fileRows = [];
+  const preUploadedIds = Array.isArray(body.uploaded_file_ids)
+    ? body.uploaded_file_ids.map(Number).filter(Boolean)
+    : [];
+
+  for (let idx = 0; idx < preUploadedIds.length; idx++) {
+    const fileId = preUploadedIds[idx];
+    const fileRow = await UploadedFile.findByPk(fileId);
+    if (!fileRow || fileRow.uploaded_by_user_id !== actor.id) {
+      const err = new Error("File not found");
+      err.status = 400;
+      throw err;
+    }
+    const link = await WaliInstructionFile.create({
+      instruction_id: instruction.id,
+      uploaded_file_id: fileRow.id,
+      sort_order: idx,
+    });
+    fileRows.push(link);
+  }
+
   for (let idx = 0; idx < files.length; idx++) {
     const f = files[idx];
-    const fileRow = await saveUploadedBuffer({
-      buffer: f.buffer,
-      originalName: f.originalname,
-      mimeType: f.mimetype,
+    const input = multerFileInput(f);
+    const fileRow = await saveUploadedFile({
+      ...input,
       rapportId: null,
       actor,
-      req
+      req,
+      startedAt: req.uploadStartedAt,
     });
     const link = await WaliInstructionFile.create({
       instruction_id: instruction.id,
       uploaded_file_id: fileRow.id,
-      sort_order: idx
+      sort_order: preUploadedIds.length + idx,
     });
     fileRows.push(link);
   }

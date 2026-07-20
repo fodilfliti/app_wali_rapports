@@ -281,7 +281,31 @@ Shared classes live in `frontend/src/App.css` (`.btn`, `.btn-sm`, `.btn-lg` + co
   - Dense list rows use `btn-sm` for the whole cell.
 
 - **Async actions**: show loading and disable primary controls while pending (`BusyButton`, `PageLoading`, confirm-modal `loading`); snackbar on failure — no silent `.catch`. List/page fetch must show `PageLoading` before an empty “no results” state.
-- **Media upload** (rich text / media blocks): show `mediaUploading` and disable insert controls until the file is inserted.
+- **Media upload** (rich text / media blocks / guide videos / Wali shares): disable **media pick** controls while a file is in flight (rich-text formatting toolbar stays usable). States:
+  - `mediaCompressing` — client-side image resize/WebP (or optional video prep when `ENABLE_CLIENT_VIDEO_TRANSCODE`).
+  - `mediaUploading` — bytes transferring; show **byte-level percentage** (`mediaUploadProgress`, e.g. `45%`) via XHR progress — required for inline editor image/video inserts, not file-count only.
+  - Controls re-enable after success, failure, or upload timeout/abort (failed uploads must not leave pick buttons disabled).
+- **Client image compression:** all image upload entry points call `prepareFileForUpload` (max 1920px, WebP/JPEG ladder, 10 MB cap) before POST — attachments, rich-text inline images, Wali instruction/broadcast images.
+- **Multi-file:** parallel upload queue (concurrency 3) for rich-text multi-select and instruction attachments.
+
+#### Client data cache (TanStack Query)
+
+List and hub-badge fetches use **TanStack Query** with **stale-while-revalidate** (`frontend/src/query/`).
+
+- **In-memory only** — never persist query cache to `localStorage` or IndexedDB (government data; shared-device risk).
+- **Clear on logout / session expiry / password change** — `queryClient.clear()` alongside token removal.
+- **First visit** to a list: show `PageLoading` until the first fetch completes (no empty “no results” flash).
+- **Return visit** (cached data exists): show the **last list immediately**; show a subtle **updating** indicator (`QueryListShell` / `ListRefreshIndicator`) while a background refetch runs — do **not** replace visible rows with a full-page spinner.
+- **Refetch failure** with cached data: keep showing the cache; snackbar the error.
+- **After mutations** (submit, respond, finish, mark read, etc.): call `invalidateAppQueries` for affected keys (rapports, hub counts, service trees) — do not rely on stale cache for status badges.
+- **Per-data policies** (defaults in `queryClient.ts` / query hooks):
+  - Hub badge counts: short stale window, refetch on window focus.
+  - Rapport inbox lists: short stale window, `keepPreviousData` for pagination/filter changes.
+  - Service trees / office-user navigation: longer stale window; background refresh on focus.
+  - Calendar week view: keyed by week anchor; cache only visited weeks.
+  - Admin reference lists (communes, dairas, directions): moderate stale window; invalidate on admin CRUD.
+- **Out of scope:** file uploads, export preview blobs, rich-text editor loads — remain imperative (action-scoped, not navigation lists).
+- **i18n:** new cache UX strings (e.g. updating indicator) — Arabic + French only.
 
 ### App Shell & Navigation
 

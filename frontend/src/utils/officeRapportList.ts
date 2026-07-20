@@ -38,7 +38,7 @@ export function rapportStatusLabel(status: string, t: (k: string) => string) {
 export async function markOfficeRapportOpened(token: string, rapportId: number) {
   try {
     await api.markRapportNotificationsRead(token, rapportId)
-    notifyHubCountsRefresh()
+    await notifyHubCountsRefresh()
   } catch {
     /* ignore */
   }

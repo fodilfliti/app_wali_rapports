@@ -79,7 +79,8 @@ Same list shape as admin GET, but **exclude `audience = ADMIN`** unless caller r
 - **Tabs:** Général, Bureau, Chef, Wali; Admin tab only if current user is admin.
 - **Cards:** title, optional description, « جديد » / « Nouveau » when `is_new`.
 - **Player:** near-fullscreen modal + native `<video controls>` and browser fullscreen; URLs via `fileUrl(token, file)`.
-- **Admin form:** upload, titles, descriptions (FR gated by `ENABLE_FR_VALUE_INPUTS`), audience select, `is_new` checkbox, edit/delete.
+- **Admin form:** upload-on-pick with byte progress (`mediaUploadProgress`); optional client video prep when `ENABLE_CLIENT_VIDEO_TRANSCODE`. Titles, descriptions (FR gated by `ENABLE_FR_VALUE_INPUTS`), audience select, `is_new` checkbox, edit/delete. Save sends metadata only when file already uploaded via `POST /admin/uploads` or multipart create/patch.
+- **Pre-upload API:** `POST /admin/uploads` (multipart `file`) → `{ file }` for guide-video create/patch with `uploaded_file_id` in payload.
 - **Validation:** Zod client `guideVideoFormSchema` in `frontend/src/validation/schemas/forms.ts`; server `guideVideoCreateSchema` / `guideVideoPatchSchema` in `backend/src/validation/schemas/adminCrud.js` (payload parsed from multipart).
 
 ### Audit events (minimum)

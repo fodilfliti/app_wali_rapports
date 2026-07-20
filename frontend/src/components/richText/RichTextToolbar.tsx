@@ -9,7 +9,8 @@ type Props = {
   onPickImages: () => void
   onPickVideos: () => void
   onInsertSchemaTable?: () => void
-  uploading?: boolean
+  /** Disables only image/video pick while a media upload is in flight. */
+  mediaBusy?: boolean
 }
 
 function ToolbarBtn({
@@ -44,7 +45,7 @@ export function RichTextToolbar({
   onPickImages,
   onPickVideos,
   onInsertSchemaTable,
-  uploading = false,
+  mediaBusy = false,
 }: Props) {
   const { t } = useTranslation()
   const [, setSelectionTick] = useState(0)
@@ -63,11 +64,10 @@ export function RichTextToolbar({
     editor.isActive('image') || editor.isActive('video') || editor.isActive('schemaTable')
 
   return (
-    <div className="tiptapToolbar" role="toolbar" aria-busy={uploading || undefined}>
+    <div className="tiptapToolbar" role="toolbar" aria-busy={mediaBusy || undefined}>
       <ToolbarBtn
         title={t('richTextBold')}
         active={editor.isActive('bold')}
-        disabled={uploading}
         onClick={() => editor.chain().focus().toggleBold().run()}
       >
         <strong>B</strong>
@@ -75,7 +75,6 @@ export function RichTextToolbar({
       <ToolbarBtn
         title={t('richTextItalic')}
         active={editor.isActive('italic')}
-        disabled={uploading}
         onClick={() => editor.chain().focus().toggleItalic().run()}
       >
         <em>I</em>
@@ -83,7 +82,6 @@ export function RichTextToolbar({
       <ToolbarBtn
         title={t('richTextUnderline')}
         active={editor.isActive('underline')}
-        disabled={uploading}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
       >
         <span className="tiptapUnderline">U</span>
@@ -92,7 +90,6 @@ export function RichTextToolbar({
       <ToolbarBtn
         title={t('richTextHeading1')}
         active={editor.isActive('heading', { level: 1 })}
-        disabled={uploading}
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
       >
         H1
@@ -192,10 +189,10 @@ export function RichTextToolbar({
           🗑
         </ToolbarBtn>
       ) : null}
-      <ToolbarBtn title={t('richTextInsertImage')} onClick={onPickImages} disabled={uploading}>
+      <ToolbarBtn title={t('richTextInsertImage')} onClick={onPickImages} disabled={mediaBusy}>
         🖼
       </ToolbarBtn>
-      <ToolbarBtn title={t('richTextInsertVideo')} onClick={onPickVideos} disabled={uploading}>
+      <ToolbarBtn title={t('richTextInsertVideo')} onClick={onPickVideos} disabled={mediaBusy}>
         ▶
       </ToolbarBtn>
       <ToolbarBtn title={t('richTextHorizontalRule')} onClick={() => editor.chain().focus().setHorizontalRule().run()}>

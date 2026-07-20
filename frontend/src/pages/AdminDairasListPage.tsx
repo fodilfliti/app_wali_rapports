@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
-import { PageLoading } from '../components/PageLoading'
+import { QueryListShell } from '../components/QueryListShell'
 import { TablePagination } from '../components/TablePagination'
 import { FieldErrorText } from '../components/FieldErrorText'
 import { FormErrorBlock } from '../components/FormErrorBlock'
@@ -13,46 +13,41 @@ import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { dairaFormSchema } from '../validation/schemas/forms'
 import { useZodForm } from '../validation/useZodForm'
+import { useAdminDairasQuery } from '../hooks/queries/useListQueries'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
 
 type Props = { token: string }
 
 export function AdminDairasListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const form = useZodForm(dairaFormSchema)
-  const [rows, setRows] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [q, setQ] = useState('')
   const [showHidden, setShowHidden] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [fields, setFields] = useState({ name_ar: '', name_fr: '', code: '' })
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [hideTarget, setHideTarget] = useState<any | null>(null)
   const [hideBusy, setHideBusy] = useState(false)
+
+  const listQuery = useAdminDairasQuery(token, { page, q, hidden_only: showHidden })
+  const rows = listQuery.data?.dairas ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   useEffect(() => {
     setPage(1)
   }, [showHidden, q])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await api.listDairas(token, { page, q, hidden_only: showHidden })
-      setRows(res.dairas)
-      setTotal(res.total)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, page, q, showHidden, snack, t])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [listQuery.isError, snack, t])
 
   function openCreate() {
     setEditId(null)
@@ -75,7 +70,7 @@ export function AdminDairasListPage({ token }: Props) {
       if (editId) await api.patchDaira(token, editId, fields)
       else await api.createDaira(token, fields)
       setModalOpen(false)
-      load()
+      await invalidate({ adminRef: true })
     } catch (e) {
       if (e instanceof api.ApiError && e.fieldErrors) form.setFieldErrorsFromApi(e.fieldErrors)
       snack.show(t('errorGeneric'), 'error')
@@ -91,7 +86,7 @@ export function AdminDairasListPage({ token }: Props) {
       await api.hideDaira(token, hideTarget.id)
       snack.show(t('orgRefHideDone'), 'success')
       setHideTarget(null)
-      load()
+      await invalidate({ adminRef: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -103,7 +98,7 @@ export function AdminDairasListPage({ token }: Props) {
     try {
       await api.restoreDaira(token, row.id)
       snack.show(t('orgRefRestoreDone'), 'success')
-      load()
+      await invalidate({ adminRef: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -118,7 +113,7 @@ export function AdminDairasListPage({ token }: Props) {
             {t('createDaira')}
           </button>
         ) : null}
-        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
+        <button type="button" className="btn btn-secondary" onClick={() => listQuery.refetch()} disabled={listQuery.isFetching}>
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
@@ -140,11 +135,11 @@ export function AdminDairasListPage({ token }: Props) {
           placeholder={t('search')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && load()}
+          onKeyDown={(e) => e.key === 'Enter' && setPage(1)}
         />
       </div>
 
-      {loading ? <PageLoading /> : null}
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
 
       <div className="card tableWrap">
         <table>
@@ -186,7 +181,7 @@ export function AdminDairasListPage({ token }: Props) {
                 </td>
               </tr>
             ))}
-            {!loading && !rows.length ? (
+            {!isInitialLoading && !rows.length ? (
               <tr>
                 <td colSpan={ENABLE_FR_VALUE_INPUTS ? 4 : 3}>{t('noResults')}</td>
               </tr>
@@ -196,6 +191,7 @@ export function AdminDairasListPage({ token }: Props) {
       </div>
 
       <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
 
       <ConfirmActionModal
         open={!!hideTarget}

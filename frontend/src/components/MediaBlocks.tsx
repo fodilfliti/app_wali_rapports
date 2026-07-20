@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImageLightbox, useImageLightbox } from './ImageLightbox'
+import { UploadProgressBar } from './UploadProgressBar'
 import type { MediaFile, MediaRow } from '../utils/media'
 import {
   MEDIA_MAX_ATTACHMENTS,
@@ -15,6 +16,7 @@ import {
   mediaRowsFromFileIds,
   prepareFileForUpload,
 } from '../utils/media'
+import type { UploadProgress } from '../utils/uploadFile'
 
 type ViewProps = {
   rows: MediaRow[]
@@ -123,7 +125,7 @@ export function MediaRowsView({ rows, files, token }: ViewProps) {
 type EditorProps = ViewProps & {
   editable: boolean
   onChange: (rows: MediaRow[]) => void
-  onUpload: (file: File) => Promise<MediaFile>
+  onUpload: (file: File, opts?: { onProgress?: (p: UploadProgress) => void }) => Promise<MediaFile>
   maxAttachments?: number
 }
 
@@ -139,6 +141,8 @@ export function MediaRowsEditor({
   const { t } = useTranslation()
   const lightbox = useImageLightbox()
   const [uploading, setUploading] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const [uploadPercent, setUploadPercent] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const fileIds = flattenMediaRows(rows)
 
@@ -149,9 +153,15 @@ export function MediaRowsEditor({
   async function handleAdd(raw: File) {
     setError(null)
     try {
-      const prepared = await prepareFileForUpload(raw)
+      setCompressing(true)
+      const prepared = await prepareFileForUpload(raw, { onCompressing: () => setCompressing(true) })
+      setCompressing(false)
       setUploading(true)
-      const uploaded = await onUpload(prepared)
+      setUploadPercent(0)
+      const uploaded = await onUpload(prepared, {
+        onProgress: (p) => setUploadPercent(p.percent),
+      })
+      setUploadPercent(100)
       onChange(mediaRowsFromFileIds([...fileIds, uploaded.id]))
     } catch (e) {
       if (e instanceof MediaUploadError) {
@@ -161,8 +171,11 @@ export function MediaRowsEditor({
       }
     } finally {
       setUploading(false)
+      setCompressing(false)
     }
   }
+
+  const busy = uploading || compressing
 
   return (
     <>
@@ -177,6 +190,10 @@ export function MediaRowsEditor({
           })}
         </p>
         {error ? <p className="formErrorBlock">{error}</p> : null}
+        {compressing ? <p className="muted small">{t('mediaCompressing')}</p> : null}
+        {uploading && !compressing ? (
+          <UploadProgressBar percent={uploadPercent} label={t('mediaUploadProgress', { percent: uploadPercent })} />
+        ) : null}
         <div className="mediaAttachmentGrid">
           {fileIds.map((id) => {
             const file = files[id]
@@ -199,11 +216,11 @@ export function MediaRowsEditor({
             )
           })}
           {editable && fileIds.length < maxAttachments ? (
-            <label className={`mediaCell mediaUploadSlot${uploading ? ' isUploading' : ''}`}>
-              <span>{uploading ? t('mediaUploading') : t('addMedia')}</span>
+            <label className={`mediaCell mediaUploadSlot${busy ? ' isUploading' : ''}`}>
+              <span>{busy ? (compressing ? t('mediaCompressing') : t('mediaUploading')) : t('addMedia')}</span>
               <input
                 type="file"
-                disabled={uploading}
+                disabled={busy}
                 onChange={(e) => {
                   const f = e.target.files?.[0]
                   if (f) handleAdd(f)

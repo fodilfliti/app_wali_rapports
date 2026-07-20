@@ -147,7 +147,8 @@ const guideVideoCreateSchema = refineBilingualPair(
     description_fr: z.string().trim().max(5000, V.maxLength).nullable().optional(),
     audience: guideAudienceEnum,
     is_new: z.boolean().optional().default(false),
-    sort_order: z.number().int().min(0).max(99999).optional().default(0)
+    sort_order: z.coerce.number().int().min(0).max(99999).optional().default(0),
+    uploaded_file_id: z.coerce.number().int().positive().optional()
   }),
   "title_ar",
   "title_fr"
@@ -161,7 +162,8 @@ const guideVideoPatchSchema = z
     description_fr: z.string().trim().max(5000, V.maxLength).nullable().optional(),
     audience: guideAudienceEnum.optional(),
     is_new: z.boolean().optional(),
-    sort_order: z.number().int().min(0).max(99999).optional()
+    sort_order: z.coerce.number().int().min(0).max(99999).optional(),
+    uploaded_file_id: z.coerce.number().int().positive().optional()
   })
   .superRefine((data, ctx) => {
     if (data.title_ar !== undefined || data.title_fr !== undefined) {

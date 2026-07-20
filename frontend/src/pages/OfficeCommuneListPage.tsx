@@ -227,7 +227,7 @@ export function OfficeCommuneListPage({ token }: Props) {
       const rid = await ensureCommuneRapportId();
       await patchRapportTitle(token, rid, title);
       await api.submitRapport(token, rid);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("submitRapport"), "success");
       loadWorkspace();
     } catch (e) {
@@ -253,7 +253,7 @@ export function OfficeCommuneListPage({ token }: Props) {
     setFinishing(true);
     try {
       await api.finishRapport(token, workspace.rapport.id);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("finishRapportDone"), "success");
       navigate(
         rapportTypeId
@@ -272,7 +272,7 @@ export function OfficeCommuneListPage({ token }: Props) {
     setReturningToDraft(true);
     try {
       await api.returnRapportToDraft(token, workspace.rapport.id);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("returnToDraftDone"), "success");
       loadWorkspace();
     } catch {

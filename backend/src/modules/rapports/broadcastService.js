@@ -7,7 +7,7 @@ const {
   User,
   Notification
 } = require("../../db");
-const { saveUploadedBuffer, serializeFile } = require("../../services/uploadService");
+const { saveUploadedFile, serializeFile, multerFileInput } = require("../../services/uploadService");
 const { audit } = require("../../services/audit");
 const { hasBilingualText } = require("../../validation/bilingual");
 const { notifyUsers } = require("../notifications/notifyService");
@@ -63,15 +63,29 @@ async function resolveRecipientIds(body) {
   return users.map((u) => u.id);
 }
 
-async function createBroadcast({ fileBuffer, originalName, mimeType, body }, actor, req) {
-  const fileRow = await saveUploadedBuffer({
-    buffer: fileBuffer,
-    originalName,
-    mimeType,
-    rapportId: null,
-    actor,
-    req
-  });
+async function createBroadcast({ fileInput, body }, actor, req) {
+  let fileRow;
+  if (body.uploaded_file_id) {
+    fileRow = await UploadedFile.findByPk(Number(body.uploaded_file_id));
+    if (!fileRow || fileRow.uploaded_by_user_id !== actor.id) {
+      const err = new Error("File not found");
+      err.status = 400;
+      throw err;
+    }
+    fileRow = serializeFile(fileRow);
+  } else if (fileInput?.sourcePath || fileInput?.buffer) {
+    fileRow = await saveUploadedFile({
+      ...fileInput,
+      rapportId: null,
+      actor,
+      req,
+      startedAt: req.uploadStartedAt,
+    });
+  } else {
+    const err = new Error("File required");
+    err.status = 400;
+    throw err;
+  }
 
   const recipientIds = await resolveRecipientIds(body);
   if (!recipientIds.length) {

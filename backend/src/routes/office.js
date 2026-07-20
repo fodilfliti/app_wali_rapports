@@ -95,7 +95,9 @@ const calendarEventService = require("../modules/rapports/calendarEventService")
 const broadcastService = require("../modules/rapports/broadcastService");
 const guideVideoService = require("../modules/guideVideos/guideVideoService");
 const {
-  saveUploadedBuffer,
+  saveUploadedFile,
+  multerFileInput,
+  cleanupTempFile,
   enrichDataJsonWithFiles,
 } = require("../services/uploadService");
 const { generateRapportPdf } = require("../services/rapportPdfService");
@@ -911,18 +913,20 @@ officeRouter.post(
   async (req, res, next) => {
     try {
       await assertRapportAccess(req.user, req.params.id, "manage");
-      if (!req.file?.buffer)
+      const input = multerFileInput(req.file);
+      if (!input?.sourcePath && !input?.buffer)
         return res.status(400).json({ error: "File required" });
-      const file = await saveUploadedBuffer({
-        buffer: req.file.buffer,
-        originalName: req.file.originalname,
-        mimeType: req.file.mimetype,
+      const file = await saveUploadedFile({
+        ...input,
         rapportId: Number(req.params.id),
         actor: req.user,
         req,
+        startedAt: req.uploadStartedAt,
       });
       res.status(201).json({ file });
     } catch (e) {
+      const input = multerFileInput(req.file);
+      if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
       if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
       if (e.status === 413) return res.status(413).json({ error: e.message });
       next(e);

@@ -8,7 +8,12 @@ const {
 const { requirePermission } = require("../middleware/requirePermission");
 const { validateBody } = require("../middleware/validateBody");
 const { waliRespondSchema, rapportCommentSchema } = require("../validation/schemas/adminCrud");
-const { singleUpload } = require("../middleware/upload");
+const { singleUpload, optionalSingleUpload, optionalMultiUpload } = require("../middleware/upload");
+const {
+  saveUploadedFile,
+  multerFileInput,
+  cleanupTempFile,
+} = require("../services/uploadService");
 const rapportService = require("../modules/rapports/rapportService");
 const navigationService = require("../modules/rapports/navigationService");
 const calendarEventService = require("../modules/rapports/calendarEventService");
@@ -361,13 +366,39 @@ waliRouter.get(
 );
 
 waliRouter.post(
-  "/broadcasts",
+  "/uploads",
   requirePermission("rapports.inbox.respond", "manage"),
   singleUpload("file"),
   async (req, res, next) => {
     try {
-      if (!req.file?.buffer)
+      const input = multerFileInput(req.file);
+      if (!input?.sourcePath && !input?.buffer) {
         return res.status(400).json({ error: "File required" });
+      }
+      const file = await saveUploadedFile({
+        ...input,
+        rapportId: null,
+        actor: req.user,
+        req,
+        startedAt: req.uploadStartedAt,
+      });
+      res.status(201).json({ file });
+    } catch (e) {
+      const input = multerFileInput(req.file);
+      if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
+      if (e.status === 413) return res.status(413).json({ error: e.message });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+waliRouter.post(
+  "/broadcasts",
+  requirePermission("rapports.inbox.respond", "manage"),
+  optionalSingleUpload("file"),
+  async (req, res, next) => {
+    try {
       let body = {};
       try {
         body = req.body.payload ? JSON.parse(req.body.payload) : req.body;
@@ -376,9 +407,7 @@ waliRouter.post(
       }
       const broadcast = await broadcastService.createBroadcast(
         {
-          fileBuffer: req.file.buffer,
-          originalName: req.file.originalname,
-          mimeType: req.file.mimetype,
+          fileInput: multerFileInput(req.file),
           body,
         },
         req.user,
@@ -386,7 +415,10 @@ waliRouter.post(
       );
       res.status(201).json({ broadcast });
     } catch (e) {
+      const input = multerFileInput(req.file);
+      if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
       if (e.status === 413) return res.status(413).json({ error: e.message });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
   },
@@ -470,7 +502,7 @@ waliRouter.get(
 waliRouter.post(
   "/instructions",
   requirePermission("rapports.inbox.respond", "manage"),
-  multiUpload("files", 10),
+  optionalMultiUpload("files", 10),
   async (req, res, next) => {
     try {
       let body = {};

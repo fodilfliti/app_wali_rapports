@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
@@ -18,16 +18,31 @@ import {
 } from '../utils/rapportNavigation'
 import { rapportStatusLabel } from '../utils/officeRapportList'
 import { waliInboxRowClass } from '../utils/waliInboxList'
-import { chefCanRespondFromList, type ReviewerMode, reviewerHubPath, reviewerOfficeUsersPath, reviewerRapportViewPath, reviewerUserServicesPath } from '../utils/reviewerMode'
+import {
+  chefCanRespondFromList,
+  type ReviewerMode,
+  reviewerHubPath,
+  reviewerOfficeUsersPath,
+  reviewerRapportViewPath,
+  reviewerUserServicesPath,
+} from '../utils/reviewerMode'
 import { waliCanRespondFromList } from '../utils/waliInboxList'
 import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
 import { WaliRespondModal } from '../components/WaliRespondModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
-import { notifyHubCountsRefresh, HUB_COUNTS_REFRESH_EVENT } from '../utils/hubCountsRefresh'
 import { backNavigationState, currentPath } from '../utils/navigationBack'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { findServiceNode, folderBackPath, serviceLabel } from '../utils/serviceTree'
-import { PageLoading } from '../components/PageLoading'
+import { QueryListShell } from '../components/QueryListShell'
+import { ListRefreshIndicator } from '../components/ListRefreshIndicator'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import {
+  useReviewerOfficeUsersQuery,
+  useReviewerRapportsListQuery,
+  useReviewerServiceHubQuery,
+  useReviewerUserServicesQuery,
+} from '../hooks/queries/useListQueries'
+import { useLocation } from 'react-router-dom'
 
 type Props = { token: string; reviewer?: ReviewerMode }
 
@@ -39,25 +54,25 @@ function respondApi(reviewer: ReviewerMode) {
   return reviewer === 'chef' ? api.chefRespond : api.waliRespond
 }
 
+function findServiceInTree(nodes: any[], serviceId: number): any {
+  for (const n of nodes) {
+    if (Number(n.id) === serviceId) return n
+    if (n.children?.length) {
+      const hit = findServiceInTree(n.children, serviceId)
+      if (hit) return hit
+    }
+  }
+  return null
+}
+
 export function WaliOfficeUsersPage({ token, reviewer = 'wali' }: Props) {
   const { t } = useTranslation()
-  const location = useLocation()
-  const [users, setUsers] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const hub = reviewerHubPath(reviewer)
-  const listUsers = reviewer === 'chef' ? api.listChefOfficeUsers : api.listWaliOfficeUsers
-
-  useEffect(() => {
-    listUsers(token).then((r) => setUsers(r.officeUsers)).catch(() => {})
-  }, [token, location.pathname, listUsers])
-
-  useEffect(() => {
-    const refresh = () => {
-      listUsers(token).then((r) => setUsers(r.officeUsers)).catch(() => {})
-    }
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-  }, [token, listUsers])
+  const usersQuery = useReviewerOfficeUsersQuery(token, reviewer)
+  const users = usersQuery.data ?? []
+  const isInitialLoading = usersQuery.isLoading && usersQuery.data === undefined
+  const isRefreshing = usersQuery.isFetching && !usersQuery.isLoading
 
   const pagedUsers = paginateSlice(users, page, DEFAULT_PAGE_SIZE)
 
@@ -67,49 +82,40 @@ export function WaliOfficeUsersPage({ token, reviewer = 'wali' }: Props) {
         <h1>{t('navOfficeUsers')}</h1>
         <BackButton to={hub} fallbackTo={hub} />
       </div>
-      <div className="hubGrid">
-        {pagedUsers.map((u) => (
-          <HubTile
-            key={u.id}
-            to={`${reviewerUserServicesPath(reviewer, u.id)}`}
-            icon="users"
-            title={u.name || u.username}
-            subtitle={u.job_title || undefined}
-            badge={
-              Number(u.pending_rapports_count) > 0 ? (
-                <HubCountBadge count={Number(u.pending_rapports_count)} />
-              ) : undefined
-            }
-          />
-        ))}
-        {!users.length ? <p className="muted">{t('noResults')}</p> : null}
-      </div>
-      <TablePagination page={page} total={users.length} onPageChange={setPage} />
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
+        <div className="hubGrid">
+          {pagedUsers.map((u) => (
+            <HubTile
+              key={u.id}
+              to={`${reviewerUserServicesPath(reviewer, u.id)}`}
+              icon="users"
+              title={u.name || u.username}
+              subtitle={u.job_title || undefined}
+              badge={
+                Number(u.pending_rapports_count) > 0 ? (
+                  <HubCountBadge count={Number(u.pending_rapports_count)} />
+                ) : undefined
+              }
+            />
+          ))}
+          {!users.length && !isInitialLoading ? <p className="muted">{t('noResults')}</p> : null}
+        </div>
+        <TablePagination page={page} total={users.length} onPageChange={setPage} />
+      </QueryListShell>
     </div>
   )
 }
 
 export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
   const { folderId } = useParams()
-  const location = useLocation()
   const fid = folderId ? Number(folderId) : undefined
   const { t, i18n } = useTranslation()
-  const [services, setServices] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const basePath = reviewerUserServicesPath(reviewer, userId)
-  const listServices = reviewer === 'chef' ? api.listChefUserServices : api.listWaliUserServices
-
-  useEffect(() => {
-    listServices(token, userId).then((r) => setServices(r.services)).catch(() => {})
-  }, [token, userId, location.pathname, listServices])
-
-  useEffect(() => {
-    const refresh = () => {
-      listServices(token, userId).then((r) => setServices(r.services)).catch(() => {})
-    }
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, refresh)
-  }, [token, userId, listServices])
+  const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer)
+  const services = servicesQuery.data ?? []
+  const isInitialLoading = servicesQuery.isLoading && servicesQuery.data === undefined
+  const isRefreshing = servicesQuery.isFetching && !servicesQuery.isLoading
 
   useEffect(() => {
     setPage(1)
@@ -127,27 +133,29 @@ export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props
         <h1>{pageTitle}</h1>
         <BackButton to={backTo} fallbackTo={backTo} />
       </div>
-      <div className="hubGrid hubGridServices">
-        {pagedItems.map((s: any) => {
-          const label = serviceLabel(s, i18n.language)
-          const to = s.is_folder ? `${basePath}/folder/${s.id}` : `${basePath}/${s.id}`
-          return (
-            <HubTile
-              key={s.id}
-              to={to}
-              icon={s.is_folder ? 'folder' : serviceHubIcon(s)}
-              title={label}
-              badge={
-                Number(s.action_count) > 0 ? (
-                  <HubCountBadge count={Number(s.action_count)} />
-                ) : undefined
-              }
-            />
-          )
-        })}
-      </div>
-      {!items.length ? <p className="muted">{t('noResults')}</p> : null}
-      <TablePagination page={page} total={items.length} onPageChange={setPage} />
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
+        <div className="hubGrid hubGridServices">
+          {pagedItems.map((s: any) => {
+            const label = serviceLabel(s, i18n.language)
+            const to = s.is_folder ? `${basePath}/folder/${s.id}` : `${basePath}/${s.id}`
+            return (
+              <HubTile
+                key={s.id}
+                to={to}
+                icon={s.is_folder ? 'folder' : serviceHubIcon(s)}
+                title={label}
+                badge={
+                  Number(s.action_count) > 0 ? (
+                    <HubCountBadge count={Number(s.action_count)} />
+                  ) : undefined
+                }
+              />
+            )
+          })}
+        </div>
+        {!items.length && !isInitialLoading ? <p className="muted">{t('noResults')}</p> : null}
+        <TablePagination page={page} total={items.length} onPageChange={setPage} />
+      </QueryListShell>
     </div>
   )
 }
@@ -155,29 +163,16 @@ export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props
 export function WaliServiceRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
   const { serviceId } = useParams()
   const sid = Number(serviceId)
-  const [hub, setHub] = useState<any>(null)
-  const loadHub = useCallback(() => {
-    if (!sid) return
-    const load =
-      reviewer === 'chef'
-        ? api.getChefServiceContentHub(token, userId, sid)
-        : api.getWaliServiceContentHub(token, userId, sid)
-    load.then(setHub).catch(() => {})
-  }, [token, userId, sid, reviewer])
+  const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer)
+  const hub = hubQuery.data
+  const isInitialLoading = hubQuery.isLoading && !hub
 
-  useEffect(() => {
-    loadHub()
-  }, [loadHub])
-
-  useEffect(() => {
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub)
-    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub)
-  }, [loadHub])
-
-  if (!hub?.service) {
+  if (isInitialLoading || !hub?.service) {
     return (
       <div className="page">
-        <PageLoading />
+        <QueryListShell isInitialLoading={isInitialLoading}>
+          <span />
+        </QueryListShell>
       </div>
     )
   }
@@ -199,30 +194,16 @@ export function WaliServiceKindRapportTypesPage({ token, userId, reviewer = 'wal
   const sid = Number(serviceId)
   const kind = contentKind || ''
   const { t } = useTranslation()
-  const [hub, setHub] = useState<any>(null)
+  const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer)
+  const hub = hubQuery.data
+  const isInitialLoading = hubQuery.isLoading && !hub
 
-  const loadHub = useCallback(() => {
-    if (!sid) return
-    const load =
-      reviewer === 'chef'
-        ? api.getChefServiceContentHub(token, userId, sid)
-        : api.getWaliServiceContentHub(token, userId, sid)
-    load.then(setHub).catch(() => {})
-  }, [token, userId, sid, reviewer])
-
-  useEffect(() => {
-    loadHub()
-  }, [loadHub])
-
-  useEffect(() => {
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub)
-    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub)
-  }, [loadHub])
-
-  if (!hub?.service) {
+  if (isInitialLoading || !hub?.service) {
     return (
       <div className="page">
-        <PageLoading />
+        <QueryListShell isInitialLoading={isInitialLoading}>
+          <span />
+        </QueryListShell>
       </div>
     )
   }
@@ -249,77 +230,65 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
   const navigate = useNavigate()
   const location = useLocation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const listPath = currentPath(location)
   const [respondId, setRespondId] = useState<number | null>(null)
-  const [service, setService] = useState<any>(null)
-  const [rapportType, setRapportType] = useState<RapportTypeNav | null>(null)
-  const [rows, setRows] = useState<any[]>([])
   const [listPage, setListPage] = useState(1)
-  const [listTotal, setListTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+
+  const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer)
+  const services = servicesQuery.data ?? []
+  const service = sid ? findServiceInTree(services, sid) : null
+  const rapportType =
+    (service?.rapportTypes || []).find((x: RapportTypeNav) => Number(x.id) === typeId) || null
+
+  const listQuery = useReviewerRapportsListQuery(token, reviewer, {
+    service_id: sid,
+    rapport_type_id: typeId,
+    office_user_id: userId,
+    page: listPage,
+    pageSize: DEFAULT_PAGE_SIZE,
+  })
+  const rows = listQuery.data?.rapports ?? []
+  const listTotal = Number(listQuery.data?.total ?? rows.length)
+  const isInitialLoading =
+    (servicesQuery.isLoading && servicesQuery.data === undefined) ||
+    (listQuery.isLoading && !listQuery.data)
+  const isRefreshing =
+    (servicesQuery.isFetching && !servicesQuery.isLoading) ||
+    (listQuery.isFetching && !listQuery.isLoading)
 
   useEffect(() => {
     setListPage(1)
   }, [sid, typeId])
 
-  const load = useCallback(async () => {
-    if (!sid || !typeId) return
-    setLoading(true)
-    try {
-      const svcRes =
-        reviewer === 'chef'
-          ? await api.listChefUserServices(token, userId)
-          : await api.listWaliUserServices(token, userId)
-      const find = (nodes: any[]): any => {
-        for (const n of nodes) {
-          if (Number(n.id) === sid) return n
-          if (n.children?.length) {
-            const hit = find(n.children)
-            if (hit) return hit
-          }
-        }
-        return null
-      }
-      const svc = find(svcRes.services)
-      const rt = (svc?.rapportTypes || []).find((x: RapportTypeNav) => Number(x.id) === typeId) || null
-      setService(svc)
-      setRapportType(rt)
-
-      const listRapports =
-        reviewer === 'chef' ? api.listChefRapports : api.listWaliRapports
-      const rapRes = await listRapports(token, {
-        service_id: sid,
-        rapport_type_id: typeId,
-        office_user_id: userId,
-        page: listPage,
-        pageSize: DEFAULT_PAGE_SIZE,
-      })
-      setRows(rapRes.rapports)
-      const total = Number(rapRes.total ?? rapRes.rapports.length)
-      setListTotal(Number.isFinite(total) ? total : rapRes.rapports.length)
-
-      // Table / liste types with a single rapport open the view directly (same as office workspace).
-      if (
-        rt &&
-        isDirectWorkspaceKind(rt.content_kind) &&
-        listPage === 1 &&
-        rapRes.rapports.length === 1 &&
-        (total === 1 || !Number.isFinite(Number(rapRes.total)))
-      ) {
-        const backTo = `${reviewerUserServicesPath(reviewer, userId)}/${sid}`
-        navigate(reviewerRapportViewPath(reviewer, rapRes.rapports[0].id), {
-          replace: true,
-          state: backNavigationState(backTo),
-        })
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [token, userId, sid, typeId, listPage, navigate, reviewer, rapportType?.content_kind])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (
+      !rapportType ||
+      !isDirectWorkspaceKind(rapportType.content_kind) ||
+      listPage !== 1 ||
+      listQuery.isLoading ||
+      rows.length !== 1
+    ) {
+      return
+    }
+    const total = Number(listQuery.data?.total ?? rows.length)
+    if (total !== 1 && Number.isFinite(Number(listQuery.data?.total))) return
+    const backTo = `${reviewerUserServicesPath(reviewer, userId)}/${sid}`
+    navigate(reviewerRapportViewPath(reviewer, rows[0].id), {
+      replace: true,
+      state: backNavigationState(backTo),
+    })
+  }, [
+    rapportType,
+    listPage,
+    listQuery.isLoading,
+    listQuery.data?.total,
+    rows,
+    navigate,
+    reviewer,
+    userId,
+    sid,
+  ])
 
   async function sendResponse(payload: {
     decision: string
@@ -330,8 +299,13 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
     try {
       await respondApi(reviewer)(token, respondId, payload)
       setRespondId(null)
-      notifyHubCountsRefresh()
-      load()
+      await invalidate({
+        rapports: true,
+        hubCounts: reviewer === 'chef' ? 'chef' : 'wali',
+        officeUsers: reviewer,
+        serviceTrees: true,
+        serviceHub: { scope: reviewer === 'chef' ? 'chef' : 'wali' },
+      })
     } catch {
       snack.show(t('errorGeneric'), 'error')
       throw new Error('respond failed')
@@ -346,10 +320,12 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
         : service.name_ar
       : t('navRapports')
 
-  if (loading) {
+  if (isInitialLoading) {
     return (
       <div className="page">
-        <PageLoading />
+        <QueryListShell isInitialLoading>
+          <span />
+        </QueryListShell>
       </div>
     )
   }
@@ -358,10 +334,9 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
     <div className="page">
       <div className="pageHeader row">
         <h1>{pageTitle}</h1>
-        <BackButton
-          fallbackTo={`${reviewerUserServicesPath(reviewer, userId)}/${sid}`}
-        />
+        <BackButton fallbackTo={`${reviewerUserServicesPath(reviewer, userId)}/${sid}`} />
       </div>
+      <ListRefreshIndicator show={isRefreshing} />
 
       <div className="card tableWrap">
         <table>

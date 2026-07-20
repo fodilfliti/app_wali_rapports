@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
@@ -11,17 +11,18 @@ import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
 import { municipalityFormSchema } from '../validation/schemas/forms'
 import { useZodForm } from '../validation/useZodForm'
-import { PageLoading } from '../components/PageLoading'
+import { QueryListShell } from '../components/QueryListShell'
 import { BusyButton } from '../components/BusyButton'
+import { useAdminDairasQuery, useAdminMunicipalitiesQuery } from '../hooks/queries/useListQueries'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
 
 type Props = { token: string }
 
 export function AdminMunicipalitiesListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const form = useZodForm(municipalityFormSchema)
-  const [rows, setRows] = useState<any[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [q, setQ] = useState('')
   const [showHidden, setShowHidden] = useState(false)
@@ -29,36 +30,28 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
   const [editId, setEditId] = useState<number | null>(null)
   const [fields, setFields] = useState({ name_ar: '', name_fr: '', code: '', daira_id: '' })
   const [editDaira, setEditDaira] = useState<any | null>(null)
-  const [dairas, setDairas] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [hideTarget, setHideTarget] = useState<any | null>(null)
   const [hideBusy, setHideBusy] = useState(false)
 
-  useEffect(() => {
-    api.listDairas(token, { pageSize: 100 }).then((r) => setDairas(r.dairas)).catch(() => {})
-  }, [token])
+  const dairasQuery = useAdminDairasQuery(token, { page: 1, pageSize: 100 })
+  const dairas = dairasQuery.data?.dairas ?? []
+
+  const listQuery = useAdminMunicipalitiesQuery(token, { page, q, hidden_only: showHidden })
+  const rows = listQuery.data?.municipalities ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
   useEffect(() => {
     setPage(1)
   }, [showHidden, q])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await api.listMunicipalities(token, { page, q, hidden_only: showHidden })
-      setRows(res.municipalities)
-      setTotal(res.total)
-    } catch {
-      snack.show(t('errorGeneric'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, page, q, showHidden, snack, t])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (listQuery.isError) {
+      snack.show(t('errorGeneric'), 'error')
+    }
+  }, [listQuery.isError, snack, t])
 
   const dairaOptions = useMemo(() => {
     const list = [...dairas]
@@ -100,7 +93,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
       if (editId) await api.patchMunicipality(token, editId, payload)
       else await api.createMunicipality(token, payload)
       setModalOpen(false)
-      load()
+      await invalidate({ adminRef: true })
     } catch (e) {
       if (e instanceof api.ApiError && e.fieldErrors) form.setFieldErrorsFromApi(e.fieldErrors)
       snack.show(t('errorGeneric'), 'error')
@@ -116,7 +109,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
       await api.hideMunicipality(token, hideTarget.id)
       snack.show(t('orgRefHideDone'), 'success')
       setHideTarget(null)
-      load()
+      await invalidate({ adminRef: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -128,7 +121,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
     try {
       await api.restoreMunicipality(token, row.id)
       snack.show(t('orgRefRestoreDone'), 'success')
-      load()
+      await invalidate({ adminRef: true })
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -143,7 +136,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
             {t('createMunicipality')}
           </button>
         ) : null}
-        <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
+        <button type="button" className="btn btn-secondary" onClick={() => listQuery.refetch()} disabled={listQuery.isFetching}>
           {t('refresh')}
         </button>
         <BackButton fallbackTo="/" />
@@ -165,11 +158,11 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
           placeholder={t('search')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && load()}
+          onKeyDown={(e) => e.key === 'Enter' && setPage(1)}
         />
       </div>
 
-      {loading ? <PageLoading /> : null}
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
 
       <div className="card tableWrap">
         <table>
@@ -219,7 +212,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
                 </td>
               </tr>
             ))}
-            {!loading && !rows.length ? (
+            {!isInitialLoading && !rows.length ? (
               <tr>
                 <td colSpan={ENABLE_FR_VALUE_INPUTS ? 5 : 4}>{t('noResults')}</td>
               </tr>
@@ -229,6 +222,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
       </div>
 
       <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
 
       <ConfirmActionModal
         open={!!hideTarget}

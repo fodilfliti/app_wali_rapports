@@ -82,8 +82,11 @@ import { RapportRowHideActions } from "../components/RapportRowHideActions";
 import { RapportTypeHideActions } from "../components/RapportTypeHideActions";
 import {
   notifyHubCountsRefresh,
-  HUB_COUNTS_REFRESH_EVENT,
 } from "../utils/hubCountsRefresh";
+import { useInvalidateAppQueries } from "../hooks/useInvalidateAppQueries";
+import { useOfficeServiceHubQuery } from "../hooks/queries/useListQueries";
+import { QueryListShell } from "../components/QueryListShell";
+import { ListRefreshIndicator } from "../components/ListRefreshIndicator";
 import { reorderRowsArray } from "../utils/tableRowReorder";
 import type { MediaFile, MediaRow } from "../utils/media";
 import { readBackTarget } from "../utils/navigationBack";
@@ -235,6 +238,7 @@ export function OfficeTableGridPage({ token }: Props) {
     setSaving(true);
     try {
       await saveForPreview();
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
       await load();
     } catch (e) {
@@ -263,7 +267,7 @@ export function OfficeTableGridPage({ token }: Props) {
       });
       await api.saveCalendarEvents(token, id, calendarEvents);
       await api.submitRapport(token, id);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("submitRapport"), "success");
       await load();
     } catch (e) {
@@ -282,7 +286,7 @@ export function OfficeTableGridPage({ token }: Props) {
     setFinishing(true);
     try {
       await api.finishRapport(token, workspace.rapport.id);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("finishRapportDone"), "success");
       const typeId = rapportTypeId ?? workspace.rapport.rapport_type_id;
       navigate(typeId ? `/office/services/${sid}/rapports/${typeId}` : `/office/services/${sid}`);
@@ -298,7 +302,7 @@ export function OfficeTableGridPage({ token }: Props) {
     setReturningToDraft(true);
     try {
       await api.returnRapportToDraft(token, workspace.rapport.id);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("returnToDraftDone"), "success");
       load();
     } catch {
@@ -311,7 +315,7 @@ export function OfficeTableGridPage({ token }: Props) {
   async function hideTypeFromPage(typeId: number) {
     try {
       await api.hideRapportType(token, typeId);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("hideRapportTypeDone"), "success");
       navigate(`/office/services/${sid}`);
     } catch {
@@ -322,7 +326,7 @@ export function OfficeTableGridPage({ token }: Props) {
   async function restoreTypeFromPage(typeId: number) {
     try {
       await api.restoreRapportType(token, typeId);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("restoreRapportTypeDone"), "success");
       load();
     } catch {
@@ -549,11 +553,12 @@ export function OfficeTableGridPage({ token }: Props) {
             token={token}
             editable={isEditable}
             onChange={setMediaRows}
-            onUpload={async (file) => {
+            onUpload={async (file, opts) => {
               const res = await api.uploadRapportFile(
                 token,
                 workspace!.rapport!.id,
                 file,
+                { onProgress: opts?.onProgress },
               );
               setMediaFiles((prev) => ({ ...prev, [res.file.id]: res.file }));
               return res.file;
@@ -589,34 +594,30 @@ export function OfficeServiceContentHubPage({ token }: Props) {
   const sid = Number(serviceId);
   const { t } = useTranslation();
   const snack = useSnackbar();
-  const [hub, setHub] = useState<any>(null);
+  const invalidate = useInvalidateAppQueries();
   const [showHiddenTypes, setShowHiddenTypes] = useState(false);
   const [createKind, setCreateKind] = useState<GuidedContentKind | null>(null);
   const [schemaBrowserOpen, setSchemaBrowserOpen] = useState(false);
 
-  const loadHub = useCallback(() => {
-    if (!sid) return;
-    api
-      .getServiceContentHub(token, sid, { hidden_only: showHiddenTypes })
-      .then(setHub)
-      .catch(() => {});
-  }, [sid, token, showHiddenTypes]);
+  const hubQuery = useOfficeServiceHubQuery(token, sid, { hidden_only: showHiddenTypes });
+  const hub = hubQuery.data;
+  const isInitialLoading = hubQuery.isLoading && !hub;
+  const isRefreshing = hubQuery.isFetching && !hubQuery.isLoading;
 
-  useEffect(() => {
-    loadHub();
-  }, [loadHub]);
-
-  useEffect(() => {
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub);
-    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub);
-  }, [loadHub]);
+  async function invalidateHub() {
+    await invalidate({
+      hubCounts: "office",
+      serviceTrees: true,
+      serviceHub: { scope: "office", serviceId: sid },
+      rapports: true,
+    });
+  }
 
   async function hideType(typeId: number) {
     try {
       await api.hideRapportType(token, typeId);
       snack.show(t("hideRapportTypeDone"), "success");
-      loadHub();
-      notifyHubCountsRefresh();
+      await invalidateHub();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
@@ -626,8 +627,7 @@ export function OfficeServiceContentHubPage({ token }: Props) {
     try {
       await api.restoreRapportType(token, typeId);
       snack.show(t("restoreRapportTypeDone"), "success");
-      loadHub();
-      notifyHubCountsRefresh();
+      await invalidateHub();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
@@ -637,24 +637,26 @@ export function OfficeServiceContentHubPage({ token }: Props) {
     try {
       await api.deleteRapportType(token, typeId);
       snack.show(t("deleteUnusedRapportTypeDone"), "success");
-      loadHub();
-      notifyHubCountsRefresh();
+      await invalidateHub();
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
       snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
     }
   }
 
-  if (!hub?.service) {
+  if (isInitialLoading || !hub?.service) {
     return (
       <div className="page">
-        <p className="muted">…</p>
+        <QueryListShell isInitialLoading={isInitialLoading}>
+          <span />
+        </QueryListShell>
       </div>
     );
   }
 
   return (
     <>
+      <ListRefreshIndicator show={isRefreshing} />
       <ServiceContentKindsHub
         service={hub.service}
         summaries={hub.contentKindSummaries || []}
@@ -688,7 +690,7 @@ export function OfficeServiceContentHubPage({ token }: Props) {
           contentKind={createKind}
           open={Boolean(createKind)}
           onClose={() => setCreateKind(null)}
-          onCreated={loadHub}
+          onCreated={() => void invalidateHub()}
         />
       ) : null}
       <SchemaBrowserModal
@@ -707,32 +709,28 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
   const kind = contentKind || "";
   const { t } = useTranslation();
   const snack = useSnackbar();
-  const [hub, setHub] = useState<any>(null);
+  const invalidate = useInvalidateAppQueries();
   const [showHiddenTypes, setShowHiddenTypes] = useState(false);
 
-  const loadHub = useCallback(() => {
-    if (!sid) return;
-    api
-      .getServiceContentHub(token, sid, { hidden_only: showHiddenTypes })
-      .then(setHub)
-      .catch(() => {});
-  }, [sid, token, showHiddenTypes]);
+  const hubQuery = useOfficeServiceHubQuery(token, sid, { hidden_only: showHiddenTypes });
+  const hub = hubQuery.data;
+  const isInitialLoading = hubQuery.isLoading && !hub;
+  const isRefreshing = hubQuery.isFetching && !hubQuery.isLoading;
 
-  useEffect(() => {
-    loadHub();
-  }, [loadHub]);
-
-  useEffect(() => {
-    window.addEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub);
-    return () => window.removeEventListener(HUB_COUNTS_REFRESH_EVENT, loadHub);
-  }, [loadHub]);
+  async function invalidateHub() {
+    await invalidate({
+      hubCounts: "office",
+      serviceTrees: true,
+      serviceHub: { scope: "office", serviceId: sid },
+      rapports: true,
+    });
+  }
 
   async function hideType(typeId: number) {
     try {
       await api.hideRapportType(token, typeId);
       snack.show(t("hideRapportTypeDone"), "success");
-      loadHub();
-      notifyHubCountsRefresh();
+      await invalidateHub();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
@@ -742,8 +740,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
     try {
       await api.restoreRapportType(token, typeId);
       snack.show(t("restoreRapportTypeDone"), "success");
-      loadHub();
-      notifyHubCountsRefresh();
+      await invalidateHub();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
@@ -753,18 +750,19 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
     try {
       await api.deleteRapportType(token, typeId);
       snack.show(t("deleteUnusedRapportTypeDone"), "success");
-      loadHub();
-      notifyHubCountsRefresh();
+      await invalidateHub();
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "errorGeneric";
       snack.show(t(msg, { defaultValue: t("errorGeneric") }), "error");
     }
   }
 
-  if (!hub?.service) {
+  if (isInitialLoading || !hub?.service) {
     return (
       <div className="page">
-        <p className="muted">…</p>
+        <QueryListShell isInitialLoading={isInitialLoading}>
+          <span />
+        </QueryListShell>
       </div>
     );
   }
@@ -772,7 +770,9 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
   const types = rapportTypesForContentKind(hub, kind);
 
   return (
-    <ServiceRapportTypesHub
+    <>
+      <ListRefreshIndicator show={isRefreshing} />
+      <ServiceRapportTypesHub
       service={hub.service}
       rapportTypes={types}
       accessLevel={hub.accessLevel}
@@ -787,6 +787,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
       onRestoreType={restoreType}
       onDeleteType={deleteType}
     />
+    </>
   );
 }
 
@@ -843,8 +844,8 @@ export function OfficeDocumentsPage({
     try {
       await api.finishRapport(token, id);
       snack.show(t("finishRapportDone"), "success");
+      await notifyHubCountsRefresh();
       load();
-      notifyHubCountsRefresh();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
@@ -854,8 +855,8 @@ export function OfficeDocumentsPage({
     try {
       await api.restoreRapport(token, id);
       snack.show(t("restoreRapportDone"), "success");
+      await notifyHubCountsRefresh();
       load();
-      notifyHubCountsRefresh();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
@@ -864,7 +865,7 @@ export function OfficeDocumentsPage({
   async function hideTypeFromPage(typeId: number) {
     try {
       await api.hideRapportType(token, typeId);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("hideRapportTypeDone"), "success");
       navigate(`/office/services/${sid}`);
     } catch {
@@ -875,7 +876,7 @@ export function OfficeDocumentsPage({
   async function restoreTypeFromPage(typeId: number) {
     try {
       await api.restoreRapportType(token, typeId);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("restoreRapportTypeDone"), "success");
       load();
     } catch {
@@ -1294,6 +1295,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     setSaving(true);
     try {
       await persistDocument();
+      notifyHubCountsRefresh();
       snack.show(t("save"), "success");
     } catch (e) {
       const msg =
@@ -1311,7 +1313,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     try {
       const id = await persistDocument();
       await api.submitRapport(token, id);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("submitRapport"), "success");
       loadCurrent();
     } catch (e) {
@@ -1381,7 +1383,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     setFinishing(true);
     try {
       await api.finishRapport(token, rid);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("finishRapportDone"), "success");
       navigate(
         rapport?.service_id && rapport?.rapport_type_id
@@ -1400,7 +1402,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     setReturningToDraft(true);
     try {
       await api.returnRapportToDraft(token, rid);
-      notifyHubCountsRefresh();
+      await notifyHubCountsRefresh();
       snack.show(t("returnToDraftDone"), "success");
       loadCurrent();
     } catch {
@@ -1535,9 +1537,9 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           token={token}
           editable
           onChange={setMediaRows}
-          onUpload={async (file) => {
+          onUpload={async (file, opts) => {
             const id = await ensureDocumentId({ navigate: false });
-            const res = await api.uploadRapportFile(token, id, file);
+            const res = await api.uploadRapportFile(token, id, file, { onProgress: opts?.onProgress });
             setMediaFiles((prev) => ({ ...prev, [res.file.id]: res.file }));
             return res.file;
           }}
@@ -1616,7 +1618,8 @@ export function WaliRapportViewPage({
             ? await api.getWaliRapportView(token, rid, showHidden)
             : await api.getAdminRapportView(token, rid, showHidden),
       );
-      if (isReviewer) notifyHubCountsRefresh();
+      // Opening may move submitted → under_review; refresh badges in background.
+      if (isReviewer) void notifyHubCountsRefresh();
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
@@ -1634,8 +1637,8 @@ export function WaliRapportViewPage({
     try {
       if (isChef) await api.chefRespond(token, rid, payload);
       else await api.waliRespond(token, rid, payload);
-      notifyHubCountsRefresh();
-      load();
+      await notifyHubCountsRefresh();
+      await load();
     } catch {
       snack.show(t("errorGeneric"), "error");
       throw new Error("respond failed");

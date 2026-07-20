@@ -71,13 +71,62 @@ export function normalizeMediaRows(rows: MediaRow[] | undefined): MediaRow[] {
   return mediaRowsFromFileIds(flattenMediaRows(rows))
 }
 
+let worker: Worker | null = null
+let workerJobId = 0
+
+function getCompressWorker(): Worker | null {
+  if (typeof Worker === 'undefined') return null
+  if (!worker) {
+    worker = new Worker(new URL('./imageCompress.worker.ts', import.meta.url), { type: 'module' })
+  }
+  return worker
+}
+
+function compressWithWorker(file: File, maxBytes: number): Promise<File> {
+  const w = getCompressWorker()
+  if (!w) return compressImageMainThread(file, maxBytes)
+
+  const id = ++workerJobId
+  const preferWebp = typeof createImageBitmap !== 'undefined'
+
+  return new Promise((resolve, reject) => {
+    function onMessage(ev: MessageEvent) {
+      const data = ev.data as { id: number; ok: boolean; buffer?: ArrayBuffer; mime?: string; ext?: string; error?: string }
+      if (data.id !== id) return
+      w!.removeEventListener('message', onMessage)
+      w!.removeEventListener('error', onError)
+      if (data.ok && data.buffer && data.mime && data.ext) {
+        const base = file.name.replace(/\.[^.]+$/, '') || 'image'
+        resolve(new File([data.buffer], `${base}${data.ext}`, { type: data.mime }))
+      } else if (data.error === 'mediaFileTooLarge') {
+        reject(new MediaUploadError('mediaFileTooLarge', { max: formatBytes(maxBytes) }))
+      } else {
+        reject(new MediaUploadError(data.error || 'mediaImageReadFailed'))
+      }
+    }
+    function onError() {
+      w!.removeEventListener('message', onMessage)
+      w!.removeEventListener('error', onError)
+      compressImageMainThread(file, maxBytes).then(resolve).catch(reject)
+    }
+    w.addEventListener('message', onMessage)
+    w.addEventListener('error', onError)
+    file.arrayBuffer().then((buffer) => {
+      w.postMessage(
+        { id, buffer, mime: file.type, maxBytes, maxDim: 1920, preferWebp },
+        [buffer],
+      )
+    }).catch(() => reject(new MediaUploadError('mediaImageReadFailed')))
+  })
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), type, quality)
   })
 }
 
-async function compressImage(file: File, maxBytes: number): Promise<File> {
+async function compressImageMainThread(file: File, maxBytes: number): Promise<File> {
   const url = URL.createObjectURL(file)
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -103,8 +152,13 @@ async function compressImage(file: File, maxBytes: number): Promise<File> {
     if (!ctx) throw new MediaUploadError('mediaImageReadFailed')
     ctx.drawImage(img, 0, 0, width, height)
 
-    const attempts: { type: string; ext: string; qualities: (number | undefined)[] }[] =
-      file.type === 'image/png'
+    const preferWebp = canvas.toDataURL('image/webp').startsWith('data:image/webp')
+    const attempts: { type: string; ext: string; qualities: (number | undefined)[] }[] = preferWebp
+      ? [
+          { type: 'image/webp', ext: '.webp', qualities: [0.85, 0.75, 0.65, 0.55, 0.45] },
+          { type: 'image/jpeg', ext: '.jpg', qualities: [0.85, 0.75, 0.65, 0.55, 0.45] },
+        ]
+      : file.type === 'image/png'
         ? [
             { type: 'image/png', ext: '.png', qualities: [undefined] },
             { type: 'image/jpeg', ext: '.jpg', qualities: [0.85, 0.75, 0.65, 0.55, 0.45] },
@@ -128,13 +182,28 @@ async function compressImage(file: File, maxBytes: number): Promise<File> {
   }
 }
 
-export async function prepareFileForUpload(file: File): Promise<File> {
+async function compressImage(file: File, maxBytes: number): Promise<File> {
+  return compressWithWorker(file, maxBytes)
+}
+
+export type PrepareFileOptions = {
+  onCompressing?: () => void
+}
+
+export async function prepareFileForUpload(file: File, opts: PrepareFileOptions = {}): Promise<File> {
   const mime = file.type || 'application/octet-stream'
   const max = maxBytesForMime(mime)
 
   if (mime.startsWith('image/') && mime !== 'image/gif' && mime !== 'image/svg+xml') {
-    if (file.size <= max) return file
+    if (file.size <= max && file.size <= max * 0.85) return file
+    opts.onCompressing?.()
     return compressImage(file, max)
+  }
+
+  if (mime.startsWith('video/')) {
+    const { prepareVideoForUpload } = await import('./videoTranscode')
+    opts.onCompressing?.()
+    return prepareVideoForUpload(file)
   }
 
   if (file.size > max) {
@@ -147,3 +216,5 @@ export function fileExtension(name: string) {
   const m = name.match(/\.([^.]+)$/)
   return m ? m[1].toUpperCase() : 'FILE'
 }
+
+export type UploadedFileRef = MediaFile & { uploadComplete?: boolean }
