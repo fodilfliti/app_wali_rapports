@@ -24,6 +24,17 @@ import './richText.css'
 
 const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
 
+function isEmptyRichHtml(html: string | null | undefined): boolean {
+  if (!html) return true
+  const trimmed = html.trim()
+  return (
+    trimmed === '' ||
+    trimmed === '<p></p>' ||
+    trimmed === '<p><br></p>' ||
+    trimmed === '<p><br/></p>'
+  )
+}
+
 type Props = {
   value: string
   onChange: (html: string) => void
@@ -115,11 +126,18 @@ export function RichTextEditor({
       skipNextUpdate.current = false
       return
     }
+    // Parent re-renders during upload must not replace live document content.
+    if (uploading) return
     const current = editor.getHTML()
-    if (value !== current) {
-      editor.commands.setContent(value || '<p></p>', { emitUpdate: false })
+    const next = value || '<p></p>'
+    const currentLooksEmpty = isEmptyRichHtml(current)
+    const nextLooksEmpty = isEmptyRichHtml(next)
+    // Never blank a non-empty editor with an empty parent value (data-loss guard).
+    if (nextLooksEmpty && !currentLooksEmpty) return
+    if (next !== current) {
+      editor.commands.setContent(next, { emitUpdate: false })
     }
-  }, [editor, value])
+  }, [editor, value, uploading])
 
   useEffect(() => {
     if (!editor || !insertTableId) return

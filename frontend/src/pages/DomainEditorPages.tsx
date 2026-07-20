@@ -1131,6 +1131,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const createdIdRef = useRef<number | null>(
     Number.isFinite(ridParam) ? ridParam : null,
   );
+  const newDraftPreviewKeyRef = useRef<string | null>(null);
 
   const applyDocumentJson = useCallback((dj: any) => {
     const tables = dj?.embedded_tables || [];
@@ -1177,33 +1178,49 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       .catch(() => {});
   }, [rid, token, snack, t, applyDocumentJson]);
 
+  // New-draft preview only — must NOT depend on rid/loadCurrent. Assigning an id
+  // during media upload must not remount the editor or re-apply empty preview JSON.
   useEffect(() => {
-    if (isNewDraft && newTypeId) {
-      setLoadingNew(true);
-      api
-        .previewDocumentCreate(token, sid, {
-          rapportTypeId: newTypeId,
-          templateId: newTemplateId,
-          skipDefault: newSkipDefault,
-        })
-        .then((preview) => {
-          setNewDraftMeta({
-            service: preview.service,
-            rapportType: preview.rapportType,
-          });
-          setTitle(preview.suggestedTitle || "");
-          setCanEdit(true);
-          applyDocumentJson(preview.data_json || {});
-          setVersions([]);
-          setWaliResponses([]);
-          setChefResponses([]);
-          setMediaFiles({});
-        })
-        .catch(() => snack.show(t("errorGeneric"), "error"))
-        .finally(() => setLoadingNew(false));
+    if (!isNewDraft || !newTypeId || !Number.isFinite(sid)) {
+      if (!isNewDraft) setLoadingNew(false);
       return;
     }
-    loadCurrent();
+    const previewKey = `${sid}:${newTypeId}:${newTemplateId ?? ""}:${newSkipDefault ? 1 : 0}`;
+    // Skip re-preview when only unstable deps (token/snack) change after first success.
+    if (newDraftPreviewKeyRef.current === previewKey) return;
+
+    let cancelled = false;
+    setLoadingNew(true);
+    api
+      .previewDocumentCreate(token, sid, {
+        rapportTypeId: newTypeId,
+        templateId: newTemplateId,
+        skipDefault: newSkipDefault,
+      })
+      .then((preview) => {
+        if (cancelled) return;
+        newDraftPreviewKeyRef.current = previewKey;
+        setNewDraftMeta({
+          service: preview.service,
+          rapportType: preview.rapportType,
+        });
+        setTitle(preview.suggestedTitle || "");
+        setCanEdit(true);
+        applyDocumentJson(preview.data_json || {});
+        setVersions([]);
+        setWaliResponses([]);
+        setChefResponses([]);
+        setMediaFiles({});
+      })
+      .catch(() => {
+        if (!cancelled) snack.show(t("errorGeneric"), "error");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingNew(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [
     isNewDraft,
     newTypeId,
@@ -1214,8 +1231,13 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     snack,
     t,
     applyDocumentJson,
-    loadCurrent,
   ]);
+
+  // Existing rapport URL only — never overwrite in-memory new-draft edits.
+  useEffect(() => {
+    if (isNewDraft) return;
+    loadCurrent();
+  }, [isNewDraft, loadCurrent]);
 
   async function ensureDocumentId(options?: {
     navigate?: boolean;
@@ -1241,6 +1263,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         calendar_events: calendarEvents,
       },
     });
+    // Assign id only — do not reload/preview or replace local docData/tables/media.
     createdIdRef.current = created.id as number;
     setRapport(created);
     setPersistedId(created.id);
