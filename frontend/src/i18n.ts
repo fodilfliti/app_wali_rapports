@@ -428,6 +428,84 @@ const resources = {
         "كل إرسال ملف/تاريخ جديد (مستندات أو مذكرة) — بلا سلسلة نسخ تحت نفس التقرير.",
       kindsExplainerStandaloneStep1: "إنشاء ملف جديد للموضوع أو التاريخ",
       kindsExplainerStandaloneStep2: "الإرسال يخص هذا الملف فقط",
+      editorsExplainerOpen: "كيف تنشئ تقريراً وتستخدم المحررات",
+      editorsExplainerTitle: "دليل إنشاء التقارير واستخدام المحررات",
+      editorsExplainerLead:
+        "هذا الدليل يشرح خطوات إنشاء تقرير داخل كل نوع محتوى، وما يمكنك فعله في كل محرر. لفهم الأنواع والنسخ وأوضاع القائمة راجع الزر الآخر «شرح الأنواع والنسخ».",
+      editorsExplainerCommonTitle: "المسار المشترك",
+      editorsExplainerCommonLead:
+        "الإنشاء يكون من صفحة المجال وليس من صندوق الوارد. فتح مساحة العمل لا يُنشئ صفاً في قاعدة البيانات حتى أول حفظ.",
+      editorsExplainerCommonStep1: "من صفحة المجال افتح بلاطة نوع التقرير تحت جدول أو ملف مركّب أو قائمة أو مذكرة",
+      editorsExplainerCommonStep2: "اضغط «إنشاء تقرير» (عندما تكون القائمة فارغة أو يسمح النوع بملف جديد)",
+      editorsExplainerCommonStep3: "املأ العنوان (إلزامي) والمحتوى في المحرر",
+      editorsExplainerCommonStep4: "اضغط «حفظ» — هنا يُنشأ التقرير كمسودة لأول مرة",
+      editorsExplainerCommonStep5: "بعد الإكمال اضغط «إرسال» ليصل إلى مسار الوالي (وقد يمرّ عبر رئيس الديوان)",
+      editorsExplainerCommonFeature1: "يمكن إعادة التقرير إلى المسودة للتصحيح حسب الحالة والصلاحية",
+      editorsExplainerCommonFeature2: "إخفاء التقرير من القوائم النشطة يأتي من قائمة النوع (إنهاء/إخفاء) وليس من زر الإرسال",
+      editorsExplainerCommonFeature3: "بعد أول إرسال تُتاح المناقشة والملاحظات على النسخة المعنية",
+      editorsExplainerCommonFeature4: "حساب بوصول «عرض» يقرأ فقط — بلا إنشاء أو حفظ أو إرسال",
+      editorsExplainerCreateHow: "كيف تنشئ تقريراً",
+      editorsExplainerCanDo: "ماذا يمكنك أن تفعل في المحرر",
+      editorsExplainerDocumentTitle: "ملف مركّب ومذكرة استخلاصية",
+      editorsExplainerDocumentLead:
+        "محرر نص غني للمستندات والمذكرات. المذكرة نوع واحد مشترك للمجال؛ الملف المركّب أنواع متعددة حسب المواضيع.",
+      editorsExplainerDocumentCreate1: "افتح بلاطة النوع ثم قائمة التقارير",
+      editorsExplainerDocumentCreate2: "اضغط «إنشاء تقرير» لفتح محرر جديد (مسودة محلية قبل الحفظ)",
+      editorsExplainerDocumentCreate3: "حرّر العنوان والنص؛ أضف جدولاً مضمّناً أو صوراً/فيديوهات عند الحاجة",
+      editorsExplainerDocumentCreate4: "احفظ ثم أرسل من رأس صفحة المحرر",
+      editorsExplainerDocumentFeature1: "تنسيق النص: عناوين، غامق/مائل/تسطير، حجم ولون الخط، محاذاة، قوائم",
+      editorsExplainerDocumentFeature2: "كتلة بإطار، خط فاصل، وروابط",
+      editorsExplainerDocumentFeature3: "إدراج جدول من مخطط أعمدة ثم تعبئة الصفوف داخل نافذة التحرير",
+      editorsExplainerDocumentFeature4: "صور وفيديوهات داخل النص (يتطلب عنواناً ثم يُنشأ التقرير تلقائياً عند أول رفع)",
+      editorsExplainerDocumentFeature5: "مرفقات إضافية تحت النص (صفوف وسائط)",
+      editorsExplainerDocumentFeature6: "أحداث تقويم تظهر لدى الوالي ورئيس الديوان (غير مضمّنة في ملف PDF/Word)",
+      editorsExplainerDocumentFeature7: "حفظ وإرسال من رأس المحرر؛ تصدير PDF وWord للمعاينة والتنزيل",
+      editorsExplainerDocumentFeature8: "الملاحظات والمناقشة بعد الإرسال حسب مسار المراجعة",
+      editorsExplainerDocumentFicheNote:
+        "المذكرة: ملف مؤرخ مشترك للمجال — لا تُنشئ نوع مذكرة جديداً ولا تُخفي نوع المذكرة نفسه.",
+      editorsExplainerTableTitle: "جدول",
+      editorsExplainerTableLead:
+        "شبكة أعمدة مرتبطة بمخطط. غالباً تقرير حالة واحد بنسخ مؤرشفة عند كل إرسال.",
+      editorsExplainerTableCreate1: "تأكد أن النوع مربوط بمخطط أعمدة ثم افتح بلاطته",
+      editorsExplainerTableCreate2: "إن لم يوجد تقرير نشط اضغط «إنشاء تقرير» لفتح مساحة الجدول",
+      editorsExplainerTableCreate3: "أدخل العنوان واملأ الخلايا؛ احفظ لإنشاء المسودة",
+      editorsExplainerTableCreate4: "أرسل من رأس صفحة الجدول لالتقاط نسخة مؤرشفة",
+      editorsExplainerTableFeature1: "إضافة وحذف وإعادة ترتيب الصفوف بالسحب",
+      editorsExplainerTableFeature2: "تصفية: النشطة / المنتهية / الكل",
+      editorsExplainerTableFeature3: "إظهار أو إخفاء صفوف عن الوالي (لكل صف أو للكل)",
+      editorsExplainerTableFeature4: "تلوين الخلايا، ودمج الأعمدة المتشابهة للعرض",
+      editorsExplainerTableFeature5: "أعمدة صيغ تُحسب تلقائياً عند الحفظ",
+      editorsExplainerTableFeature6: "عنوان/عنوان فرعي للجدول ومجموعات رؤوس من المخطط",
+      editorsExplainerTableFeature7: "مرفقات وسائط وأحداث تقويم تحت الجدول",
+      editorsExplainerTableFeature8: "نسخ مؤرشفة لمراجعة الإرسالات السابقة",
+      editorsExplainerTableFeature9: "تصدير Excel وPDF وWord (مع خيارات الصفوف في Excel)",
+      editorsExplainerListeComplexTitle: "قائمة — وضع ملف مركّب",
+      editorsExplainerListeComplexLead:
+        "تقرير قائمة واحد يغطي عدة أهداف (بلدية / دائرة / مديرية). كل هدف له مستند غني مستقل.",
+      editorsExplainerListeComplexCreate1: "افتح نوع القائمة (وضع ملف مركّب) ثم أنشئ تقريراً إن لزم",
+      editorsExplainerListeComplexCreate2: "من محاور القائمة اختر الأهداف المشمولة واحفظ العنوان",
+      editorsExplainerListeComplexCreate3: "افتح كل هدف واملأ مستنده (نص وجداول وصور)",
+      editorsExplainerListeComplexCreate4: "الإرسال يكون من محاور القائمة فقط — ليس من صفحة الهدف",
+      editorsExplainerListeComplexFeature1: "شبكة أهداف مع بحث وتصفية (الكل / المملوء / الفارغ)",
+      editorsExplainerListeComplexFeature2: "محرر غني لكل هدف مثل الملف المركّب",
+      editorsExplainerListeComplexFeature3: "حفظ لكل هدف على حدة",
+      editorsExplainerListeComplexFeature4: "إرسال جماعي من محاور القائمة بعد اكتمال التعبئة",
+      editorsExplainerListeComplexFeature5: "أحداث تقويم على صفحة الهدف",
+      editorsExplainerListeComplexFeature6: "لا يوجد إدخال جماعي جدولي في هذا الوضع",
+      editorsExplainerListeTableTitle: "قائمة — وضع جدول",
+      editorsExplainerListeTableLead:
+        "نفس فكرة القائمة، لكن كل هدف يُملأ بجدول أعمدة موحّد، مع إمكانية الإدخال الجماعي.",
+      editorsExplainerListeTableCreate1: "افتح نوع القائمة (وضع جدول — يتطلب مخطط أعمدة)",
+      editorsExplainerListeTableCreate2: "أنشئ التقرير واختر الأهداف المشمولة",
+      editorsExplainerListeTableCreate3: "املأ جدولاً لكل هدف، أو استخدم «إدخال جماعي» لكل الأهداف دفعة واحدة",
+      editorsExplainerListeTableCreate4: "احفظ من صفحة الهدف أو الجماعي؛ أرسل من محاور القائمة",
+      editorsExplainerListeTableFeature1: "جدول لكل هدف مع إضافة/حذف وإعادة ترتيب الصفوف داخل الهدف",
+      editorsExplainerListeTableFeature2: "إدخال جماعي: شبكة موحّدة لكل الأهداف مع عمود اسم الهدف",
+      editorsExplainerListeTableFeature3: "نفس أدوات الجدول: تصفية النشطة/المنتهية، رؤية الوالي، دمج الأعمدة، ألوان الخلايا",
+      editorsExplainerListeTableFeature4: "حفظ على صفحة الهدف أو الإدخال الجماعي — الإرسال من المحور",
+      editorsExplainerListeTableFeature5: "أحداث تقويم على صفحة الهدف (ليس على شاشة الجماعي)",
+      editorsExplainerListeTableFeature6: "تصدير Excel مناسب لهذا الوضع",
+      editorsExplainerListeTableFeature7: "عند الإرسال تُسجَّل الأهداف التي تغيّرت للمراجعة",
       hubAddTable: "إضافة جدول",
       hubAddDocument: "إضافة ملف مركّب",
       hubAddListe: "إضافة قائمة",
@@ -502,7 +580,6 @@ const resources = {
       rapportListScope: "عرض",
       rapportListActive: "النشطة",
       rapportListFinished: "المنهية (المخفية)",
-      hideRapportType: "إخفاء من المجال",
       hideRapportTypeDone: "تم إخفاء نوع التقرير من هذا المجال",
       restoreRapportType: "إظهار في المجال",
       restoreRapportTypeDone: "تم إظهار نوع التقرير في هذا المجال",
@@ -1562,6 +1639,118 @@ const resources = {
         "Chaque envoi est un nouveau fichier/date (documents ou fiche) — pas de chaîne de versions sous le même rapport.",
       kindsExplainerStandaloneStep1: "Créer un nouveau fichier pour le sujet ou la date",
       kindsExplainerStandaloneStep2: "L’envoi concerne uniquement ce fichier",
+      editorsExplainerOpen: "Créer un rapport et utiliser les éditeurs",
+      editorsExplainerTitle: "Guide : créer un rapport et utiliser les éditeurs",
+      editorsExplainerLead:
+        "Ce guide détaille comment créer un rapport pour chaque type de contenu et ce que permet chaque éditeur. Pour les types, versions et modes liste, utilisez l’autre bouton « Types, versions… ».",
+      editorsExplainerCommonTitle: "Parcours commun",
+      editorsExplainerCommonLead:
+        "La création se fait depuis la page du domaine, pas depuis la boîte de réception. Ouvrir l’espace de travail ne crée pas de ligne en base tant que vous n’avez pas enregistré.",
+      editorsExplainerCommonStep1:
+        "Depuis la page du domaine, ouvrez une tuile de type (Tableau, Document, Liste ou Fiche)",
+      editorsExplainerCommonStep2:
+        "Cliquez sur « Créer un rapport » (liste vide ou type qui autorise un nouveau fichier)",
+      editorsExplainerCommonStep3: "Renseignez le titre (obligatoire) et le contenu dans l’éditeur",
+      editorsExplainerCommonStep4:
+        "Cliquez sur « Enregistrer » — le rapport est créé en brouillon pour la première fois",
+      editorsExplainerCommonStep5:
+        "Quand c’est prêt, cliquez sur « Envoyer » pour le parcours wali (parfois via le chef de cabinet)",
+      editorsExplainerCommonFeature1:
+        "Vous pouvez ramener le rapport en brouillon pour correction selon le statut et vos droits",
+      editorsExplainerCommonFeature2:
+        "Masquer un rapport des listes actives se fait depuis la liste du type (terminer / masquer), pas via Envoyer",
+      editorsExplainerCommonFeature3:
+        "Après le premier envoi, discussion et remarques deviennent disponibles selon la revue",
+      editorsExplainerCommonFeature4:
+        "Un compte en accès « lecture » consulte seulement — pas de création, enregistrement ni envoi",
+      editorsExplainerCreateHow: "Comment créer un rapport",
+      editorsExplainerCanDo: "Ce que vous pouvez faire dans l’éditeur",
+      editorsExplainerDocumentTitle: "Document et fiche de lecture",
+      editorsExplainerDocumentLead:
+        "Éditeur de texte riche pour documents et fiches. La fiche est un type unique partagé du domaine ; les documents sont plusieurs types selon les sujets.",
+      editorsExplainerDocumentCreate1: "Ouvrez la tuile du type puis la liste des rapports",
+      editorsExplainerDocumentCreate2:
+        "Cliquez sur « Créer un rapport » pour ouvrir un nouvel éditeur (brouillon local avant enregistrement)",
+      editorsExplainerDocumentCreate3:
+        "Éditez le titre et le texte ; ajoutez un tableau intégré ou des images / vidéos si besoin",
+      editorsExplainerDocumentCreate4: "Enregistrez puis envoyez depuis l’en-tête de la page éditeur",
+      editorsExplainerDocumentFeature1:
+        "Mise en forme : titres, gras / italique / souligné, taille et couleur, alignement, listes",
+      editorsExplainerDocumentFeature2: "Bloc encadré, ligne horizontale et liens",
+      editorsExplainerDocumentFeature3:
+        "Insérer un tableau depuis un schéma de colonnes puis remplir les lignes dans la fenêtre d’édition",
+      editorsExplainerDocumentFeature4:
+        "Images et vidéos dans le texte (titre requis ; le rapport est auto-créé au premier téléversement)",
+      editorsExplainerDocumentFeature5: "Pièces jointes supplémentaires sous le texte (rangées média)",
+      editorsExplainerDocumentFeature6:
+        "Événements calendrier visibles par le wali et le chef (non inclus dans le PDF / Word)",
+      editorsExplainerDocumentFeature7:
+        "Enregistrer et envoyer depuis l’en-tête ; export PDF et Word (aperçu et téléchargement)",
+      editorsExplainerDocumentFeature8:
+        "Remarques et discussion après envoi selon le parcours de revue",
+      editorsExplainerDocumentFicheNote:
+        "Fiche : fichier daté partagé du domaine — vous ne créez pas un nouveau type fiche et vous ne masquez pas le type fiche lui-même.",
+      editorsExplainerTableTitle: "Tableau",
+      editorsExplainerTableLead:
+        "Grille de colonnes liée à un schéma. Souvent un seul état versionné à chaque envoi.",
+      editorsExplainerTableCreate1:
+        "Vérifiez que le type est lié à un schéma de colonnes, puis ouvrez sa tuile",
+      editorsExplainerTableCreate2:
+        "S’il n’y a pas de rapport actif, cliquez sur « Créer un rapport » pour ouvrir la grille",
+      editorsExplainerTableCreate3: "Saisissez le titre et les cellules ; enregistrez pour créer le brouillon",
+      editorsExplainerTableCreate4:
+        "Envoyez depuis l’en-tête de la page tableau pour archiver une version",
+      editorsExplainerTableFeature1: "Ajouter, supprimer et réordonner les lignes par glisser-déposer",
+      editorsExplainerTableFeature2: "Filtres : actives / terminées / toutes",
+      editorsExplainerTableFeature3: "Afficher ou masquer des lignes pour le wali (par ligne ou pour toutes)",
+      editorsExplainerTableFeature4: "Couleurs de cellules et fusion visuelle de colonnes identiques",
+      editorsExplainerTableFeature5: "Colonnes formule recalculées automatiquement à l’enregistrement",
+      editorsExplainerTableFeature6: "Titre / sous-titre du tableau et groupes d’en-têtes du schéma",
+      editorsExplainerTableFeature7: "Médias joints et événements calendrier sous le tableau",
+      editorsExplainerTableFeature8: "Versions archivées pour revoir les envois précédents",
+      editorsExplainerTableFeature9: "Export Excel, PDF et Word (options de lignes dans Excel)",
+      editorsExplainerListeComplexTitle: "Liste — mode document",
+      editorsExplainerListeComplexLead:
+        "Un rapport liste couvre plusieurs entités (commune / daïra / direction). Chaque entité a son propre document riche.",
+      editorsExplainerListeComplexCreate1:
+        "Ouvrez le type liste (mode document) puis créez un rapport si besoin",
+      editorsExplainerListeComplexCreate2:
+        "Depuis le hub liste, choisissez les entités incluses et enregistrez le titre",
+      editorsExplainerListeComplexCreate3:
+        "Ouvrez chaque entité et remplissez son document (texte, tableaux, images)",
+      editorsExplainerListeComplexCreate4:
+        "L’envoi se fait uniquement depuis le hub liste — pas depuis la page entité",
+      editorsExplainerListeComplexFeature1:
+        "Grille d’entités avec recherche et filtres (toutes / remplies / vides)",
+      editorsExplainerListeComplexFeature2: "Éditeur riche par entité comme pour un document",
+      editorsExplainerListeComplexFeature3: "Enregistrement séparé pour chaque entité",
+      editorsExplainerListeComplexFeature4:
+        "Envoi global depuis le hub liste lorsque le remplissage est prêt",
+      editorsExplainerListeComplexFeature5: "Événements calendrier sur la page entité",
+      editorsExplainerListeComplexFeature6: "Pas de saisie groupée tabulaire dans ce mode",
+      editorsExplainerListeTableTitle: "Liste — mode tableau",
+      editorsExplainerListeTableLead:
+        "Même idée de liste, mais chaque entité se remplit avec un tableau à colonnes communes, avec saisie groupée possible.",
+      editorsExplainerListeTableCreate1:
+        "Ouvrez le type liste (mode tableau — schéma de colonnes requis)",
+      editorsExplainerListeTableCreate2: "Créez le rapport et choisissez les entités incluses",
+      editorsExplainerListeTableCreate3:
+        "Remplissez le tableau par entité, ou utilisez « Saisie groupée » pour toutes les entités",
+      editorsExplainerListeTableCreate4:
+        "Enregistrez depuis la page entité ou la saisie groupée ; envoyez depuis le hub liste",
+      editorsExplainerListeTableFeature1:
+        "Tableau par entité : ajouter / supprimer / réordonner les lignes dans l’entité",
+      editorsExplainerListeTableFeature2:
+        "Saisie groupée : grille unique pour toutes les entités avec colonne nom d’entité",
+      editorsExplainerListeTableFeature3:
+        "Mêmes outils tableau : filtres actives/terminées, visibilité wali, fusion, couleurs",
+      editorsExplainerListeTableFeature4:
+        "Enregistrement sur la page entité ou groupée — envoi depuis le hub",
+      editorsExplainerListeTableFeature5:
+        "Événements calendrier sur la page entité (pas sur l’écran groupé)",
+      editorsExplainerListeTableFeature6: "Export Excel adapté à ce mode",
+      editorsExplainerListeTableFeature7:
+        "À l’envoi, les entités modifiées sont enregistrées pour la revue",
       hubAddTable: "Ajouter un tableau",
       hubAddDocument: "Ajouter un document",
       hubAddListe: "Ajouter une liste",

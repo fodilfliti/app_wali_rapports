@@ -7091,6 +7091,29 @@ label {
   color: var(--color-text);
 }
 
+.kindsExplainerSubHead {
+  display: block;
+  margin: 0.75rem 0 0.15rem;
+  font-size: 0.92rem;
+}
+
+.kindsExplainerFeatureList {
+  margin: 0.45rem 0 0;
+  padding-inline-start: 1.2rem;
+  line-height: 1.5;
+  font-size: 0.88rem;
+  color: var(--color-text-muted, var(--color-text));
+}
+
+.kindsExplainerFeatureList li + li {
+  margin-top: 0.25rem;
+}
+
+.kindsExplainerSectionTitle .kindsExplainerKindIcon {
+  vertical-align: -0.15em;
+  margin-inline-end: 0.25rem;
+}
+
 .kindsExplainerGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

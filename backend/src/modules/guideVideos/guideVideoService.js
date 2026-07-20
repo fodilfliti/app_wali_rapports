@@ -73,9 +73,9 @@ async function listGuideVideos(query, viewerRole) {
     where,
     include: [{ model: UploadedFile, as: "file" }],
     order: [
-      ["is_new", "DESC"],
       ["sort_order", "ASC"],
-      ["created_at", "DESC"]
+      ["created_at", "ASC"],
+      ["id", "ASC"]
     ],
     offset: (page - 1) * pageSize,
     limit: pageSize

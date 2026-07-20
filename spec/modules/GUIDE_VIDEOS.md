@@ -70,7 +70,7 @@
 | `GET` | `/wali/guide-videos` |
 | `GET` | `/chef/guide-videos` |
 
-Same list shape as admin GET, but **exclude `audience = ADMIN`** unless caller role is `ADMIN`. Optional `?audience=` filter. Sort: `is_new DESC`, `sort_order ASC`, `created_at DESC`. Each item includes serialized `file` (`url_path`, mime, …).
+Same list shape as admin GET, but **exclude `audience = ADMIN`** unless caller role is `ADMIN`. Optional `?audience=` filter. Sort: `sort_order ASC`, `created_at ASC` (oldest first; latest at end), then `id ASC`. Each item includes serialized `file` (`url_path`, mime, …). « جديد » is a badge only — it does **not** reorder the list.
 
 ### UI/UX
 

@@ -53,8 +53,7 @@ import {
   patchRapportTitle,
 } from "../components/RapportTitleField";
 import { TablePagination } from "../components/TablePagination";
-import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
-import { HubTile } from "../components/HubTile";
+import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
 import { ArchiveVersionsLink, WaliArchiveVersionsLink } from "./RapportVersionsArchivePage";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
@@ -88,11 +87,6 @@ import {
 import { reorderRowsArray } from "../utils/tableRowReorder";
 import type { MediaFile, MediaRow } from "../utils/media";
 import { readBackTarget } from "../utils/navigationBack";
-import {
-  rowsWithCommuneNames,
-  sortRowsByCommune,
-  withCommuneNameColumn,
-} from "../utils/communeBulkTable";
 import { markOfficeRapportOpened } from "../utils/officeRapportList";
 import { CommuneListVersionView } from "../components/CommuneListVersionView";
 

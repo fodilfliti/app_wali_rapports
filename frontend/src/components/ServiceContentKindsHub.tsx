@@ -17,6 +17,7 @@ import {
 } from '../utils/rapportNavigation'
 import type { GuidedContentKind } from './CreateContentKindTypeModal'
 import { RapportKindsExplainer } from './RapportKindsExplainer'
+import { RapportEditorsExplainer } from './RapportEditorsExplainer'
 
 export type ContentKindSummary = {
   content_kind: string
@@ -71,6 +72,7 @@ export function ServiceContentKindsHub({
 }: Props) {
   const { t, i18n } = useTranslation()
   const [explainerOpen, setExplainerOpen] = useState(false)
+  const [editorsExplainerOpen, setEditorsExplainerOpen] = useState(false)
   const serviceLabel = i18n.language === 'fr' ? service.name_fr : service.name_ar
   const byKind = Object.fromEntries(summaries.map((s) => [s.content_kind, s]))
   const canManageTypes = mode === 'office' && manageTypes && accessLevel === 'manage'
@@ -94,6 +96,15 @@ export function ServiceContentKindsHub({
         <button type="button" className="btn btn-secondary" onClick={() => setExplainerOpen(true)}>
           {t('kindsExplainerOpen')}
         </button>
+        {mode === 'office' ? (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setEditorsExplainerOpen(true)}
+          >
+            {t('editorsExplainerOpen')}
+          </button>
+        ) : null}
         {mode === 'office' && showConfig ? (
           <Link className="btn btn-secondary" to={`/office/services/${service.id}/config`}>
             {t('serviceConfig')}
@@ -204,6 +215,33 @@ export function ServiceContentKindsHub({
             <RapportKindsExplainer bare />
             <div className="modalActions">
               <button type="button" className="btn btn-secondary" onClick={() => setExplainerOpen(false)}>
+                {t('close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editorsExplainerOpen ? (
+        <div
+          className="modalOverlay"
+          role="presentation"
+          onClick={() => setEditorsExplainerOpen(false)}
+        >
+          <div
+            className="modalCard wide kindsExplainerModal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="editorsExplainerTitle"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <RapportEditorsExplainer bare />
+            <div className="modalActions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setEditorsExplainerOpen(false)}
+              >
                 {t('close')}
               </button>
             </div>
