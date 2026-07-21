@@ -27,6 +27,7 @@ import {
   reviewerUserServicesPath,
 } from '../utils/reviewerMode'
 import { waliCanRespondFromList } from '../utils/waliInboxList'
+import { ChefDeleteRequestBanner, ChefRapportDeleteControls } from '../components/RapportDeleteControls'
 import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
 import { WaliRespondModal } from '../components/WaliRespondModal'
 import { useSnackbar } from '../snackbar/SnackbarContext'
@@ -233,6 +234,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
   const invalidate = useInvalidateAppQueries()
   const listPath = currentPath(location)
   const [respondId, setRespondId] = useState<number | null>(null)
+  const [deleteDecideId, setDeleteDecideId] = useState<number | null>(null)
   const [listPage, setListPage] = useState(1)
 
   const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer)
@@ -338,6 +340,41 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
       </div>
       <ListRefreshIndicator show={isRefreshing} />
 
+      {reviewer === 'chef' &&
+      rows.some((r) => r.delete_requested || r.delete_requested_at) ? (
+        <ChefDeleteRequestBanner
+          rapport={rows.find((r) => r.delete_requested || r.delete_requested_at)}
+          deleting={deleteDecideId != null}
+          onDecide={async (decision) => {
+            const target = rows.find((r) => r.delete_requested || r.delete_requested_at)
+            if (!target) return
+            setDeleteDecideId(target.id)
+            try {
+              const result = await api.chefDeleteDecision(token, target.id, decision)
+              await invalidate({
+                rapports: true,
+                hubCounts: 'chef',
+                officeUsers: 'chef',
+                serviceTrees: true,
+                serviceHub: { scope: 'chef' },
+              })
+              if (decision === 'rejected') {
+                snack.show(t('chefRejectDeleteDone'), 'success')
+              } else if (result.mode === 'restored_previous') {
+                snack.show(t('chefDeleteRestoredPreviousDone'), 'success')
+                navigate(reviewerRapportViewPath('chef', target.id))
+              } else {
+                snack.show(t('chefDeleteFullyDone'), 'success')
+              }
+            } catch {
+              snack.show(t('errorGeneric'), 'error')
+            } finally {
+              setDeleteDecideId(null)
+            }
+          }}
+        />
+      ) : null}
+
       <div className="card tableWrap">
         <table>
           <thead>
@@ -359,7 +396,15 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
                   </div>
                 </td>
                 <td className="rapportStatusCell">
-                  <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+                  <div className="rapportStatusStack">
+                    <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+                    {reviewer === 'chef' &&
+                    (r.delete_requested || r.delete_requested_at) ? (
+                      <span className="badge badge-changes_requested">
+                        {t('deleteRapportPendingBadge')}
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="actionsCell">
                   <div className="actionsCellInner">
@@ -378,6 +423,45 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
                       >
                         {t('respondRapport')}
                       </button>
+                    ) : null}
+                    {reviewer === 'chef' &&
+                    (r.delete_requested || r.delete_requested_at) ? (
+                      <ChefRapportDeleteControls
+                        rapport={r}
+                        deleting={deleteDecideId === r.id}
+                        onDecide={async (decision) => {
+                          setDeleteDecideId(r.id)
+                          try {
+                            const result = await api.chefDeleteDecision(
+                              token,
+                              r.id,
+                              decision,
+                            )
+                            await invalidate({
+                              rapports: true,
+                              hubCounts: 'chef',
+                              officeUsers: 'chef',
+                              serviceTrees: true,
+                              serviceHub: { scope: 'chef' },
+                            })
+                            if (decision === 'rejected') {
+                              snack.show(t('chefRejectDeleteDone'), 'success')
+                            } else if (result.mode === 'restored_previous') {
+                              snack.show(
+                                t('chefDeleteRestoredPreviousDone'),
+                                'success',
+                              )
+                              navigate(reviewerRapportViewPath('chef', r.id))
+                            } else {
+                              snack.show(t('chefDeleteFullyDone'), 'success')
+                            }
+                          } catch {
+                            snack.show(t('errorGeneric'), 'error')
+                          } finally {
+                            setDeleteDecideId(null)
+                          }
+                        }}
+                      />
                     ) : null}
                   </div>
                 </td>

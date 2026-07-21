@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { ApiError } from "../api";
@@ -10,6 +10,7 @@ import {
 } from "../components/RapportTitleField";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
+import { OfficeRapportDeleteControls } from "../components/RapportDeleteControls";
 import { TableMergeToolbar, TableWorkspace } from "../components/TableGridView";
 import { CommuneBulkAddRowBar } from "../components/CommuneBulkAddRowBar";
 import { useSnackbar } from "../snackbar/SnackbarContext";
@@ -46,6 +47,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const sid = Number(serviceId);
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
+  const navigate = useNavigate();
   const [workspace, setWorkspace] = useState<any>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [tableMeta, setTableMeta] = useState<TableMeta>({});
@@ -57,6 +59,8 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
   const [addRowEntityKey, setAddRowEntityKey] = useState("");
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [cancellingDelete, setCancellingDelete] = useState(false);
   const keysPresentAtLoadRef = useRef<Set<string>>(new Set());
 
   const listPath = `/office/services/${sid}/communes${
@@ -300,6 +304,51 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
     }
   }
 
+  async function deleteCurrentRapport() {
+    if (!workspace?.rapport?.id) return;
+    setDeleting(true);
+    try {
+      const result = await api.officeDeleteRapport(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      if (result.mode === "requested") {
+        snack.show(t("deleteRapportRequestSent"), "success");
+        load();
+      } else if (result.mode === "discard_draft_version") {
+        snack.show(t("deleteRapportDiscardVersionDone"), "success");
+        load();
+      } else if (result.mode === "reset_fresh_v1") {
+        snack.show(t("deleteRapportResetV1Done"), "success");
+        load();
+      } else {
+        snack.show(t("deleteRapportDone"), "success");
+        navigate(
+          rapportTypeId
+            ? `/office/services/${sid}/rapports/${rapportTypeId}`
+            : `/office/services/${sid}`,
+        );
+      }
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function cancelCurrentDeleteRequest() {
+    if (!workspace?.rapport?.id) return;
+    setCancellingDelete(true);
+    try {
+      await api.cancelRapportDeleteRequest(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      snack.show(t("cancelDeleteRequestDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setCancellingDelete(false);
+    }
+  }
+
   return (
     <div className="page communeBulkEditorPage">
       <div className="pageHeader row compact">
@@ -322,6 +371,17 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
             <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
               {t("save")}
             </button>
+          ) : null}
+          {workspace?.rapport?.id ? (
+            <OfficeRapportDeleteControls
+              rapport={workspace.rapport}
+              canManage={workspace?.accessLevel === "manage"}
+              deleting={deleting}
+              cancelling={cancellingDelete}
+              onDelete={deleteCurrentRapport}
+              onCancelRequest={cancelCurrentDeleteRequest}
+              size="md"
+            />
           ) : null}
           {workspace?.accessLevel === "view" ? (
             <span className="badge">{t("accessView")}</span>

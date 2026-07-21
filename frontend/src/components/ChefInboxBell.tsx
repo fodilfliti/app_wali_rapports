@@ -9,11 +9,17 @@ export function ChefInboxBell({ token }: Props) {
   const { t } = useTranslation()
   const { counts } = useChefHubCounts(token)
   const pending = counts.inbox_pending
+  const deletePending = counts.delete_pending || 0
   const discussion = counts.unread_discussion || 0
-  const countLabel = pending > 99 ? '99+' : String(pending)
+  const actionTotal = pending + deletePending
+  const countLabel = actionTotal > 99 ? '99+' : String(actionTotal)
   const discLabel = discussion > 99 ? '99+' : String(discussion)
+  const inboxTo =
+    deletePending > 0 && pending === 0
+      ? '/chef/rapports?status_group=delete_requested'
+      : '/chef/rapports'
   const label =
-    pending > 0
+    actionTotal > 0
       ? t('waliInboxBellWithCount', { count: countLabel })
       : t('waliInboxBellEmpty')
   const discAria =
@@ -25,13 +31,13 @@ export function ChefInboxBell({ token }: Props) {
     <>
       <Link
         className="btn btn-ghost notifBell"
-        to="/chef/rapports"
+        to={inboxTo}
         title={label}
         aria-label={label}
       >
         <span className="notifBellIconWrap">
           <HubIcon name="inbox" className="notifBellIcon" />
-          {pending > 0 ? (
+          {actionTotal > 0 ? (
             <span className="notifBellCount" aria-hidden="true">
               {countLabel}
             </span>

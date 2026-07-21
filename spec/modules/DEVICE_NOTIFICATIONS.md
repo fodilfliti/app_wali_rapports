@@ -23,6 +23,8 @@ Extend the existing in-app `notifications` system with **Web Push** (browser / p
 | Event | Who gets notified | `message_key` |
 | ----- | ----------------- | ------------- |
 | Office Envoyer → `pending_chef` | Active Chef only (**not** Wali) | `rapportPendingChef` |
+| Office delete request | Active Chef | `rapportDeleteRequested` |
+| Chef delete approve / reject | Office `manage` grantees on service | `rapportDeleteApproved` / `rapportDeleteRejected` |
 | Chef accept → `submitted` | Active Wali | `rapportPendingWali` |
 | Bypass resubmit → `submitted` | Chef info + active Wali | `rapportResubmittedBypass` + `rapportPendingWali` |
 | Chef/Wali respond | All active `OFFICE_USER` with a grant on the rapport’s service (`SERVICE_SHARING.md`); fallback owner/creator | `chef*` / `wali*` |
@@ -38,7 +40,7 @@ Disabled preference types are **not inserted**, **not pushed**, and **hidden** f
 | --- | ------- |
 | `enabled` | Master switch — off disables all types |
 | `push_enabled` | Allow Web Push delivery to any subscribed device (all devices); see UI two-switch model |
-| `rapport_inbox` | New rapport awaiting me (`rapportPendingChef`, `rapportPendingWali`, `rapportResubmittedBypass`) |
+| `rapport_inbox` | New rapport awaiting me (`rapportPendingChef`, `rapportPendingWali`, `rapportResubmittedBypass`, `rapportDeleteRequested`) |
 | `rapport_feedback` | Chef/Wali decision notes to office |
 | `discussion` | `rapportComment` |
 | `instructions` | `waliInstruction` |
@@ -66,7 +68,7 @@ Defaults: all `true`.
 
 #### `notifications` extensions
 
-- New keys: `rapportPendingChef`, `rapportPendingWali`, `calendarToday`, `calendarTomorrow`
+- New keys: `rapportPendingChef`, `rapportPendingWali`, `rapportDeleteRequested`, `rapportDeleteApproved`, `rapportDeleteRejected`, `calendarToday`, `calendarTomorrow`
 - Optional `calendar_event_id` FK → `rapport_calendar_events` (nullable, SET NULL on delete)
 - Dedupe calendar: unique on `(user_id, calendar_event_id, message_key)` where `calendar_event_id` IS NOT NULL
 

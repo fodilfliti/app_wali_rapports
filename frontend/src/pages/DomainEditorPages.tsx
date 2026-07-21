@@ -49,13 +49,17 @@ import {
 } from "../components/RichDocumentEditor";
 import { RapportExportButtons } from "../components/ExportPdfButton";
 import {
+  ChefDeleteRequestBanner,
+  OfficeRapportDeleteControls,
+} from "../components/RapportDeleteControls";
+import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
+import {
   RapportTitleField,
   patchRapportTitle,
 } from "../components/RapportTitleField";
 import { TablePagination } from "../components/TablePagination";
 import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
 import { ArchiveVersionsLink, WaliArchiveVersionsLink } from "./RapportVersionsArchivePage";
-import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
 import { ServiceRapportTypesHub } from "../components/ServiceRapportTypesHub";
 import { ServiceContentKindsHub } from "../components/ServiceContentKindsHub";
@@ -124,6 +128,8 @@ export function OfficeTableGridPage({ token }: Props) {
     useState<TableRowFilterMode>("active");
   const [finishing, setFinishing] = useState(false);
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [cancellingDelete, setCancellingDelete] = useState(false);
 
   const load = useCallback(async () => {
     if (!sid) return;
@@ -312,6 +318,52 @@ export function OfficeTableGridPage({ token }: Props) {
     }
   }
 
+  async function deleteCurrentRapport() {
+    if (!workspace?.rapport?.id) return;
+    setDeleting(true);
+    try {
+      const result = await api.officeDeleteRapport(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      if (result.mode === "requested") {
+        snack.show(t("deleteRapportRequestSent"), "success");
+        load();
+      } else if (result.mode === "discard_draft_version") {
+        snack.show(t("deleteRapportDiscardVersionDone"), "success");
+        load();
+      } else if (result.mode === "reset_fresh_v1") {
+        snack.show(t("deleteRapportResetV1Done"), "success");
+        load();
+      } else {
+        snack.show(t("deleteRapportDone"), "success");
+        const typeId = rapportTypeId ?? workspace.rapport.rapport_type_id;
+        navigate(
+          typeId
+            ? `/office/services/${sid}/rapports/${typeId}`
+            : `/office/services/${sid}`,
+        );
+      }
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function cancelCurrentDeleteRequest() {
+    if (!workspace?.rapport?.id) return;
+    setCancellingDelete(true);
+    try {
+      await api.cancelRapportDeleteRequest(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      snack.show(t("cancelDeleteRequestDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setCancellingDelete(false);
+    }
+  }
+
   async function hideTypeFromPage(typeId: number) {
     try {
       await api.hideRapportType(token, typeId);
@@ -455,6 +507,17 @@ export function OfficeTableGridPage({ token }: Props) {
             token={token}
             rapportId={workspace.rapport.id}
             onPreparePreview={isEditable ? saveForPreview : undefined}
+          />
+        ) : null}
+        {workspace?.rapport?.id ? (
+          <OfficeRapportDeleteControls
+            rapport={workspace.rapport}
+            canManage={workspace?.accessLevel === "manage"}
+            deleting={deleting}
+            cancelling={cancellingDelete}
+            onDelete={deleteCurrentRapport}
+            onCancelRequest={cancelCurrentDeleteRequest}
+            size="md"
           />
         ) : null}
         {workspace?.accessLevel === "manage" && workspace?.rapportType ? (
@@ -1114,6 +1177,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [cancellingDelete, setCancellingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
@@ -1412,6 +1477,51 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     }
   }
 
+  async function deleteCurrentRapport() {
+    if (!rid) return;
+    setDeleting(true);
+    try {
+      const result = await api.officeDeleteRapport(token, rid);
+      await notifyHubCountsRefresh();
+      if (result.mode === "requested") {
+        snack.show(t("deleteRapportRequestSent"), "success");
+        loadCurrent();
+      } else if (result.mode === "discard_draft_version") {
+        snack.show(t("deleteRapportDiscardVersionDone"), "success");
+        loadCurrent();
+      } else if (result.mode === "reset_fresh_v1") {
+        snack.show(t("deleteRapportResetV1Done"), "success");
+        loadCurrent();
+      } else {
+        snack.show(t("deleteRapportDone"), "success");
+        navigate(
+          rapport?.service_id && rapport?.rapport_type_id
+            ? `/office/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
+            : "/office/rapports",
+        );
+      }
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function cancelCurrentDeleteRequest() {
+    if (!rid) return;
+    setCancellingDelete(true);
+    try {
+      await api.cancelRapportDeleteRequest(token, rid);
+      await notifyHubCountsRefresh();
+      snack.show(t("cancelDeleteRequestDone"), "success");
+      loadCurrent();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setCancellingDelete(false);
+    }
+  }
+
   if (loadingNew) {
     return (
       <div className="page">
@@ -1475,6 +1585,17 @@ export function OfficeDocumentEditorPage({ token }: Props) {
               {t("submitRapport")}
             </BusyButton>
           </>
+        ) : null}
+        {rid ? (
+          <OfficeRapportDeleteControls
+            rapport={rapport}
+            canManage={canEdit}
+            deleting={deleting}
+            cancelling={cancellingDelete}
+            onDelete={deleteCurrentRapport}
+            onCancelRequest={cancelCurrentDeleteRequest}
+            size="md"
+          />
         ) : null}
         {rid ? (
           <RapportExportButtons
@@ -1598,9 +1719,11 @@ export function WaliRapportViewPage({
   const rid = Number(rapportId);
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
+  const navigate = useNavigate();
   const [view, setView] = useState<any>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [respondOpen, setRespondOpen] = useState(false);
+  const [deleteDeciding, setDeleteDeciding] = useState(false);
   const location = useLocation();
   const isWali = audience === "wali";
   const isChef = audience === "chef";
@@ -1642,6 +1765,28 @@ export function WaliRapportViewPage({
     } catch {
       snack.show(t("errorGeneric"), "error");
       throw new Error("respond failed");
+    }
+  }
+
+  async function decideDelete(decision: "approved" | "rejected") {
+    setDeleteDeciding(true);
+    try {
+      const result = await api.chefDeleteDecision(token, rid, decision);
+      await notifyHubCountsRefresh();
+      if (decision === "rejected") {
+        snack.show(t("chefRejectDeleteDone"), "success");
+        await load();
+      } else if (result.mode === "restored_previous") {
+        snack.show(t("chefDeleteRestoredPreviousDone"), "success");
+        await load();
+      } else {
+        snack.show(t("chefDeleteFullyDone"), "success");
+        navigate("/chef/rapports?status_group=delete_requested");
+      }
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setDeleteDeciding(false);
     }
   }
 
@@ -1726,6 +1871,14 @@ export function WaliRapportViewPage({
           <BackButton fallbackTo={viewBackTarget} />
         </div>
       </div>
+
+      {isChef ? (
+        <ChefDeleteRequestBanner
+          rapport={view?.rapport}
+          deleting={deleteDeciding}
+          onDecide={decideDelete}
+        />
+      ) : null}
 
       {view?.content_kind === "table_grid" ? (
         <div className="card tableWrap excelTable">

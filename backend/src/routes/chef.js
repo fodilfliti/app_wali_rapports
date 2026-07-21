@@ -251,6 +251,28 @@ chefRouter.post(
   },
 );
 
+chefRouter.post(
+  "/rapports/:id/delete-decision",
+  requirePermission("rapports.inbox.respond", "manage"),
+  async (req, res, next) => {
+    try {
+      await rapportService.assertVisibleToChef(req.params.id);
+      const result = await rapportService.chefDeleteDecision(
+        req.params.id,
+        req.body || {},
+        req.user,
+        req,
+      );
+      res.json(result);
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      if (e.status === 409) return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
 chefRouter.get(
   "/rapports/:id/view",
   requirePermission("rapports.inbox.view", "view"),

@@ -28,6 +28,30 @@ const PUSH_COPY = {
     body_fr: "Un rapport a été renvoyé directement au wali.",
     url: (p) => (p.rapport_id ? `/chef/rapports/${p.rapport_id}` : "/chef"),
   },
+  rapportDeleteRequested: {
+    title_ar: "طلب حذف تقرير",
+    title_fr: "Demande de suppression",
+    body_ar: "طلب المكتب حذف تقرير — يحتاج موافقتك.",
+    body_fr: "Le bureau demande la suppression d'un rapport.",
+    url: (p) =>
+      p.rapport_id
+        ? `/chef/rapports/${p.rapport_id}/view`
+        : "/chef/rapports?status_group=delete_requested",
+  },
+  rapportDeleteApproved: {
+    title_ar: "تم حذف التقرير",
+    title_fr: "Rapport supprimé",
+    body_ar: "وافق رئيس الديوان على حذف التقرير.",
+    body_fr: "Le chef de cabinet a approuvé la suppression.",
+    url: () => "/office/rapports",
+  },
+  rapportDeleteRejected: {
+    title_ar: "رفض طلب الحذف",
+    title_fr: "Suppression refusée",
+    body_ar: "رفض رئيس الديوان طلب حذف التقرير.",
+    body_fr: "Le chef de cabinet a refusé la demande de suppression.",
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/rapports"),
+  },
   waliAccepted: {
     title_ar: "رد الوالي",
     title_fr: "Réponse du wali",

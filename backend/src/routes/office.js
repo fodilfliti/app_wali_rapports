@@ -875,6 +875,40 @@ officeRouter.post("/rapports/:id/return-to-draft", async (req, res, next) => {
   }
 });
 
+officeRouter.post("/rapports/:id/delete", async (req, res, next) => {
+  try {
+    await assertRapportAccess(req.user, req.params.id, "manage");
+    const result = await rapportService.officeDeleteRapport(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json(result);
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 404) return res.status(404).json({ error: "Not found" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
+officeRouter.post("/rapports/:id/cancel-delete-request", async (req, res, next) => {
+  try {
+    await assertRapportAccess(req.user, req.params.id, "manage");
+    const rapport = await rapportService.cancelDeleteRequest(
+      req.params.id,
+      req.user,
+      req,
+    );
+    res.json({ rapport });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 404) return res.status(404).json({ error: "Not found" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+});
+
 officeRouter.post("/rapports/:id/finish", async (req, res, next) => {
   try {
     await assertRapportAccess(req.user, req.params.id, "manage");

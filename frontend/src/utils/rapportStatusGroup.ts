@@ -1,8 +1,21 @@
-export type RapportStatusGroup = 'all' | 'in_progress' | 'needs_edit' | 'done' | 'new'
+export type RapportStatusGroup =
+  | 'all'
+  | 'in_progress'
+  | 'needs_edit'
+  | 'done'
+  | 'new'
+  | 'delete_requested'
 
 export type RapportStatusGroupRole = 'office' | 'admin' | 'wali' | 'chef'
 
-const VALID: RapportStatusGroup[] = ['all', 'in_progress', 'needs_edit', 'done', 'new']
+const VALID: RapportStatusGroup[] = [
+  'all',
+  'in_progress',
+  'needs_edit',
+  'done',
+  'new',
+  'delete_requested',
+]
 
 export function parseStatusGroupParam(raw: string | null): RapportStatusGroup {
   const g = String(raw || '')
@@ -21,10 +34,20 @@ export function statusGroupChips(
     { id: 'needs_edit', labelKey: 'statusGroupNeedsEdit' },
     { id: 'done', labelKey: 'statusGroupDone' },
   ]
-  if (role === 'wali' || role === 'chef') {
+  if (role === 'wali') {
     return [
       { id: 'all', labelKey: 'statusGroupAll' },
       { id: 'new', labelKey: 'statusGroupNew' },
+      { id: 'in_progress', labelKey: 'statusGroupInProgress' },
+      { id: 'needs_edit', labelKey: 'statusGroupNeedsEdit' },
+      { id: 'done', labelKey: 'statusGroupDone' },
+    ]
+  }
+  if (role === 'chef') {
+    return [
+      { id: 'all', labelKey: 'statusGroupAll' },
+      { id: 'new', labelKey: 'statusGroupNew' },
+      { id: 'delete_requested', labelKey: 'statusGroupDeleteRequested' },
       { id: 'in_progress', labelKey: 'statusGroupInProgress' },
       { id: 'needs_edit', labelKey: 'statusGroupNeedsEdit' },
       { id: 'done', labelKey: 'statusGroupDone' },

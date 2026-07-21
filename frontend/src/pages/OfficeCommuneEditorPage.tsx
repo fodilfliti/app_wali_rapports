@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
 import { ApiError } from "../api";
@@ -16,6 +16,7 @@ import { RichDocumentEditor } from "../components/RichDocumentEditor";
 import { TableMergeToolbar, TableWorkspace } from "../components/TableGridView";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
+import { OfficeRapportDeleteControls } from "../components/RapportDeleteControls";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import type { EmbeddedTable } from "../types/embeddedTable";
 import { mergeRichHtmlIntoData } from "../utils/richDocument";
@@ -51,6 +52,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const code = municipalityCode || "";
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
+  const navigate = useNavigate();
   const [workspace, setWorkspace] = useState<any>(null);
   const [content, setContent] = useState<CommuneContent>({});
   const [embeddedTables, setEmbeddedTables] = useState<EmbeddedTable[]>([]);
@@ -68,6 +70,8 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
   const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [cancellingDelete, setCancellingDelete] = useState(false);
   const createdIdRef = useRef<number | null>(
     Number.isFinite(rapportIdParam) ? (rapportIdParam as number) : null,
   );
@@ -310,6 +314,51 @@ export function OfficeCommuneEditorPage({ token }: Props) {
     }
   }
 
+  async function deleteCurrentRapport() {
+    if (!rapportId) return;
+    setDeleting(true);
+    try {
+      const result = await api.officeDeleteRapport(token, rapportId);
+      await notifyHubCountsRefresh();
+      if (result.mode === "requested") {
+        snack.show(t("deleteRapportRequestSent"), "success");
+        load();
+      } else if (result.mode === "discard_draft_version") {
+        snack.show(t("deleteRapportDiscardVersionDone"), "success");
+        load();
+      } else if (result.mode === "reset_fresh_v1") {
+        snack.show(t("deleteRapportResetV1Done"), "success");
+        load();
+      } else {
+        snack.show(t("deleteRapportDone"), "success");
+        navigate(
+          rapportTypeId
+            ? `/office/services/${sid}/rapports/${rapportTypeId}`
+            : `/office/services/${sid}`,
+        );
+      }
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function cancelCurrentDeleteRequest() {
+    if (!rapportId) return;
+    setCancellingDelete(true);
+    try {
+      await api.cancelRapportDeleteRequest(token, rapportId);
+      await notifyHubCountsRefresh();
+      snack.show(t("cancelDeleteRequestDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setCancellingDelete(false);
+    }
+  }
+
   return (
     <div className="page communeEditorPage">
       <div className="pageHeader row compact communeEditorHeader">
@@ -340,6 +389,17 @@ export function OfficeCommuneEditorPage({ token }: Props) {
             >
               {t("save")}
             </button>
+          ) : null}
+          {rapportId && workspace?.rapport ? (
+            <OfficeRapportDeleteControls
+              rapport={workspace.rapport}
+              canManage={workspace?.accessLevel === "manage"}
+              deleting={deleting}
+              cancelling={cancellingDelete}
+              onDelete={deleteCurrentRapport}
+              onCancelRequest={cancelCurrentDeleteRequest}
+              size="md"
+            />
           ) : null}
           {workspace?.accessLevel === "view" ? (
             <span className="badge">{t("accessView")}</span>

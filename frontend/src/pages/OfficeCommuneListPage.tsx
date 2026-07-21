@@ -35,6 +35,7 @@ import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
 import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
+import { OfficeRapportDeleteControls } from "../components/RapportDeleteControls";
 
 type Props = { token: string };
 
@@ -67,6 +68,8 @@ export function OfficeCommuneListPage({ token }: Props) {
   const [inclusionOpen, setInclusionOpen] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [cancellingDelete, setCancellingDelete] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     if (!sid) return;
@@ -282,6 +285,51 @@ export function OfficeCommuneListPage({ token }: Props) {
     }
   }
 
+  async function deleteCurrentRapport() {
+    if (!workspace?.rapport?.id) return;
+    setDeleting(true);
+    try {
+      const result = await api.officeDeleteRapport(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      if (result.mode === "requested") {
+        snack.show(t("deleteRapportRequestSent"), "success");
+        loadWorkspace();
+      } else if (result.mode === "discard_draft_version") {
+        snack.show(t("deleteRapportDiscardVersionDone"), "success");
+        loadWorkspace();
+      } else if (result.mode === "reset_fresh_v1") {
+        snack.show(t("deleteRapportResetV1Done"), "success");
+        loadWorkspace();
+      } else {
+        snack.show(t("deleteRapportDone"), "success");
+        navigate(
+          rapportTypeId
+            ? `/office/services/${sid}/rapports/${rapportTypeId}`
+            : `/office/services/${sid}`,
+        );
+      }
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function cancelCurrentDeleteRequest() {
+    if (!workspace?.rapport?.id) return;
+    setCancellingDelete(true);
+    try {
+      await api.cancelRapportDeleteRequest(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      snack.show(t("cancelDeleteRequestDone"), "success");
+      loadWorkspace();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setCancellingDelete(false);
+    }
+  }
+
   const label = workspace?.rapportType
     ? localizedRapportTypeName(workspace.rapportType, i18n.language)
     : workspace?.service
@@ -393,6 +441,17 @@ export function OfficeCommuneListPage({ token }: Props) {
             >
               {t("submitRapport")}
             </BusyButton>
+          ) : null}
+          {workspace?.rapport?.id ? (
+            <OfficeRapportDeleteControls
+              rapport={workspace.rapport}
+              canManage={workspace?.accessLevel === "manage"}
+              deleting={deleting}
+              cancelling={cancellingDelete}
+              onDelete={deleteCurrentRapport}
+              onCancelRequest={cancelCurrentDeleteRequest}
+              size="md"
+            />
           ) : null}
           {isTableCommuneMode ? (
             <Link className="btn btn-primary" to={bulkPath}>

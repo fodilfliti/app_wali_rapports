@@ -24,6 +24,7 @@ const emptyChefCounts: api.ChefHubCounts = {
   office_users_pending: 0,
   unread_discussion: 0,
   unread_shared_files: 0,
+  delete_pending: 0,
 }
 
 export function useOfficeHubCounts(token: string) {

@@ -243,8 +243,20 @@ export function ChefHubPage({ token }: { token: string }) {
           to="/chef/rapports"
           icon="inbox"
           title={t('navInbox')}
-          badge={<HubCountBadge count={counts.inbox_pending} />}
+          badge={
+            <HubCountBadge
+              count={(counts.inbox_pending || 0) + (counts.delete_pending || 0)}
+            />
+          }
           subtitle={t('actionInboxHintShort')}
+        />
+
+        <HubTile
+          to="/chef/rapports?status_group=delete_requested"
+          icon="inbox"
+          title={t('statusGroupDeleteRequested')}
+          badge={<HubCountBadge count={counts.delete_pending || 0} />}
+          subtitle={t('chefDeletePendingHint')}
         />
 
         <HubTile

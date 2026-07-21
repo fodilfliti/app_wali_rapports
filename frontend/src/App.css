@@ -1747,6 +1747,16 @@ label {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
+}
+
+.rapportOfficeStatusBanner--deleteRequest {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.rapportOfficeStatusBanner--deleteRequest .rapportOfficeStatusBannerTitle {
+  color: #9a3412;
 }
 
 .hubTileWrap {

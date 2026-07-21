@@ -107,7 +107,11 @@ function normalizeStatusGroup(query) {
     .trim()
     .toLowerCase();
   if (!g || g === "all") return null;
-  if (["in_progress", "needs_edit", "done", "new"].includes(g)) return g;
+  if (
+    ["in_progress", "needs_edit", "done", "new", "delete_requested"].includes(g)
+  ) {
+    return g;
+  }
   return null;
 }
 
@@ -175,6 +179,11 @@ async function applyStatusListFilter(where, query, opts = {}) {
     }
 
     if (opts.chefInbox) {
+      if (group === "delete_requested") {
+        where.delete_requested_at = { [Op.ne]: null };
+        delete where.status;
+        return;
+      }
       if (group === "new") {
         where.status = "pending_chef";
         return;
@@ -478,7 +487,17 @@ async function listRapports(query, opts = {}) {
     }
     where.hidden_at = null;
   } else if (opts.chefInbox && !statusGroup && !query.status) {
-    where.status = { [Op.in]: CHEF_INBOX_STATUSES };
+    where[Op.and] = [
+      ...(where[Op.and] ? [].concat(where[Op.and]) : []),
+      {
+        [Op.or]: [
+          { status: { [Op.in]: CHEF_INBOX_STATUSES } },
+          { delete_requested_at: { [Op.ne]: null } },
+        ],
+      },
+    ];
+    where.hidden_at = null;
+  } else if (opts.chefInbox && statusGroup === "delete_requested") {
     where.hidden_at = null;
   }
 
@@ -573,7 +592,17 @@ async function listRapports(query, opts = {}) {
   const sortField = normalizeListSort(query);
   const findOpts = {
     where,
-    order: [[sortField, "DESC"]],
+    order: opts.chefInbox
+      ? [
+          [
+            sequelize.literal(
+              `CASE WHEN delete_requested_at IS NOT NULL THEN 0 WHEN status = 'pending_chef' THEN 1 ELSE 2 END`,
+            ),
+            "ASC",
+          ],
+          [sortField, "DESC"],
+        ]
+      : [[sortField, "DESC"]],
     include: includes,
     distinct: true,
     col: "id",
@@ -663,6 +692,13 @@ async function listRapports(query, opts = {}) {
 
   if (opts.enrichForWaliUserId) {
     rapports = await enrichWaliRapportList(rapports, opts.enrichForWaliUserId);
+  }
+
+  if (opts.chefInbox) {
+    rapports = rapports.map((r) => ({
+      ...r,
+      delete_requested: Boolean(r.delete_requested_at),
+    }));
   }
 
   if (discussionOnly || hasDiscussion) {
@@ -758,33 +794,76 @@ async function enrichOfficeRapportList(rapports, userId) {
   const ids = rapports.map((r) => Number(r.id)).filter(Boolean);
   if (!ids.length) return rapports;
 
-  const [responses, chefResponses, unreadNotes] = await Promise.all([
-    WaliResponse.findAll({
-      where: { rapport_id: ids },
-      order: [["created_at", "DESC"]],
-      attributes: RESPONSE_LIST_ATTRS,
-    }),
-    ChefResponse.findAll({
-      where: { rapport_id: ids },
-      order: [["created_at", "DESC"]],
-      attributes: RESPONSE_LIST_ATTRS,
-    }),
-    Notification.findAll({
-      where: { user_id: userId, rapport_id: ids, read_at: null },
-      attributes: ["rapport_id"],
-    }),
-  ]);
+  const currentVersionIds = rapports
+    .map((r) => r.current_version_id)
+    .filter(Boolean)
+    .map(Number);
+
+  const [responses, chefResponses, unreadNotes, versionRows, versionCounts] =
+    await Promise.all([
+      WaliResponse.findAll({
+        where: { rapport_id: ids },
+        order: [["created_at", "DESC"]],
+        attributes: RESPONSE_LIST_ATTRS,
+      }),
+      ChefResponse.findAll({
+        where: { rapport_id: ids },
+        order: [["created_at", "DESC"]],
+        attributes: RESPONSE_LIST_ATTRS,
+      }),
+      Notification.findAll({
+        where: { user_id: userId, rapport_id: ids, read_at: null },
+        attributes: ["rapport_id"],
+      }),
+      currentVersionIds.length
+        ? RapportVersion.findAll({
+            where: { id: currentVersionIds },
+            attributes: ["id", "rapport_id", "submitted_at"],
+          })
+        : Promise.resolve([]),
+      RapportVersion.findAll({
+        where: { rapport_id: ids },
+        attributes: [
+          "rapport_id",
+          [sequelize.fn("COUNT", sequelize.col("id")), "cnt"],
+        ],
+        group: ["rapport_id"],
+        raw: true,
+      }),
+    ]);
 
   const latestByRapport = latestResponseMap(responses);
   const latestChefByRapport = latestResponseMap(chefResponses);
   const unreadSet = new Set(unreadNotes.map((n) => Number(n.rapport_id)));
+  const currentByRapport = new Map(
+    versionRows.map((v) => [Number(v.rapport_id), v]),
+  );
+  const countByRapport = new Map(
+    versionCounts.map((row) => [Number(row.rapport_id), Number(row.cnt) || 0]),
+  );
 
-  return rapports.map((r) => ({
-    ...r,
-    latest_wali_response: latestByRapport.get(Number(r.id)) || null,
-    latest_chef_response: latestChefByRapport.get(Number(r.id)) || null,
-    has_unread_notification: unreadSet.has(Number(r.id)),
-  }));
+  return rapports.map((r) => {
+    const rid = Number(r.id);
+    const hasAction =
+      latestByRapport.has(rid) || latestChefByRapport.has(rid);
+    const current = currentByRapport.get(rid);
+    const olderCount = Math.max(0, (countByRapport.get(rid) || 0) - 1);
+    const canDiscard = Boolean(current && olderCount > 0 && !hasAction);
+    const canResetFreshV1 = Boolean(current && olderCount === 0 && !hasAction);
+    const deleteRequested = Boolean(r.delete_requested_at);
+    return {
+      ...r,
+      latest_wali_response: latestByRapport.get(rid) || null,
+      latest_chef_response: latestChefByRapport.get(rid) || null,
+      has_unread_notification: unreadSet.has(rid),
+      has_chef_or_wali_action: hasAction,
+      can_discard_draft_version: canDiscard,
+      can_reset_fresh_v1: canResetFreshV1,
+      can_instant_delete: canDiscard || canResetFreshV1,
+      can_request_delete: hasAction && !deleteRequested,
+      delete_requested: deleteRequested,
+    };
+  });
 }
 
 async function assertVisibleToWali(rapportOrId) {
@@ -825,19 +904,30 @@ async function assertVisibleToChef(rapportOrId) {
     typeof rapportOrId === "object" && rapportOrId?.status != null
       ? rapportOrId
       : await Rapport.findByPk(rapportOrId, {
-          attributes: ["id", "status", "hidden_at"],
+          attributes: [
+            "id",
+            "status",
+            "hidden_at",
+            "delete_requested_at",
+          ],
         });
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
-  if (rapport.hidden_at || rapport.status === "draft") {
+  if (rapport.hidden_at) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
-  if (!CHEF_VISIBLE_STATUSES.includes(rapport.status)) {
+  const deletePending = Boolean(rapport.delete_requested_at);
+  if (rapport.status === "draft" && !deletePending) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!deletePending && !CHEF_VISIBLE_STATUSES.includes(rapport.status)) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
@@ -899,7 +989,99 @@ async function getRapportDetail(id, versionId = null) {
       plain.versions[0];
   }
 
-  return plain;
+  return attachDeleteCapability(plain);
+}
+
+async function hasChefOrWaliAction(rapportId) {
+  const [chefCount, waliCount] = await Promise.all([
+    ChefResponse.count({ where: { rapport_id: rapportId } }),
+    WaliResponse.count({ where: { rapport_id: rapportId } }),
+  ]);
+  return chefCount > 0 || waliCount > 0;
+}
+
+async function wipeVersionSideEffects(versionId, transaction) {
+  const versionWhere = { rapport_version_id: versionId };
+  const [chefRows, waliRows, commentRows] = await Promise.all([
+    ChefResponse.findAll({
+      where: versionWhere,
+      attributes: ["id"],
+      transaction,
+    }),
+    WaliResponse.findAll({
+      where: versionWhere,
+      attributes: ["id"],
+      transaction,
+    }),
+    RapportComment.findAll({
+      where: versionWhere,
+      attributes: ["id"],
+      transaction,
+    }),
+  ]);
+  const chefIds = chefRows.map((r) => r.id);
+  const waliIds = waliRows.map((r) => r.id);
+  const commentIds = commentRows.map((r) => r.id);
+  const notifOr = [];
+  if (chefIds.length) notifOr.push({ chef_response_id: { [Op.in]: chefIds } });
+  if (waliIds.length) notifOr.push({ wali_response_id: { [Op.in]: waliIds } });
+  if (commentIds.length) notifOr.push({ comment_id: { [Op.in]: commentIds } });
+  if (notifOr.length) {
+    await Notification.destroy({ where: { [Op.or]: notifOr }, transaction });
+  }
+  if (commentIds.length) {
+    await RapportComment.destroy({
+      where: { id: { [Op.in]: commentIds } },
+      transaction,
+    });
+  }
+  if (chefIds.length) {
+    await ChefResponse.destroy({
+      where: { id: { [Op.in]: chefIds } },
+      transaction,
+    });
+  }
+  if (waliIds.length) {
+    await WaliResponse.destroy({
+      where: { id: { [Op.in]: waliIds } },
+      transaction,
+    });
+  }
+}
+
+async function resolveDeleteCapability(rapport) {
+  const hasAction = await hasChefOrWaliAction(rapport.id);
+  const current = rapport.current_version_id
+    ? await RapportVersion.findByPk(rapport.current_version_id, {
+        attributes: ["id", "submitted_at"],
+      })
+    : null;
+  const olderCount = await RapportVersion.count({
+    where: {
+      rapport_id: rapport.id,
+      ...(current ? { id: { [Op.ne]: current.id } } : {}),
+    },
+  });
+  const deleteRequested = Boolean(rapport.delete_requested_at);
+  // Multi-version, never Chef/Wali action → roll back current instantly.
+  const canDiscardVersion = Boolean(current && olderCount > 0 && !hasAction);
+  // Sole version, never acted → wipe content and start a fresh draft v1 (keep rapport row).
+  const canResetFreshV1 = Boolean(current && olderCount === 0 && !hasAction);
+  return {
+    has_chef_or_wali_action: hasAction,
+    can_discard_draft_version: canDiscardVersion,
+    can_reset_fresh_v1: canResetFreshV1,
+    can_instant_delete: canDiscardVersion || canResetFreshV1,
+    can_request_delete: hasAction && !deleteRequested,
+    delete_requested: deleteRequested,
+    delete_requested_at: rapport.delete_requested_at || null,
+    delete_requested_by_user_id: rapport.delete_requested_by_user_id || null,
+  };
+}
+
+async function attachDeleteCapability(plain) {
+  const caps = await resolveDeleteCapability(plain);
+  return { ...plain, ...caps };
 }
 
 async function createRapport(data, actor, req) {
@@ -1783,7 +1965,425 @@ async function restoreRapport(id, actor, req) {
   return getRapportDetail(rapport.id);
 }
 
-async function deleteRapportPermanently(id, actor, req) {
+async function discardCurrentVersionAndRestoreCopy(rapport, actor, req) {
+  const currentId = rapport.current_version_id;
+  if (!currentId) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+  const current = await RapportVersion.findByPk(currentId);
+  if (!current) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+  const previous = await RapportVersion.findOne({
+    where: {
+      rapport_id: rapport.id,
+      id: { [Op.ne]: currentId },
+    },
+    order: [["version_number", "DESC"]],
+  });
+  if (!previous) {
+    const err = new Error("No older version");
+    err.status = 409;
+    throw err;
+  }
+
+  let newDraftId = null;
+  await sequelize.transaction(async (transaction) => {
+    await wipeVersionSideEffects(currentId, transaction);
+    await rapport.update({ current_version_id: null }, { transaction });
+    await RapportVersion.destroy({
+      where: { id: currentId },
+      transaction,
+    });
+
+    const last = await RapportVersion.findOne({
+      where: { rapport_id: rapport.id },
+      order: [["version_number", "DESC"]],
+      transaction,
+    });
+    const nextNum = (last?.version_number || 0) + 1;
+    const draft = await RapportVersion.create(
+      {
+        rapport_id: rapport.id,
+        version_number: nextNum,
+        data_json: cloneVersionData(previous.data_json),
+        created_by_user_id:
+          rapport.owner_office_user_id ||
+          rapport.created_by_user_id ||
+          actor.id,
+        submitted_at: null,
+      },
+      { transaction },
+    );
+    newDraftId = draft.id;
+
+    await rapport.update(
+      {
+        current_version_id: draft.id,
+        status: "draft",
+        chef_gate: "required",
+        delete_requested_at: null,
+        delete_requested_by_user_id: null,
+        updated_at: new Date(),
+      },
+      { transaction },
+    );
+  });
+
+  await audit(
+    actor.id,
+    "RAPPORT_DELETE",
+    {
+      rapport_id: rapport.id,
+      mode: "discard_version_restore_copy",
+      discarded_version_id: currentId,
+      source_version_id: previous.id,
+      new_draft_version_id: newDraftId,
+      status: "draft",
+    },
+    { req },
+  );
+  return getRapportDetail(rapport.id);
+}
+
+/**
+ * Chef-approved delete when older versions exist: drop current version and
+ * reactivate the previous one so Chef can open it (not a new office draft).
+ */
+async function discardCurrentVersionAndKeepPrevious(rapport, actor, req) {
+  const currentId = rapport.current_version_id;
+  if (!currentId) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+  const previous = await RapportVersion.findOne({
+    where: {
+      rapport_id: rapport.id,
+      id: { [Op.ne]: currentId },
+    },
+    order: [["version_number", "DESC"]],
+  });
+  if (!previous) {
+    const err = new Error("No older version");
+    err.status = 409;
+    throw err;
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    await wipeVersionSideEffects(currentId, transaction);
+    await rapport.update({ current_version_id: null }, { transaction });
+    await RapportVersion.destroy({
+      where: { id: currentId },
+      transaction,
+    });
+
+    let nextStatus = "changes_requested";
+    if (previous.submitted_at) {
+      const latestWali = await WaliResponse.findOne({
+        where: { rapport_id: rapport.id, rapport_version_id: previous.id },
+        order: [["created_at", "DESC"]],
+        transaction,
+      });
+      if (latestWali?.decision === "acknowledged") {
+        nextStatus = "acknowledged";
+      } else if (latestWali?.decision === "changes_requested") {
+        nextStatus = "changes_requested";
+      } else {
+        nextStatus = "submitted";
+      }
+    } else {
+      // Keep Chef-visible after approve (never leave a silent draft).
+      nextStatus = "changes_requested";
+    }
+
+    await rapport.update(
+      {
+        current_version_id: previous.id,
+        status: nextStatus,
+        delete_requested_at: null,
+        delete_requested_by_user_id: null,
+        updated_at: new Date(),
+      },
+      { transaction },
+    );
+  });
+
+  await audit(
+    actor.id,
+    "RAPPORT_DELETE",
+    {
+      rapport_id: rapport.id,
+      mode: "chef_discard_keep_previous",
+      discarded_version_id: currentId,
+      restored_version_id: previous.id,
+    },
+    { req },
+  );
+  return getRapportDetail(rapport.id);
+}
+
+async function resetRapportToFreshDraftV1(rapport, actor, req) {
+  const rapportType =
+    rapport.rapportType ||
+    (await RapportType.findByPk(rapport.rapport_type_id));
+  let data_json = {};
+  if (rapportType?.content_kind === "commune_list") {
+    data_json = { communes: {}, entities: {} };
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    const versions = await RapportVersion.findAll({
+      where: { rapport_id: rapport.id },
+      attributes: ["id"],
+      transaction,
+    });
+    for (const v of versions) {
+      await wipeVersionSideEffects(v.id, transaction);
+    }
+    await Notification.destroy({
+      where: { rapport_id: rapport.id },
+      transaction,
+    });
+    await ChefResponse.destroy({
+      where: { rapport_id: rapport.id },
+      transaction,
+    });
+    await WaliResponse.destroy({
+      where: { rapport_id: rapport.id },
+      transaction,
+    });
+    await RapportComment.destroy({
+      where: { rapport_id: rapport.id },
+      transaction,
+    });
+    await rapport.update({ current_version_id: null }, { transaction });
+    await RapportVersion.destroy({
+      where: { rapport_id: rapport.id },
+      transaction,
+    });
+    const version = await RapportVersion.create(
+      {
+        rapport_id: rapport.id,
+        version_number: 1,
+        data_json,
+        created_by_user_id:
+          rapport.owner_office_user_id ||
+          rapport.created_by_user_id ||
+          actor.id,
+        submitted_at: null,
+      },
+      { transaction },
+    );
+    await rapport.update(
+      {
+        current_version_id: version.id,
+        status: "draft",
+        chef_gate: "required",
+        delete_requested_at: null,
+        delete_requested_by_user_id: null,
+        updated_at: new Date(),
+      },
+      { transaction },
+    );
+  });
+
+  await audit(
+    actor.id,
+    "RAPPORT_DELETE",
+    { rapport_id: rapport.id, mode: "reset_fresh_v1" },
+    { req },
+  );
+  return getRapportDetail(rapport.id);
+}
+
+async function officeDeleteRapport(id, actor, req) {
+  const rapport = await Rapport.findByPk(id, {
+    include: [{ model: RapportType, as: "rapportType" }],
+  });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (rapport.delete_requested_at) {
+    const err = new Error("Delete already requested");
+    err.status = 409;
+    throw err;
+  }
+
+  const caps = await resolveDeleteCapability(rapport);
+  if (caps.can_discard_draft_version) {
+    const detail = await discardCurrentVersionAndRestoreCopy(
+      rapport,
+      actor,
+      req,
+    );
+    return { mode: "discard_draft_version", rapport: detail };
+  }
+  if (caps.can_reset_fresh_v1) {
+    const detail = await resetRapportToFreshDraftV1(rapport, actor, req);
+    return { mode: "reset_fresh_v1", rapport: detail };
+  }
+  if (!caps.has_chef_or_wali_action) {
+    await deleteRapportPermanently(id, actor, req, { mode: "instant" });
+    return { mode: "instant", ok: true, rapport_id: Number(id) };
+  }
+
+  const now = new Date();
+  await rapport.update({
+    delete_requested_at: now,
+    delete_requested_by_user_id: actor.id,
+    updated_at: now,
+  });
+  await audit(
+    actor.id,
+    "RAPPORT_DELETE_REQUEST",
+    { rapport_id: rapport.id },
+    { req },
+  );
+  await notifyActiveRole("CHEF_CABINET", {
+    message_key: "rapportDeleteRequested",
+    rapport_id: rapport.id,
+  });
+  const detail = await getRapportDetail(rapport.id);
+  return { mode: "requested", rapport: detail };
+}
+
+async function cancelDeleteRequest(id, actor, req) {
+  const rapport = await Rapport.findByPk(id);
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!rapport.delete_requested_at) {
+    const err = new Error("No delete request");
+    err.status = 409;
+    throw err;
+  }
+  await rapport.update({
+    delete_requested_at: null,
+    delete_requested_by_user_id: null,
+    updated_at: new Date(),
+  });
+  await audit(
+    actor.id,
+    "RAPPORT_DELETE_REQUEST_CANCEL",
+    { rapport_id: rapport.id },
+    { req },
+  );
+  return getRapportDetail(rapport.id);
+}
+
+async function chefDeleteDecision(id, data, actor, req) {
+  const rapport = await Rapport.findByPk(id);
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!rapport.delete_requested_at) {
+    const err = new Error("No delete request");
+    err.status = 409;
+    throw err;
+  }
+  const decision = String(data?.decision || "").toLowerCase();
+  if (decision !== "approved" && decision !== "rejected") {
+    const err = new Error("Invalid decision");
+    err.status = 400;
+    throw err;
+  }
+
+  const {
+    getOfficeUserIdsWithServiceAccess,
+  } = require("./serviceAccessService");
+  const manageIds = await getOfficeUserIdsWithServiceAccess(
+    Number(rapport.service_id),
+    { minLevel: "manage" },
+  );
+  const recipientIds = manageIds.length
+    ? manageIds
+    : [rapport.delete_requested_by_user_id, rapport.owner_office_user_id]
+        .map((x) => (x != null ? Number(x) : null))
+        .filter(Boolean);
+
+  if (decision === "rejected") {
+    await rapport.update({
+      delete_requested_at: null,
+      delete_requested_by_user_id: null,
+      updated_at: new Date(),
+    });
+    await audit(
+      actor.id,
+      "RAPPORT_DELETE_REJECTED",
+      { rapport_id: rapport.id },
+      { req },
+    );
+    if (recipientIds.length) {
+      await notifyUsers({
+        userIds: recipientIds,
+        rapport_id: rapport.id,
+        message_key: "rapportDeleteRejected",
+      });
+    }
+    return { decision: "rejected", rapport: await getRapportDetail(rapport.id) };
+  }
+
+  const rapportId = Number(rapport.id);
+  const versionCount = await RapportVersion.count({
+    where: { rapport_id: rapportId },
+  });
+  const hasOlder = versionCount > 1;
+
+  if (hasOlder) {
+    await rapport.update({
+      delete_requested_at: null,
+      delete_requested_by_user_id: null,
+      updated_at: new Date(),
+    });
+    const detail = await discardCurrentVersionAndKeepPrevious(
+      rapport,
+      actor,
+      req,
+    );
+    if (recipientIds.length) {
+      await notifyUsers({
+        userIds: recipientIds,
+        rapport_id: rapportId,
+        message_key: "rapportDeleteApproved",
+      });
+    }
+    return {
+      decision: "approved",
+      mode: "restored_previous",
+      rapport: detail,
+    };
+  }
+
+  if (recipientIds.length) {
+    await notifyUsers({
+      userIds: recipientIds,
+      rapport_id: rapportId,
+      message_key: "rapportDeleteApproved",
+    });
+  }
+  await deleteRapportPermanently(rapportId, actor, req, {
+    mode: "chef_approved",
+  });
+  return {
+    decision: "approved",
+    mode: "deleted",
+    ok: true,
+    rapport_id: rapportId,
+  };
+}
+
+async function deleteRapportPermanently(id, actor, req, meta = {}) {
   const rapport = await Rapport.findByPk(id);
   if (!rapport) {
     const err = new Error("Not found");
@@ -1791,10 +2391,19 @@ async function deleteRapportPermanently(id, actor, req) {
     throw err;
   }
   await sequelize.transaction(async (transaction) => {
+    await Notification.destroy({
+      where: { rapport_id: rapport.id },
+      transaction,
+    });
     await rapport.update({ current_version_id: null }, { transaction });
     await Rapport.destroy({ where: { id: rapport.id }, transaction });
   });
-  await audit(actor.id, "RAPPORT_DELETE", { rapport_id: Number(id) }, { req });
+  await audit(
+    actor.id,
+    "RAPPORT_DELETE",
+    { rapport_id: Number(id), mode: meta.mode || "admin" },
+    { req },
+  );
   return { ok: true };
 }
 
@@ -1820,5 +2429,9 @@ module.exports = {
   hideRapport,
   restoreRapport,
   deleteRapportPermanently,
+  officeDeleteRapport,
+  cancelDeleteRequest,
+  chefDeleteDecision,
+  resolveDeleteCapability,
   enrichOfficeRapportList,
 };

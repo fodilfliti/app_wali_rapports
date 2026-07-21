@@ -27,6 +27,24 @@ function chefInboxActionWhere() {
   };
 }
 
+/** Pending Chef respond OR pending delete approval (for badges / office-user counts). */
+function chefActionOrDeleteWhere() {
+  return {
+    hidden_at: null,
+    [Op.or]: [
+      { status: { [Op.in]: CHEF_INBOX_ACTION_STATUSES } },
+      { delete_requested_at: { [Op.ne]: null } },
+    ],
+  };
+}
+
+function chefDeleteRequestWhere() {
+  return {
+    delete_requested_at: { [Op.ne]: null },
+    hidden_at: null,
+  };
+}
+
 async function countUnreadNotifications(userId, prefs) {
   const hidden = [
     ...DEDICATED_NOTIFICATION_KEYS,
@@ -204,7 +222,7 @@ async function countWaliOfficeUsersWithPending() {
 }
 
 async function countChefOfficeUsersWithPending() {
-  return countOfficeUsersWithPendingInGrants(chefInboxActionWhere());
+  return countOfficeUsersWithPendingInGrants(chefActionOrDeleteWhere());
 }
 
 async function countUnreadDiscussion(userId, opts = {}, prefs = null) {
@@ -255,6 +273,15 @@ async function getWaliHubCounts(user) {
   return { inbox_pending, office_users_pending, unread_discussion };
 }
 
+async function countChefDeletePending() {
+  return Rapport.count({
+    where: {
+      delete_requested_at: { [Op.ne]: null },
+      hidden_at: null,
+    },
+  });
+}
+
 async function getChefHubCounts(user) {
   const userId = typeof user === "object" ? user.id : user;
   const prefs = await getPreferences(userId);
@@ -264,14 +291,26 @@ async function getChefHubCounts(user) {
     const row = await User.findByPk(userId);
     if (row) await maybeRunDailyCalendarScan(row);
   }
-  const [inbox_pending, office_users_pending, unread_discussion, unread_shared_files] =
-    await Promise.all([
-      countChefInboxPending(),
-      countChefOfficeUsersWithPending(),
-      countUnreadDiscussion(userId, {}, prefs),
-      countUnreadSharedFiles(userId, prefs),
-    ]);
-  return { inbox_pending, office_users_pending, unread_discussion, unread_shared_files };
+  const [
+    inbox_pending,
+    office_users_pending,
+    unread_discussion,
+    unread_shared_files,
+    delete_pending,
+  ] = await Promise.all([
+    countChefInboxPending(),
+    countChefOfficeUsersWithPending(),
+    countUnreadDiscussion(userId, {}, prefs),
+    countUnreadSharedFiles(userId, prefs),
+    countChefDeletePending(),
+  ]);
+  return {
+    inbox_pending,
+    office_users_pending,
+    unread_discussion,
+    unread_shared_files,
+    delete_pending,
+  };
 }
 
 async function getOfficeServiceActionCounts(userId) {
@@ -315,7 +354,7 @@ async function getChefServicePendingCounts(officeUserId) {
     return { byService: {}, byType: {} };
   }
   const where = {
-    ...chefInboxActionWhere(),
+    ...chefActionOrDeleteWhere(),
     service_id: { [Op.in]: serviceIds },
   };
   const [byService, byType] = await Promise.all([
@@ -331,6 +370,8 @@ module.exports = {
   DEDICATED_NOTIFICATION_KEYS,
   waliInboxActionWhere,
   chefInboxActionWhere,
+  chefActionOrDeleteWhere,
+  chefDeleteRequestWhere,
   getOfficeHubCounts,
   getWaliHubCounts,
   getChefHubCounts,

@@ -8,6 +8,8 @@ type Props = {
     id: number
     status: string
     hidden_at?: string | null
+    delete_requested?: boolean
+    delete_requested_at?: string | null
   } | null
   editable: boolean
   /** Éditeur (`manage`) — required to show return-to-draft. */
@@ -27,7 +29,22 @@ export function RapportOfficeStatusBanner({
   returning,
 }: Props) {
   const { t } = useTranslation()
-  if (editable || !rapport?.id) return null
+  if (!rapport?.id) return null
+
+  if (rapport.delete_requested || rapport.delete_requested_at) {
+    return (
+      <div className="card rapportOfficeStatusBanner">
+        <div className="rapportOfficeStatusBannerBody">
+          <strong className="rapportOfficeStatusBannerTitle">
+            {t('deleteRapportAwaitingChefTitle')}
+          </strong>
+          <p className="muted small">{t('deleteRapportAwaitingChefHint')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (editable) return null
 
   const showReturn =
     canManage === true &&

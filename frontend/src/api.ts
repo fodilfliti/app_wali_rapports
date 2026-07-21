@@ -614,6 +614,50 @@ export function returnRapportToDraft(token: string, id: number) {
   });
 }
 
+export function officeDeleteRapport(token: string, id: number) {
+  return request<{
+    mode:
+      | "instant"
+      | "discard_draft_version"
+      | "reset_fresh_v1"
+      | "requested";
+    ok?: boolean;
+    rapport_id?: number;
+    rapport?: any;
+  }>(`/office/rapports/${id}/delete`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function cancelRapportDeleteRequest(token: string, id: number) {
+  return request<{ rapport: any }>(
+    `/office/rapports/${id}/cancel-delete-request`,
+    {
+      method: "POST",
+      token,
+    },
+  );
+}
+
+export function chefDeleteDecision(
+  token: string,
+  id: number,
+  decision: "approved" | "rejected",
+) {
+  return request<{
+    decision: string;
+    mode?: "restored_previous" | "deleted";
+    ok?: boolean;
+    rapport_id?: number;
+    rapport?: any;
+  }>(`/chef/rapports/${id}/delete-decision`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ decision }),
+  });
+}
+
 export function finishRapport(token: string, id: number) {
   return request<{ rapport: any }>(`/office/rapports/${id}/finish`, {
     method: "POST",
@@ -699,6 +743,7 @@ export type ChefHubCounts = {
   office_users_pending: number;
   unread_discussion: number;
   unread_shared_files: number;
+  delete_pending: number;
 };
 
 export function getOfficeHubCounts(token: string) {

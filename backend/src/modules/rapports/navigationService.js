@@ -30,8 +30,10 @@ function serializeServiceNode(s, includeChildren = true) {
 /**
  * Pending count per office user = inbox rapports in that user's granted services
  * (grantee lens; co-grantees share the same pending work).
+ * @param {string[]} [statusList] — if omitted, use `whereExtra` only
+ * @param {object} [whereExtra] — extra Sequelize where (e.g. delete requests)
  */
-async function pendingCountsByOfficeUser(statusList) {
+async function pendingCountsByOfficeUser(statusList, whereExtra = null) {
   const grants = await UserServiceGrant.findAll({
     attributes: ["user_id", "service_id"],
     include: [
@@ -57,16 +59,20 @@ async function pendingCountsByOfficeUser(statusList) {
   const allServiceIds = [
     ...new Set([...servicesByUser.values()].flatMap((s) => [...s])),
   ];
+  const where = {
+    hidden_at: null,
+    service_id: { [Op.in]: allServiceIds },
+    ...(whereExtra || {}),
+  };
+  if (statusList?.length && !whereExtra) {
+    where.status = { [Op.in]: statusList };
+  }
   const pendingByService = await Rapport.findAll({
     attributes: [
       "service_id",
       [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"],
     ],
-    where: {
-      status: { [Op.in]: statusList },
-      hidden_at: null,
-      service_id: { [Op.in]: allServiceIds },
-    },
+    where,
     group: ["service_id"],
     raw: true,
   });
@@ -107,7 +113,25 @@ async function listOfficeUsersForWali(statusList = hubCountsService.WALI_INBOX_A
 }
 
 async function listOfficeUsersForChef() {
-  return listOfficeUsersForWali(hubCountsService.CHEF_INBOX_ACTION_STATUSES);
+  const users = await User.findAll({
+    where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+    order: [["name", "ASC"], ["id", "ASC"]],
+    attributes: ["id", "username", "name", "job_title", "department_id"],
+    include: [{ model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] }],
+  });
+
+  const countByUser = await pendingCountsByOfficeUser(null, {
+    ...hubCountsService.chefActionOrDeleteWhere(),
+  });
+
+  return users.map((u) => ({
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    job_title: u.job_title,
+    department: u.department,
+    pending_rapports_count: countByUser[Number(u.id)] || 0,
+  }));
 }
 
 async function loadFullServiceTree() {

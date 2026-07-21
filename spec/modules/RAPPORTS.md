@@ -135,6 +135,8 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 - `id`, `service_id`, `rapport_type_id`, `title`, `reference_date`, `status`
 
 - `current_version_id`, `created_by_user_id`, `owner_office_user_id` (who “owns” non-shared work; Wali/Chef per-user lists with `office_user_id` use the **grantee lens** — all rapports in that user’s granted services — see `SERVICE_SHARING.md`. `fiche_lecture` keeps `owner_office_user_id` null through submit.)
+- `hidden_at` (soft-hide / finish)
+- `delete_requested_at`, `delete_requested_by_user_id` (pending Chef delete approval — see workflow §6)
 
 - `created_at`, `updated_at`
 
@@ -204,6 +206,19 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
    - **UI:** confirm dialog (AR « تعديل بعد الإرسال » / FR « Modifier après envoi ») explaining return to brouillon, wipe of current-cycle Chef/Wali notes + discussion, archive preserved, and removal from Chef/Wali until re-send.
    - Distinct from Chef/Wali `changes_requested` reopen (which forks a new version for versioned types).
 
+6. **Office delete** — Éditeur (`manage`); always a confirm dialog first (copy depends on path); then a snackbar explaining the outcome:
+
+   - **Gate:** any `chef_responses` or `wali_responses` on the rapport (any version) = Chef/Wali already acted → **delete request** (never instant).
+   - **Instant discard current version (multi-version, no Chef/Wali action):** older `rapport_versions` exist → hard-delete **only** the current version (and its discussion/notifications linked to that version); create a **new draft version** that is a **copy of the previous version’s `data_json`** (new `version_number`, no `submitted_at`); set `status = draft`, `chef_gate = required`. Older archive versions stay. Confirm + snack: this version only deleted; continue from restored previous copy as brouillon.
+   - **Instant reset to fresh v1 (sole version, no Chef/Wali action):** only one version and no responses → wipe content/side-effects and create a **new empty draft version 1** on the same rapport row (do **not** destroy the rapport). Confirm + snack: cleared; start again from version 1.
+   - **Delete request (needs Chef):** any Chef/Wali response exists → set `delete_requested_at` / `delete_requested_by_user_id`; notify Chef; do **not** delete yet. Confirm: sends request to رئيس الديوان; wait / contact Chef; rapport stays until approved.
+   - **Cancel request:** Éditeur `manage` clears the request columns.
+   - **Chef decision:**
+     - **Approve + older versions exist** → hard-delete current version only; reactivate the previous version as `current_version_id` (`mode: restored_previous`); Chef UI opens that rapport; snack explains restore. Office continues from that previous version (not a wipe of the whole rapport).
+     - **Approve + sole version (v1 only)** → permanent destroy of the rapport (`mode: deleted`); Chef returns to the (empty) delete-request list; snack explains full removal.
+     - **Reject** → clear request + notify office.
+   - Soft-hide (`finish`) unchanged — not a delete.
+
 
 
 ### API endpoints
@@ -219,6 +234,9 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 | Method | Path | Notes |
 | ------ | ---- | ----- |
 | `POST` | `/office/rapports/:id/return-to-draft` | Éditeur (`manage`); recall sent rapport to draft (see workflow §5). `409` if status not allowed or Wali already accepted/viewed current version |
+| `POST` | `/office/rapports/:id/delete` | Éditeur (`manage`); instant full/draft-version delete **or** open delete request (see workflow §6). `409` if already requested |
+| `POST` | `/office/rapports/:id/cancel-delete-request` | Éditeur (`manage`); clear pending delete request |
+| `POST` | `/chef/rapports/:id/delete-decision` | Chef; body `{ decision: "approved" \| "rejected" }` — see `CHEF_CABINET.md` |
 
 
 
@@ -233,10 +251,11 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 - **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**. Primary tabs: **التقارير** / **المناقشة** only. Finished soft-hidden list via segment chips **النشطة** / **المنتهية** (same row as status + sort; `?hidden=1` → `hidden_only`). Discussion inbox: `?view=discussion` (New / All) — see **`RAPPORT_DISCUSSION.md`**.
 - **Global rapport lists** (`/admin/rapports`, `/office/rapports`, `/wali/rapports`, `/chef/rapports`): optional title **search** query param (`search`) filters by rapport title (`iLike`); same search field in UI across roles.
 - **Sort by date** (rapports list mode only — not Discussion): query param `sort` = `created_at` | `updated_at` (default **`created_at`**, always DESC). UI chips: الأحدث إنشاءً / Plus récents (création) · آخر تحديث / Dernière mise à jour. Status + sort chip groups sit on **one row on desktop**, stacked on narrow screens. URL-synced (`?sort=`); omit param when default. Chef default inbox still prioritizes `pending_chef` first, then the chosen date field.
-- **Status group filter** (rapports list mode only — hidden on Discussion tabs): query param `status_group` = `all` | `in_progress` | `needs_edit` | `done` | `new`. Prefer `status_group` over raw `status` when both are sent. Chips in UI (AR / FR): الكل / Tous · جاري / En cours · يحتاج تعديل / À corriger · منتهٍ / Terminé; Wali and Chef also get جديد / Nouveau. Mutually exclusive chips; URL-synced (`?status_group=`).
-  - **Office / Admin:** `all` = no status filter; `in_progress` = `draft` | `pending_chef` | `submitted` | `under_review`; `needs_edit` = `changes_requested`; `done` = `acknowledged`. No `new` chip.
+- **Status group filter** (rapports list mode only — hidden on Discussion tabs): query param `status_group` = `all` | `in_progress` | `needs_edit` | `done` | `new` | `delete_requested` (Chef only). Prefer `status_group` over raw `status` when both are sent. Chips in UI (AR / FR): الكل / Tous · جاري / En cours · يحتاج تعديل / À corriger · منتهٍ / Terminé; Wali and Chef also get جديد / Nouveau; **Chef only** طلبات الحذف / Suppressions (`delete_requested`) with hub count badge. Mutually exclusive chips; URL-synced (`?status_group=`).
+  - **Office / Admin:** `all` = no status filter; `in_progress` = `draft` | `pending_chef` | `submitted` | `under_review`; `needs_edit` = `changes_requested`; `done` = `acknowledged`. No `new` chip. Row/banner when `delete_requested_at` set (awaiting Chef).
   - **Wali:** `all` = inbox set (`submitted` | `under_review` | `changes_requested` | `acknowledged`); `new` = `submitted` and not yet opened by this Wali (`is_inbox_new`); `in_progress` = `under_review` or `submitted` already opened (excludes Nouveau); `needs_edit` / `done` as above.
-  - **Chef:** `all` = Chef inbox set (`pending_chef` | `submitted` | `under_review` | `changes_requested` | `acknowledged`); `new` = `pending_chef`; `in_progress` = `submitted` | `under_review`; `needs_edit` / `done` as above.
+  - **Chef:** `all` = Chef inbox set (`pending_chef` | `submitted` | `under_review` | `changes_requested` | `acknowledged`); `new` = `pending_chef`; `in_progress` = `submitted` | `under_review`; `needs_edit` / `done` as above; `delete_requested` = `delete_requested_at IS NOT NULL`. Default sort prioritizes delete requests and `pending_chef` first.
+- **Delete confirm (office):** two dialogs — instant (« حذف نهائي » / suppression définitive now) vs request (« طلب حذف » / sends to Chef; wait or contact Chef). Chef approve/reject and office cancel-request also confirm.
 
 - **Document/fiche editors:** export menu (preview + download), optional **import template** (replace or append); compact page header.
 
@@ -261,6 +280,14 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 | `RAPPORT_SUBMIT` | Submit to wali |
 
 | `RAPPORT_RETURN_TO_DRAFT` | Office recalls sent rapport to draft (before Wali accept/view) |
+
+| `RAPPORT_DELETE` | Instant or Chef-approved permanent delete (full or draft-version discard) |
+
+| `RAPPORT_DELETE_REQUEST` | Office opens delete request awaiting Chef |
+
+| `RAPPORT_DELETE_REQUEST_CANCEL` | Office cancels pending delete request |
+
+| `RAPPORT_DELETE_REJECTED` | Chef rejects delete request |
 
 | `RAPPORT_WALI_RESPONSE` | Wali respond |
 
@@ -294,6 +321,8 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 - `20260608_000004_service_types_navigation.js` — content_kind, schemas, notifications, service tree fields.
 
 - `20260617_000014_document_templates.js` — `rapport_document_templates`.
+
+- `20260721_000031_rapport_delete_request.js` — `delete_requested_at`, `delete_requested_by_user_id` on `rapports`.
 
 
 

@@ -181,6 +181,26 @@ export function canOfficeReturnToDraft(status: string) {
   )
 }
 
+export function officeDeleteMode(rapport: {
+  can_instant_delete?: boolean
+  can_request_delete?: boolean
+  can_discard_draft_version?: boolean
+  can_reset_fresh_v1?: boolean
+  delete_requested?: boolean
+  delete_requested_at?: string | null
+}): 'instant' | 'request' | null {
+  if (rapport.delete_requested || rapport.delete_requested_at) return null
+  if (rapport.can_request_delete) return 'request'
+  if (
+    rapport.can_instant_delete ||
+    rapport.can_discard_draft_version ||
+    rapport.can_reset_fresh_v1
+  ) {
+    return 'instant'
+  }
+  return null
+}
+
 export function isAwaitingWaliResponse(status: string) {
   return status === 'submitted' || status === 'under_review'
 }

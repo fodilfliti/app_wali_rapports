@@ -59,6 +59,10 @@ import { localizedName } from '../utils/schemaColumns'
 import { RapportExportButtons } from '../components/ExportPdfButton'
 import { BusyButton } from '../components/BusyButton'
 import { ReturnRapportToDraftConfirm } from '../components/ReturnRapportToDraftConfirm'
+import {
+  ChefRapportDeleteControls,
+  OfficeRapportDeleteControls,
+} from '../components/RapportDeleteControls'
 import { PageLoading } from '../components/PageLoading'
 import { QueryListShell } from '../components/QueryListShell'
 import { ListRefreshIndicator } from '../components/ListRefreshIndicator'
@@ -121,6 +125,9 @@ function OfficeRapportStatusCell({ r, t }: { r: any; t: (k: string) => string })
     <td className="rapportStatusCell">
       <div className="rapportStatusStack">
         <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+        {r.delete_requested || r.delete_requested_at ? (
+          <span className="badge badge-changes_requested">{t('deleteRapportPendingBadge')}</span>
+        ) : null}
         {chefLabel && chefDecision ? (
           <p className="rapportWaliStatusNote muted small">
             {t('chefResponseShort')}:{' '}
@@ -143,11 +150,13 @@ function StatusGroupFilterBar({
   value,
   onChange,
   t,
+  chipCounts,
 }: {
   role: 'office' | 'admin' | 'wali' | 'chef'
   value: RapportStatusGroup
   onChange: (next: RapportStatusGroup) => void
-  t: (k: string) => string
+  t: (k: string, opts?: Record<string, unknown>) => string
+  chipCounts?: Partial<Record<RapportStatusGroup, number>>
 }) {
   const chips = statusGroupChips(role)
   return (
@@ -156,18 +165,27 @@ function StatusGroupFilterBar({
       role="tablist"
       aria-label={t('statusGroupFilter')}
     >
-      {chips.map((chip) => (
-        <button
-          key={chip.id}
-          type="button"
-          role="tab"
-          aria-selected={value === chip.id}
-          className={`inboxViewTab${value === chip.id ? ' active' : ''}`}
-          onClick={() => onChange(chip.id)}
-        >
-          {t(chip.labelKey)}
-        </button>
-      ))}
+      {chips.map((chip) => {
+        const count = chipCounts?.[chip.id] ?? 0
+        const countLabel = count > 99 ? '99+' : String(count)
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            role="tab"
+            aria-selected={value === chip.id}
+            className={`inboxViewTab${value === chip.id ? ' active' : ''}`}
+            onClick={() => onChange(chip.id)}
+          >
+            <span>{t(chip.labelKey)}</span>
+            {count > 0 ? (
+              <span className="inboxTabCount" aria-hidden="true">
+                {countLabel}
+              </span>
+            ) : null}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -250,6 +268,7 @@ function RapportListFilterToolbar({
   finished,
   onFinishedChange,
   t,
+  chipCounts,
 }: {
   role: 'office' | 'admin' | 'wali' | 'chef'
   statusGroup: RapportStatusGroup
@@ -258,11 +277,18 @@ function RapportListFilterToolbar({
   onListSort: (next: RapportListSort) => void
   finished?: boolean
   onFinishedChange?: (finished: boolean) => void
-  t: (k: string) => string
+  t: (k: string, opts?: Record<string, unknown>) => string
+  chipCounts?: Partial<Record<RapportStatusGroup, number>>
 }) {
   return (
     <div className="inboxListFiltersRow">
-      <StatusGroupFilterBar role={role} value={statusGroup} onChange={onStatusGroup} t={t} />
+      <StatusGroupFilterBar
+        role={role}
+        value={statusGroup}
+        onChange={onStatusGroup}
+        t={t}
+        chipCounts={chipCounts}
+      />
       <ListSortFilterBar value={listSort} onChange={onListSort} t={t} />
       {onFinishedChange != null ? (
         <ListScopeFilterBar finished={!!finished} onChange={onFinishedChange} t={t} />
@@ -306,6 +332,8 @@ export function OfficeRapportsListPage({ token }: Props) {
   const [searchInput, setSearchInput] = useState('')
   const [submittingId, setSubmittingId] = useState<number | null>(null)
   const [returningId, setReturningId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [cancellingDeleteId, setCancellingDeleteId] = useState<number | null>(null)
   const [importFor, setImportFor] = useState<{ rapportId: number; serviceId: number; typeId: number } | null>(
     null,
   )
@@ -475,6 +503,50 @@ export function OfficeRapportsListPage({ token }: Props) {
       snack.show(t('errorGeneric'), 'error')
     } finally {
       setReturningId(null)
+    }
+  }
+
+  async function deleteRapport(id: number) {
+    setDeletingId(id)
+    try {
+      const result = await api.officeDeleteRapport(token, id)
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office' },
+      })
+      if (result.mode === 'requested') {
+        snack.show(t('deleteRapportRequestSent'), 'success')
+      } else if (result.mode === 'discard_draft_version') {
+        snack.show(t('deleteRapportDiscardVersionDone'), 'success')
+      } else if (result.mode === 'reset_fresh_v1') {
+        snack.show(t('deleteRapportResetV1Done'), 'success')
+      } else {
+        snack.show(t('deleteRapportDone'), 'success')
+      }
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function cancelDeleteRequest(id: number) {
+    setCancellingDeleteId(id)
+    try {
+      await api.cancelRapportDeleteRequest(token, id)
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office' },
+      })
+      snack.show(t('cancelDeleteRequestDone'), 'success')
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setCancellingDeleteId(null)
     }
   }
 
@@ -736,6 +808,16 @@ export function OfficeRapportsListPage({ token }: Props) {
                         </ReturnRapportToDraftConfirm>
                       ) : null}
                       {!discussionView ? (
+                        <OfficeRapportDeleteControls
+                          rapport={r}
+                          canManage
+                          deleting={deletingId === r.id}
+                          cancelling={cancellingDeleteId === r.id}
+                          onDelete={() => deleteRapport(r.id)}
+                          onCancelRequest={() => cancelDeleteRequest(r.id)}
+                        />
+                      ) : null}
+                      {!discussionView ? (
                         <RapportRowHideActions
                           rapport={r}
                           canManage
@@ -785,6 +867,8 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const [showHidden, setShowHidden] = useState(false)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
   const [returningId, setReturningId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [cancellingDeleteId, setCancellingDeleteId] = useState<number | null>(null)
 
   const hubQuery = useOfficeServiceHubQuery(token, sid)
   const hub = hubQuery.data
@@ -905,6 +989,50 @@ export function OfficeServiceRapportListPage({ token }: Props) {
       snack.show(t('errorGeneric'), 'error')
     } finally {
       setReturningId(null)
+    }
+  }
+
+  async function deleteRapport(id: number) {
+    setDeletingId(id)
+    try {
+      const result = await api.officeDeleteRapport(token, id)
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
+      if (result.mode === 'requested') {
+        snack.show(t('deleteRapportRequestSent'), 'success')
+      } else if (result.mode === 'discard_draft_version') {
+        snack.show(t('deleteRapportDiscardVersionDone'), 'success')
+      } else if (result.mode === 'reset_fresh_v1') {
+        snack.show(t('deleteRapportResetV1Done'), 'success')
+      } else {
+        snack.show(t('deleteRapportDone'), 'success')
+      }
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function cancelDeleteRequest(id: number) {
+    setCancellingDeleteId(id)
+    try {
+      await api.cancelRapportDeleteRequest(token, id)
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
+      snack.show(t('cancelDeleteRequestDone'), 'success')
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setCancellingDeleteId(null)
     }
   }
 
@@ -1105,6 +1233,14 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                       )}
                     </ReturnRapportToDraftConfirm>
                   ) : null}
+                  <OfficeRapportDeleteControls
+                    rapport={r}
+                    canManage={canEdit}
+                    deleting={deletingId === r.id}
+                    cancelling={cancellingDeleteId === r.id}
+                    onDelete={() => deleteRapport(r.id)}
+                    onCancelRequest={() => cancelDeleteRequest(r.id)}
+                  />
                   <RapportRowHideActions
                     rapport={r}
                     canManage={canEdit}
@@ -1134,6 +1270,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
 export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { reviewer?: import('../utils/reviewerMode').ReviewerMode }) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const navigate = useNavigate()
   const invalidate = useInvalidateAppQueries()
   const [searchParams, setSearchParams] = useSearchParams()
   const discussionView = searchParams.get('view') === 'discussion'
@@ -1157,12 +1294,15 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [respondId, setRespondId] = useState<number | null>(null)
+  const [deleteDecideId, setDeleteDecideId] = useState<number | null>(null)
   const waliCounts = useWaliHubCounts(reviewer === 'wali' ? token : '')
   const chefCounts = useChefHubCounts(reviewer === 'chef' ? token : '')
   const unreadDiscussion =
     reviewer === 'chef'
       ? chefCounts.counts.unread_discussion || 0
       : waliCounts.counts.unread_discussion || 0
+  const deletePending =
+    reviewer === 'chef' ? chefCounts.counts.delete_pending || 0 : 0
   const unreadLabel = unreadDiscussion > 99 ? '99+' : String(unreadDiscussion)
 
   const listParams = {
@@ -1363,6 +1503,11 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
             listSort={listSort}
             onListSort={setListSort}
             t={t}
+            chipCounts={
+              reviewer === 'chef'
+                ? { delete_requested: deletePending }
+                : undefined
+            }
           />
         ) : null}
       </section>
@@ -1426,6 +1571,12 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
                     <td className="rapportStatusCell">
                       <div className="rapportStatusStack">
                         <span className={`badge badge-${r.status}`}>{rapportStatusLabel(r.status, t)}</span>
+                        {reviewer === 'chef' &&
+                        (r.delete_requested || r.delete_requested_at) ? (
+                          <span className="badge badge-changes_requested">
+                            {t('deleteRapportPendingBadge')}
+                          </span>
+                        ) : null}
                         {chefLabel && chefDecision ? (
                           <p className="rapportWaliStatusNote muted small">
                             {t('chefResponseShort')}:{' '}
@@ -1465,6 +1616,46 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
                         >
                           {t('respondRapport')}
                         </button>
+                      ) : null}
+                      {!discussionView &&
+                      reviewer === 'chef' &&
+                      (r.delete_requested || r.delete_requested_at) ? (
+                        <ChefRapportDeleteControls
+                          rapport={r}
+                          deleting={deleteDecideId === r.id}
+                          onDecide={async (decision) => {
+                            setDeleteDecideId(r.id)
+                            try {
+                              const result = await api.chefDeleteDecision(
+                                token,
+                                r.id,
+                                decision,
+                              )
+                              await invalidate({
+                                rapports: true,
+                                hubCounts: 'chef',
+                                officeUsers: 'chef',
+                                serviceTrees: true,
+                                serviceHub: { scope: 'chef' },
+                              })
+                              if (decision === 'rejected') {
+                                snack.show(t('chefRejectDeleteDone'), 'success')
+                              } else if (result.mode === 'restored_previous') {
+                                snack.show(
+                                  t('chefDeleteRestoredPreviousDone'),
+                                  'success',
+                                )
+                                navigate(`/chef/rapports/${r.id}/view`)
+                              } else {
+                                snack.show(t('chefDeleteFullyDone'), 'success')
+                              }
+                            } catch {
+                              snack.show(t('errorGeneric'), 'error')
+                            } finally {
+                              setDeleteDecideId(null)
+                            }
+                          }}
+                        />
                       ) : null}
                     </div>
                   </td>

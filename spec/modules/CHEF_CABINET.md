@@ -8,8 +8,8 @@
 
 ### Roles & rules
 
-- **CHEF_CABINET**: `/chef/*` routes; inbox for `pending_chef`; respond → accept / changes_requested (رفض أو طلب تعديل); read-only instructions list; **recipient** of Wali broadcasts (`/chef/shared`, included in share picker and “all”).
-- **OFFICE_USER**: submit → `pending_chef` when `chef_gate = required`; editable when `draft` or `changes_requested`. May **return to draft** while `pending_chef` | `submitted` | `under_review` (Éditeur / `manage`, confirm UI) — clears current version `submitted_at` and current-version chef remarks, resets `chef_gate = required`, removes from Chef inbox until re-send; older-version history kept; blocked after Wali accept/view — see **`RAPPORTS.md`** § Office recall.
+- **CHEF_CABINET**: `/chef/*` routes; inbox for `pending_chef`; respond → accept / changes_requested (رفض أو طلب تعديل); **delete requests** (`delete_requested_at`) → approve / reject; read-only instructions list; **recipient** of Wali broadcasts (`/chef/shared`, included in share picker and “all”).
+- **OFFICE_USER**: submit → `pending_chef` when `chef_gate = required`; editable when `draft` or `changes_requested`. May **return to draft** while `pending_chef` | `submitted` | `under_review` (Éditeur / `manage`, confirm UI) — clears current version `submitted_at` and current-version chef remarks, resets `chef_gate = required`, removes from Chef inbox until re-send; older-version history kept; blocked after Wali accept/view — see **`RAPPORTS.md`** § Office recall. May **delete** or **request delete** per **`RAPPORTS.md`** § Office delete (confirm dialog: instant vs Chef approval).
 - **WALI**: inbox excludes `pending_chef`; sees rapport only after Chef accept or on bypass resubmit.
 - **ADMIN**: may use chef/wali routes for support.
 
@@ -23,6 +23,7 @@
 
 - `status` includes `pending_chef`.
 - `chef_gate`: `required` | `bypass` (default `required`).
+- `delete_requested_at` / `delete_requested_by_user_id` when office asks Chef to approve permanent delete — `RAPPORTS.md` §6.
 
 #### `chef_responses`
 
@@ -41,15 +42,18 @@ Office resubmit with bypass → submitted (+ notify Chef info-only `rapportResub
 Office return-to-draft (while pending_chef | submitted | under_review, before Wali accept/view)
   → draft + chef_gate=required; wipe current-version chef/wali remarks + discussion only
     (older versions kept; out of Chef/Wali inbox until re-send)
+Office delete: no chef/wali responses → instant hard-delete (or discard unsubmitted draft version only)
+Office delete: any chef/wali response → delete_requested → Chef approve (restore previous version if any, else destroy) | reject
 ```
 
 ### API endpoints
 
 | Method | Path | Notes |
 | ------ | ---- | ----- |
-| `GET` | `/chef/rapports` | Inbox: `pending_chef`, `submitted`, `under_review`, … |
+| `GET` | `/chef/rapports` | Inbox: `pending_chef`, `submitted`, `under_review`, …; `status_group=delete_requested` |
 | `GET` | `/chef/rapports/:id` (+ view / versions / exports) | Requires `assertVisibleToChef` — never `draft` / hidden; status must be in Chef inbox set |
 | `POST` | `/chef/rapports/:id/respond` | Chef decision (also gated by `assertVisibleToChef`) |
+| `POST` | `/chef/rapports/:id/delete-decision` | `{ decision: "approved" \| "rejected" }`; approve → restore previous version or destroy if sole v1 |
 | `GET` | `/chef/office-users` | Same tree as Wali |
 | `GET` | `/chef/instructions` | Read-only list |
 | `GET` | `/chef/instructions/:id` | Detail |
@@ -62,6 +66,7 @@ Office return-to-draft (while pending_chef | submitted | under_review, before Wa
 
 - Hub label **رئيس الديوان**; nav mirrors Wali minus instruction/broadcast create.
 - Hub tile **ملفات مشتركة** → `/chef/shared` (same UX as office shared inbox); unread via `unread_shared_files`.
+- Hub / filter: **طلبات الحذف** (`delete_pending` count + `status_group=delete_requested`) for office delete requests.
 - Included in Wali broadcast recipient picker and “all” sends — see `MEDIA_CALENDAR_WALI_SHARING.md`.
 - Rapport bottom: **ملاحظات رئيس الديوان** then **ملاحظات الوالي**, then **مناقشة التقرير** (see `RAPPORT_DISCUSSION.md`).
 - Never show enum `CHEF_CABINET` in UI.
@@ -72,6 +77,8 @@ Office return-to-draft (while pending_chef | submitted | under_review, before Wa
 | ----------- | --------- |
 | `rapportPendingChef` | Chef — office Envoyer lands in `pending_chef` (device + in-app; **not** Wali) |
 | `rapportPendingWali` | Wali — after Chef accept → `submitted`, and on office bypass resubmit → `submitted` |
+| `rapportDeleteRequested` | Chef — office delete request (`rapport_inbox`) |
+| `rapportDeleteApproved` / `rapportDeleteRejected` | Office service `manage` grantees |
 | `chefAccepted`, `chefChangesRequested`, `chefFeedback` | Office — all active grant holders on the rapport’s service (`SERVICE_SHARING.md`) |
 | `rapportResubmittedBypass`, `waliChangesRequested` (info) | Chef |
 | `rapportComment` | Office / Chef / Wali (fanout — `RAPPORT_DISCUSSION.md`; office also includes `manage` co-grantees on the service) |
@@ -89,6 +96,8 @@ Device push + preference filtering: `DEVICE_NOTIFICATIONS.md`.
 | ----------- | ---- |
 | `CHEF_RESPOND` | Chef posts response |
 | `RAPPORT_SUBMIT_PENDING_CHEF` | Submit lands in chef gate |
+| `RAPPORT_DELETE` | Chef approves delete request (also used for office instant delete — `RAPPORTS.md`) |
+| `RAPPORT_DELETE_REJECTED` | Chef rejects delete request |
 
 ### Migration notes
 
