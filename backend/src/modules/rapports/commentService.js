@@ -21,6 +21,7 @@ function parsePagination(query) {
 function serializeComment(row) {
   const c = row.toJSON ? row.toJSON() : row;
   const author = c.author || null;
+  const deleted = Boolean(author?.deleted_at);
   return {
     id: c.id,
     rapport_id: c.rapport_id,
@@ -30,9 +31,10 @@ function serializeComment(row) {
     author: author
       ? {
           id: author.id,
-          name: author.name,
-          username: author.username,
-          role: author.role
+          name: deleted ? null : author.name,
+          username: deleted ? null : author.username,
+          role: author.role,
+          is_deleted: deleted,
         }
       : null
   };
@@ -88,9 +90,10 @@ async function resolveRecipientIds(rapport, authorId) {
   const reviewers = await User.findAll({
     where: {
       role: { [Op.in]: ["CHEF_CABINET", "WALI"] },
-      is_blocked: false
+      is_blocked: false,
+      deleted_at: null,
     },
-    attributes: ["id"]
+    attributes: ["id"],
   });
   for (const u of reviewers) ids.add(Number(u.id));
 
@@ -99,10 +102,22 @@ async function resolveRecipientIds(rapport, authorId) {
     .filter(Boolean);
   if (officeIds.length) {
     const officeUsers = await User.findAll({
-      where: { id: officeIds, role: "OFFICE_USER", is_blocked: false },
+      where: { id: officeIds, role: "OFFICE_USER", is_blocked: false, deleted_at: null },
       attributes: ["id"]
     });
     for (const u of officeUsers) ids.add(Number(u.id));
+  }
+
+  // Co-editors with manage on the same service hear discussion too.
+  const {
+    getOfficeUserIdsWithServiceAccess,
+  } = require("./serviceAccessService");
+  if (rapport.service_id) {
+    const manageGrantees = await getOfficeUserIdsWithServiceAccess(
+      Number(rapport.service_id),
+      { minLevel: "manage" },
+    );
+    for (const id of manageGrantees) ids.add(id);
   }
 
   const priorAuthors = await RapportComment.findAll({
@@ -114,7 +129,7 @@ async function resolveRecipientIds(rapport, authorId) {
   const priorIds = priorAuthors.map((r) => Number(r.author_user_id)).filter(Boolean);
   if (priorIds.length) {
     const participants = await User.findAll({
-      where: { id: priorIds, role: "OFFICE_USER", is_blocked: false },
+      where: { id: priorIds, role: "OFFICE_USER", is_blocked: false, deleted_at: null },
       attributes: ["id"]
     });
     for (const u of participants) ids.add(Number(u.id));
@@ -138,7 +153,7 @@ async function listComments(rapportId, actor, query, opts = {}) {
       {
         model: User,
         as: "author",
-        attributes: ["id", "name", "username", "role"]
+        attributes: ["id", "name", "username", "role", "deleted_at"]
       }
     ]
   });

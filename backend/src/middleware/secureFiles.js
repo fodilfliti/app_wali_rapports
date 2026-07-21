@@ -22,7 +22,7 @@ function secureFilesRouter() {
     try {
       const payload = jwt.verify(token, getEnv().jwtSecret, { algorithms: ["HS256"] });
       const user = await User.findByPk(payload.sub);
-      if (!user || user.is_blocked) return res.status(403).json({ error: "Forbidden" });
+      if (!user || user.is_blocked || user.deleted_at) return res.status(403).json({ error: "Forbidden" });
       req.user = user;
       next();
     } catch {

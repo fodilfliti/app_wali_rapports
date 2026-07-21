@@ -91,9 +91,10 @@ if (Test-Path $BackendStage) { Remove-Item $BackendStage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $BackendStage | Out-Null
 
 # Prod runtime + migrations. Demo/dev/test seeds stay out of the zip.
-$IncludeDirs = @("config", "src")
+$IncludeDirs = @("config", "src", "assets")
 foreach ($dir in $IncludeDirs) {
   $src = Join-Path $BackendDir $dir
+  if ($dir -eq "assets" -and -not (Test-Path $src)) { continue }
   Assert-Path $src "backend/$dir"
   Copy-Item -Path $src -Destination (Join-Path $BackendStage $dir) -Recurse -Force
 }
@@ -114,6 +115,8 @@ $ProdScriptFiles = @(
   "scripts\load-env.js",
   "scripts\seed-prod-bootstrap.js",
   "scripts\seed-prod-ensure.js",
+  "scripts\ensure-fiche-lecture-types.js",
+  "scripts\regenerate-credentials-handout-pdf.js",
   "scripts\lib\prodCabinetUsers.js",
   "scripts\data\prodBootstrapInventory.js"
 )

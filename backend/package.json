@@ -13,8 +13,11 @@
     "db:seed-dev": "node scripts/seed-dev.js",
     "db:seed-test": "node scripts/seed-test-fixtures.js",
     "db:seed-demo": "node scripts/seed-demo-presentation.js",
-    "db:seed-prod-bootstrap": "node scripts/seed-prod-bootstrap.js",
-    "db:seed-prod-ensure": "node scripts/seed-prod-ensure.js",
+    "db:seed-prod-bootstrap": "node scripts/seed-prod-bootstrap.js --confirm",
+    "db:seed-prod-ensure": "node scripts/seed-prod-ensure.js --confirm",
+    "db:ensure-fiche-lecture": "node scripts/ensure-fiche-lecture-types.js",
+    "db:regenerate-credentials-handout": "node scripts/regenerate-credentials-handout-pdf.js",
+    "db:ensure-super-admin": "node scripts/ensure-super-admin.js",
     "db:seed-demo-cabinet": "node scripts/seed-demo-cabinet.js",
     "db:seed": "node scripts/seed-dev.js",
     "security:rotate-bootstrap-passwords": "node scripts/security-rotate-bootstrap-passwords.js"

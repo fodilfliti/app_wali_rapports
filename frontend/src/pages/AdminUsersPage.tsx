@@ -14,7 +14,7 @@ import { useZodForm } from '../validation/useZodForm'
 import { useAdminUsersQuery } from '../hooks/queries/useListQueries'
 import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
 
-type Props = { token: string; currentUserId: number }
+type Props = { token: string; currentUserId: number; isSuperAdmin?: boolean }
 
 type UserFields = {
   username: string
@@ -34,7 +34,7 @@ function emptyFields(): UserFields {
   return { username: '', name: '', role: 'OFFICE_USER', job_title: '' }
 }
 
-export function AdminUsersPage({ token, currentUserId }: Props) {
+export function AdminUsersPage({ token, currentUserId, isSuperAdmin = false }: Props) {
   const { t } = useTranslation()
   const snack = useSnackbar()
   const invalidate = useInvalidateAppQueries()
@@ -49,6 +49,8 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
   const [credentialsModal, setCredentialsModal] = useState<api.UserCredentials | null>(null)
   const [resetTarget, setResetTarget] = useState<{ id: number; username: string } | null>(null)
   const [resetBusy, setResetBusy] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; username: string } | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const listQuery = useAdminUsersQuery(token, { page, q })
@@ -149,6 +151,33 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
     }
   }
 
+  async function confirmSoftDelete() {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    try {
+      await api.softDeleteUser(token, deleteTarget.id)
+      setDeleteTarget(null)
+      await invalidate({ adminRef: true })
+      snack.show(t('userSoftDeleted'), 'success')
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  function canManageRow(r: { id: number; is_super_admin?: boolean }) {
+    if (r.is_super_admin && Number(r.id) !== Number(currentUserId)) return false
+    return true
+  }
+
+  function canDeleteRow(r: { id: number; is_super_admin?: boolean }) {
+    if (!isSuperAdmin) return false
+    if (Number(r.id) === Number(currentUserId)) return false
+    if (r.is_super_admin) return false
+    return true
+  }
+
   return (
     <div className="page">
       <div className="pageHeader row">
@@ -183,31 +212,51 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td>{r.username}</td>
+                <td>
+                  {r.username}
+                  {r.is_super_admin ? (
+                    <span className="badge badge-accent" style={{ marginInlineStart: 8 }}>
+                      {t('roleSuperAdmin')}
+                    </span>
+                  ) : null}
+                </td>
                 <td>{r.name}</td>
                 <td>{r.job_title || '—'}</td>
                 <td>{roleLabel(r.role, t)}</td>
                 <td>{r.is_blocked ? t('block') : '—'}</td>
                 <td className="actionsCell">
                   <div className="actionsCellInner">
-                    <button type="button" className="btn btn-primary btn-sm" onClick={() => openEdit(r)}>
-                      {t('edit')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${r.is_blocked ? 'btn-secondary' : 'btn-danger'}`}
-                      onClick={() => toggleBlock(r.id)}
-                      disabled={r.id === currentUserId}
-                    >
-                      {r.is_blocked ? t('unblock') : t('block')}
-                    </button>
-                    {r.id !== currentUserId ? (
+                    {canManageRow(r) ? (
+                      <>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => openEdit(r)}>
+                          {t('edit')}
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${r.is_blocked ? 'btn-secondary' : 'btn-danger'}`}
+                          onClick={() => toggleBlock(r.id)}
+                          disabled={r.id === currentUserId}
+                        >
+                          {r.is_blocked ? t('unblock') : t('block')}
+                        </button>
+                        {r.id !== currentUserId ? (
+                          <button
+                            type="button"
+                            className="btn btn-accent btn-sm"
+                            onClick={() => setResetTarget({ id: r.id, username: r.username })}
+                          >
+                            {t('resetPassword')}
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {canDeleteRow(r) ? (
                       <button
                         type="button"
-                        className="btn btn-accent btn-sm"
-                        onClick={() => setResetTarget({ id: r.id, username: r.username })}
+                        className="btn btn-danger btn-sm"
+                        onClick={() => setDeleteTarget({ id: r.id, username: r.username })}
                       >
-                        {t('resetPassword')}
+                        {t('softDeleteUser')}
                       </button>
                     ) : null}
                   </div>
@@ -235,6 +284,19 @@ export function AdminUsersPage({ token, currentUserId }: Props) {
         onConfirm={confirmResetPwd}
         onClose={() => {
           if (!resetBusy) setResetTarget(null)
+        }}
+      />
+
+      <ConfirmActionModal
+        open={!!deleteTarget}
+        title={t('softDeleteUserConfirmTitle')}
+        message={t('softDeleteUserConfirmMessage', { username: deleteTarget?.username || '' })}
+        confirmLabel={t('softDeleteUser')}
+        variant="danger"
+        loading={deleteBusy}
+        onConfirm={confirmSoftDelete}
+        onClose={() => {
+          if (!deleteBusy) setDeleteTarget(null)
         }}
       />
 

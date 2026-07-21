@@ -128,7 +128,7 @@ async function loadVisibleDayBuckets(role, today, tomorrow) {
 
 async function clearRoleDigest(role, messageKey) {
   const users = await User.findAll({
-    where: { role, is_blocked: false },
+    where: { role, is_blocked: false, deleted_at: null },
     attributes: ["id"],
   });
   const ids = users.map((u) => Number(u.id));

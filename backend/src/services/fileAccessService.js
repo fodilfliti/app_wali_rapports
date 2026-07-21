@@ -34,7 +34,7 @@ function resolveSafeAbs(rel) {
  * Whether `user` may download the storage-relative path.
  */
 async function canAccessStoragePath(user, relPath) {
-  if (!user || user.is_blocked) return false;
+  if (!user || user.is_blocked || user.deleted_at) return false;
   const resolved = resolveSafeAbs(relPath);
   if (!resolved) return false;
   const { normalized } = resolved;

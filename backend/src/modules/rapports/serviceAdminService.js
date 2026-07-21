@@ -258,7 +258,7 @@ async function deleteService(id, actor, req) {
 
 async function listOfficeUsersForGrantPicker() {
   return User.findAll({
-    where: { role: "OFFICE_USER", is_blocked: false },
+    where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
     order: [["name", "ASC"], ["id", "ASC"]],
     attributes: ["id", "username", "name", "job_title", "department_id"],
     include: [{ model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] }]

@@ -148,7 +148,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ### Wali flow
 
 - Opens document in reader view → optional **note** (confirm / demander modification).
-- Note visible to authoring office user + **notification**.
+- Note visible to all office users with a grant on the service + **notification** (grant fanout — `SERVICE_SHARING.md`).
 - Wali export supports `showHidden` on table-grid rapports only; documents export editor content as-is.
 
 ---
@@ -157,7 +157,8 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 
 - Same **rich editor + templates + export** as type 2 (blocks legacy path still supported).
 - **One `fiche_lecture` rapport type on every leaf service** (slug `fiche_lecture`).
-- **Shared** = all office users with access to that service see the **same chronological list**; each new fiche is a **new dated file** (not owned by one user — `owner_office_user_id` is null).
+- **Shared** = all office users with access to that service see the **same chronological list**; each new fiche is a **new dated file** (not owned by one user — `owner_office_user_id` stays **null** through create and submit).
+- Wali / Chef per-user navigation may show fiches under any grantee of that service; feedback notifies all grantees.
 - Wali: list grouped by date per service; read; optional feedback.
 
 ---
@@ -215,6 +216,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ### `notifications`
 
 - `user_id` (office recipient), `rapport_id` (nullable FK), `broadcast_id` (nullable FK to `wali_broadcasts`), `wali_response_id` (nullable FK), `message_key` (e.g. `waliFeedback` or `waliBroadcast`), `read_at`, `created_at`
+- Wali / Chef feedback keys fan out to all grant holders on the rapport’s service — see `SERVICE_SHARING.md` / `DEVICE_NOTIFICATIONS.md`.
 - Office hub badge + list **Notifications du wali** (`unread_notifications`): feedback / chef replies / discussion only — **excludes** `waliInstruction`, `waliBroadcast`, `waliBroadcastReminder` (those use `unread_instructions` / `unread_shared_files`). List API applies the same exclusion.
 - Mark read when user opens rapport; generic notification mark-read also clears linked broadcast/instruction recipient rows.
 - Web Push, preference filtering, Chef/Wali pending keys, calendar reminders: **`DEVICE_NOTIFICATIONS.md`**.

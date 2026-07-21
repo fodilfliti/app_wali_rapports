@@ -1,6 +1,8 @@
 const { Op } = require("sequelize");
-const { Rapport, RapportType, Notification, WaliBroadcastRecipient, User } = require("../../db");
-const { getAccessMapForUser } = require("./serviceAccessService");
+const { Rapport, Notification, WaliBroadcastRecipient, User } = require("../../db");
+const {
+  getAccessibleServiceIds,
+} = require("./serviceAccessService");
 const {
   DEDICATED_NOTIFICATION_KEYS,
   disabledMessageKeys,
@@ -23,51 +25,6 @@ function chefInboxActionWhere() {
     status: { [Op.in]: CHEF_INBOX_ACTION_STATUSES },
     hidden_at: null,
   };
-}
-
-function mergeCountMaps(a = {}, b = {}) {
-  const out = { ...a };
-  for (const [k, v] of Object.entries(b)) {
-    out[k] = (out[k] || 0) + Number(v);
-  }
-  return out;
-}
-
-let ficheLectureTypeIdsCache = null;
-
-async function getFicheLectureTypeIds() {
-  if (ficheLectureTypeIdsCache) return ficheLectureTypeIdsCache;
-  const types = await RapportType.findAll({
-    where: { content_kind: "fiche_lecture" },
-    attributes: ["id"],
-    raw: true,
-  });
-  ficheLectureTypeIdsCache = types.map((t) => Number(t.id));
-  return ficheLectureTypeIdsCache;
-}
-
-async function getAccessibleServiceIds(userId) {
-  const accessMap = await getAccessMapForUser(userId);
-  return Object.keys(accessMap).map(Number).filter(Boolean);
-}
-
-async function loadSharedFicheCounts(allowedServiceIds, statusWhere) {
-  const typeIds = await getFicheLectureTypeIds();
-  if (!typeIds.length || !allowedServiceIds?.length) {
-    return { byService: {}, byType: {} };
-  }
-  const whereExtra = {
-    ...statusWhere,
-    owner_office_user_id: null,
-    rapport_type_id: { [Op.in]: typeIds },
-    service_id: { [Op.in]: allowedServiceIds },
-    hidden_at: null,
-  };
-  const [byService, byType] = await Promise.all([
-    loadRapportCountsByService(whereExtra),
-    loadRapportCountsByServiceAndType(whereExtra),
-  ]);
-  return { byService, byType };
 }
 
 async function countUnreadNotifications(userId, prefs) {
@@ -208,58 +165,46 @@ async function getOfficeHubCounts(userId) {
   };
 }
 
-async function countWaliOfficeUsersWithPending() {
-  const rows = await Rapport.findAll({
-    attributes: [
-      "owner_office_user_id",
-      "created_by_user_id",
-      [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"],
-    ],
+async function countOfficeUsersWithPendingInGrants(statusWhere) {
+  const { UserServiceGrant } = require("../../db");
+  const pendingRows = await Rapport.findAll({
+    attributes: ["service_id"],
     where: {
-      ...waliInboxActionWhere(),
-      [Op.or]: [
-        { owner_office_user_id: { [Op.ne]: null } },
-        { created_by_user_id: { [Op.ne]: null } },
-      ],
+      ...statusWhere,
+      service_id: { [Op.ne]: null },
     },
-    group: ["owner_office_user_id", "created_by_user_id"],
+    group: ["service_id"],
     raw: true,
   });
+  const serviceIds = pendingRows.map((r) => Number(r.service_id)).filter(Boolean);
+  if (!serviceIds.length) return 0;
+
+  const grants = await UserServiceGrant.findAll({
+    where: { service_id: { [Op.in]: serviceIds } },
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["id"],
+        required: true,
+        where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+      },
+    ],
+  });
   const userIds = new Set();
-  for (const r of rows) {
-    const oid = r.owner_office_user_id != null ? Number(r.owner_office_user_id) : null;
-    const cid = r.created_by_user_id != null ? Number(r.created_by_user_id) : null;
-    if (oid) userIds.add(oid);
-    else if (cid) userIds.add(cid);
+  for (const g of grants) {
+    const id = g.user?.id != null ? Number(g.user.id) : null;
+    if (id) userIds.add(id);
   }
   return userIds.size;
 }
 
+async function countWaliOfficeUsersWithPending() {
+  return countOfficeUsersWithPendingInGrants(waliInboxActionWhere());
+}
+
 async function countChefOfficeUsersWithPending() {
-  const rows = await Rapport.findAll({
-    attributes: [
-      "owner_office_user_id",
-      "created_by_user_id",
-      [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"],
-    ],
-    where: {
-      ...chefInboxActionWhere(),
-      [Op.or]: [
-        { owner_office_user_id: { [Op.ne]: null } },
-        { created_by_user_id: { [Op.ne]: null } },
-      ],
-    },
-    group: ["owner_office_user_id", "created_by_user_id"],
-    raw: true,
-  });
-  const userIds = new Set();
-  for (const r of rows) {
-    const oid = r.owner_office_user_id != null ? Number(r.owner_office_user_id) : null;
-    const cid = r.created_by_user_id != null ? Number(r.created_by_user_id) : null;
-    if (oid) userIds.add(oid);
-    else if (cid) userIds.add(cid);
-  }
-  return userIds.size;
+  return countOfficeUsersWithPendingInGrants(chefInboxActionWhere());
 }
 
 async function countUnreadDiscussion(userId, opts = {}, prefs = null) {
@@ -349,43 +294,35 @@ async function getOfficeServiceActionCounts(userId) {
 }
 
 async function getWaliServicePendingCounts(officeUserId) {
-  const ownedWhere = {
-    [Op.or]: [
-      { owner_office_user_id: officeUserId },
-      { created_by_user_id: officeUserId },
-    ],
+  const serviceIds = await getAccessibleServiceIds(officeUserId);
+  if (!serviceIds.length) {
+    return { byService: {}, byType: {} };
+  }
+  const where = {
     ...waliInboxActionWhere(),
+    service_id: { [Op.in]: serviceIds },
   };
-  const [ownedByService, ownedByType, serviceIds] = await Promise.all([
-    loadRapportCountsByService(ownedWhere),
-    loadRapportCountsByServiceAndType(ownedWhere),
-    getAccessibleServiceIds(officeUserId),
+  const [byService, byType] = await Promise.all([
+    loadRapportCountsByService(where),
+    loadRapportCountsByServiceAndType(where),
   ]);
-  const shared = await loadSharedFicheCounts(serviceIds, waliInboxActionWhere());
-  return {
-    byService: mergeCountMaps(ownedByService, shared.byService),
-    byType: mergeCountMaps(ownedByType, shared.byType),
-  };
+  return { byService, byType };
 }
 
 async function getChefServicePendingCounts(officeUserId) {
-  const ownedWhere = {
-    [Op.or]: [
-      { owner_office_user_id: officeUserId },
-      { created_by_user_id: officeUserId },
-    ],
+  const serviceIds = await getAccessibleServiceIds(officeUserId);
+  if (!serviceIds.length) {
+    return { byService: {}, byType: {} };
+  }
+  const where = {
     ...chefInboxActionWhere(),
+    service_id: { [Op.in]: serviceIds },
   };
-  const [ownedByService, ownedByType, serviceIds] = await Promise.all([
-    loadRapportCountsByService(ownedWhere),
-    loadRapportCountsByServiceAndType(ownedWhere),
-    getAccessibleServiceIds(officeUserId),
+  const [byService, byType] = await Promise.all([
+    loadRapportCountsByService(where),
+    loadRapportCountsByServiceAndType(where),
   ]);
-  const shared = await loadSharedFicheCounts(serviceIds, chefInboxActionWhere());
-  return {
-    byService: mergeCountMaps(ownedByService, shared.byService),
-    byType: mergeCountMaps(ownedByType, shared.byType),
-  };
+  return { byService, byType };
 }
 
 module.exports = {

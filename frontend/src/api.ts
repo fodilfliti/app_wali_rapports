@@ -87,6 +87,7 @@ export type SessionUser = {
   name: string | null;
   role: UserRole;
   is_blocked: boolean;
+  is_super_admin?: boolean;
   job_title?: string | null;
   effective_permissions: Record<string, string>;
 };
@@ -398,6 +399,13 @@ export function resetUserPassword(token: string, id: number) {
     newPassword: string;
     credentials: UserCredentials;
   }>(`/admin/users/${id}/reset-password`, { method: "POST", token });
+}
+
+export function softDeleteUser(token: string, id: number) {
+  return request<{ ok: boolean; user_id: number }>(`/admin/users/${id}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export function listOfficeRapports(

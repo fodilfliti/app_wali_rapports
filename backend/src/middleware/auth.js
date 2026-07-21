@@ -43,7 +43,9 @@ function requireRole(roles) {
 
 function checkBlocked(req, res, next) {
   if (!req.user) return res.status(500).json({ error: "User not loaded" });
-  if (req.user.is_blocked) return res.status(403).json({ error: "Blocked" });
+  if (req.user.is_blocked || req.user.deleted_at) {
+    return res.status(403).json({ error: "Blocked" });
+  }
   next();
 }
 

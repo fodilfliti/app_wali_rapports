@@ -148,6 +148,8 @@ function normalizeGuideVideoBody(body) {
 }
 
 async function createGuideVideo({ fileInput, body }, actor, req) {
+  const { requireSuperAdmin } = require("../organization/organizationService");
+  requireSuperAdmin(actor);
   const parsed = guideVideoCreateSchema.safeParse(normalizeGuideVideoBody(body));
   if (!parsed.success) {
     const err = new Error(parsed.error.issues[0]?.message || "Validation failed");
@@ -201,6 +203,8 @@ async function getGuideVideoById(id, viewerRole) {
 }
 
 async function patchGuideVideo(id, { fileInput, body }, actor, req) {
+  const { requireSuperAdmin } = require("../organization/organizationService");
+  requireSuperAdmin(actor);
   const row = await GuideVideo.findByPk(id);
   if (!row) {
     const err = new Error("Not found");
@@ -259,6 +263,8 @@ async function patchGuideVideo(id, { fileInput, body }, actor, req) {
 }
 
 async function deleteGuideVideo(id, actor, req) {
+  const { requireSuperAdmin } = require("../organization/organizationService");
+  requireSuperAdmin(actor);
   const row = await GuideVideo.findByPk(id);
   if (!row) {
     const err = new Error("Not found");

@@ -39,7 +39,7 @@ function isBroadcastRecipientRole(role) {
 
 async function listOfficeUsers() {
   return User.findAll({
-    where: { role: { [Op.in]: BROADCAST_RECIPIENT_ROLES }, is_blocked: false },
+    where: { role: { [Op.in]: BROADCAST_RECIPIENT_ROLES }, is_blocked: false, deleted_at: null },
     attributes: ["id", "name", "username", "role"],
     order: [["name", "ASC"]]
   });
@@ -56,7 +56,8 @@ async function resolveRecipientIds(body) {
     where: {
       id: { [Op.in]: requested },
       role: { [Op.in]: BROADCAST_RECIPIENT_ROLES },
-      is_blocked: false
+      is_blocked: false,
+      deleted_at: null,
     },
     attributes: ["id"]
   });

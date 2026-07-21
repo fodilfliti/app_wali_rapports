@@ -41,7 +41,7 @@ function serializeInstruction(row, extras = {}) {
 
 async function listOfficeUsers() {
   return User.findAll({
-    where: { role: "OFFICE_USER", is_blocked: false },
+    where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
     attributes: ["id", "name", "username"],
     order: [["name", "ASC"]]
   });

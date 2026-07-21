@@ -37,7 +37,7 @@ draft|changes_requested + chef_gate=required
 Chef accept → submitted (Wali inbox), chef_gate stays until Wali acts
 Chef changes_requested → changes_requested, chef_gate=required
 Wali changes_requested → changes_requested, chef_gate=bypass
-Office resubmit with bypass → submitted (+ notify Chef info-only, no gate)
+Office resubmit with bypass → submitted (+ notify Chef info-only `rapportResubmittedBypass` + notify Wali `rapportPendingWali`)
 Office return-to-draft (while pending_chef | submitted | under_review, before Wali accept/view)
   → draft + chef_gate=required; wipe current-version chef/wali remarks + discussion only
     (older versions kept; out of Chef/Wali inbox until re-send)
@@ -71,13 +71,17 @@ Office return-to-draft (while pending_chef | submitted | under_review, before Wa
 | message_key | Recipient |
 | ----------- | --------- |
 | `rapportPendingChef` | Chef — office Envoyer lands in `pending_chef` (device + in-app; **not** Wali) |
-| `rapportPendingWali` | Wali — after Chef accept → `submitted` |
-| `chefAccepted`, `chefChangesRequested`, `chefFeedback` | Office |
+| `rapportPendingWali` | Wali — after Chef accept → `submitted`, and on office bypass resubmit → `submitted` |
+| `chefAccepted`, `chefChangesRequested`, `chefFeedback` | Office — all active grant holders on the rapport’s service (`SERVICE_SHARING.md`) |
 | `rapportResubmittedBypass`, `waliChangesRequested` (info) | Chef |
-| `rapportComment` | Office / Chef / Wali (fanout — `RAPPORT_DISCUSSION.md`) |
-| Existing wali\* keys | Office (unchanged) |
+| `rapportComment` | Office / Chef / Wali (fanout — `RAPPORT_DISCUSSION.md`; office also includes `manage` co-grantees on the service) |
+| Existing wali\* keys | Office — all active grant holders on the rapport’s service |
 
 Device push + preference filtering: `DEVICE_NOTIFICATIONS.md`.
+
+### Per-user navigation
+
+- `GET /chef/office-users/:userId/...` and list queries with `office_user_id` use the **grantee lens** (all rapports in that attaché’s granted services), same as Wali — `SERVICE_SHARING.md`.
 
 ### Audit events
 

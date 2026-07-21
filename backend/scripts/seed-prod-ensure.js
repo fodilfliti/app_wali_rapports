@@ -5,11 +5,12 @@
  * Never deletes. Never resets existing passwords.
  * Flat root leaves only (no nested demo folders — those are DEV seed-demo-cabinet only).
  *
- * Usage:
- *   CONFIRM_PROD_ENSURE=YES npm run db:seed-prod-ensure
+ * Usage — cPanel-friendly, no env prefix needed:
+ *   npm run db:seed-prod-ensure
  *
  * After editing prodBootstrapInventory.js (new people / services), re-run on prod.
- * Writes only NEW credentials to storage/bootstrap/credentials-added-<timestamp>.xlsx
+ * Writes only NEW credentials to private/bootstrap/credentials-added-<timestamp>.xlsx
+ * and a printable PDF (1 page per user) credentials-added-<timestamp>.pdf
  */
 
 require("./load-env");
@@ -30,18 +31,22 @@ const {
   DEPT_NAME_FR,
   generatePassword,
   createUser,
+  ensureFicheLectureType,
   writeCredentialsSheet,
   bootstrapOutDir,
   credentialRow,
 } = require("./lib/prodCabinetUsers");
+const { writeCredentialsHandoutPdf } = require("../src/services/credentialsPdfService");
 
 function assertConfirm() {
-  if (process.env.CONFIRM_PROD_ENSURE !== "YES") {
+  const confirmed =
+    process.env.CONFIRM_PROD_ENSURE === "YES" || process.argv.includes("--confirm");
+  if (!confirmed) {
     console.error(`
 Refusing to run. This script only ADDS missing users/services/grants (no wipe).
 
-Set CONFIRM_PROD_ENSURE=YES and run again:
-  CONFIRM_PROD_ENSURE=YES npm run db:seed-prod-ensure
+Run via npm (passes --confirm):
+  npm run db:seed-prod-ensure
 `);
     process.exit(1);
   }
@@ -90,6 +95,7 @@ async function ensureLeafService(dept, svc, sortOrderRef, stats) {
   let leaf = await Service.findOne({ where: { slug: svc.slug } });
   if (leaf) {
     stats.servicesSkipped += 1;
+    await ensureFicheLectureType(leaf);
     return leaf;
   }
   leaf = await Service.create({
@@ -103,6 +109,7 @@ async function ensureLeafService(dept, svc, sortOrderRef, stats) {
     parent_service_id: null,
   });
   sortOrderRef.value += 1;
+  await ensureFicheLectureType(leaf);
   console.log(`    Service created: ${svc.slug} (${svc.name_ar})`);
   stats.servicesCreated += 1;
   return leaf;
@@ -149,6 +156,16 @@ async function main() {
     deptCreated ? `Department created: ${DEPT_NAME_AR}` : `Department exists: ${DEPT_NAME_AR}`,
   );
 
+  const { ensureSuperAdminFromEnv } = require("./lib/ensureSuperAdmin");
+  const superResult = await ensureSuperAdminFromEnv({ resetPassword: false });
+  if (superResult.skipped) {
+    console.log("Super-admin skipped (SUPER_ADMIN_* / DEV_ADMIN_* not set).");
+  } else if (superResult.created) {
+    console.log(`Super-admin created: ${superResult.username}`);
+  } else {
+    console.log(`Super-admin ensured: ${superResult.username}`);
+  }
+
   const sortOrderRef = { value: await nextServiceSortOrder() };
 
   for (const officer of inventory.officeUsers) {
@@ -188,10 +205,13 @@ async function main() {
 
   const outDir = bootstrapOutDir();
   let addedPath = null;
+  let handoutPath = null;
   if (newCreds.length) {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     addedPath = path.join(outDir, `credentials-added-${stamp}.xlsx`);
+    handoutPath = path.join(outDir, `credentials-added-${stamp}.pdf`);
     await writeCredentialsSheet(addedPath, newCreds);
+    await writeCredentialsHandoutPdf(handoutPath, newCreds);
   }
 
   console.log("\nEnsure complete (no wipe).");
@@ -204,6 +224,7 @@ async function main() {
   );
   if (addedPath) {
     console.log(`  New credentials only: ${addedPath}`);
+    console.log(`  Print handout (1 page/user): ${handoutPath}`);
   } else {
     console.log("  No new users — no credentials file written.");
   }

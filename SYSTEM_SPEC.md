@@ -82,6 +82,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Readable backend logs:** pino short access lines + level by status; 5xx stack / 4xx warn; `LOG_LEVEL=info` day-to-day — `spec/CORE.md` § App / console logging.
 - **Refresh sessions:** 15m access JWT + 7d HttpOnly refresh cookie (rotation, reuse detection, revoke on logout/block/password) — `spec/modules/AUTH.md`.
 - **Org ref soft-hide:** admin hide/restore for dairas (cascade communes), communes, directions via `hidden_at` — no hard delete; new entity catalogs exclude hidden — `ORGANIZATION.md`, `RAPPORT_SERVICE_TYPES.md`.
+- **Super-admin:** env-bootstrapped `is_super_admin`; soft-delete users (keep row); guide-video write restricted to super-admin — `ORGANIZATION.md`, `GUIDE_VIDEOS.md`.
 - **Explicit draft create:** workspace GET / “Nouveau rapport” navigation never inserts a `rapports` row; first **Enregistrer** creates `draft` (leave without save = nothing) — `RAPPORTS.md`, `RAPPORT_SERVICE_TYPES.md`.
 - **Device notifications:** Web Push + per-type user prefs; **all-devices** vs **this-device** toggles; Chef notified on `pending_chef`, Wali only after Chef accept; optimistic today/tomorrow calendar reminders (no polling) — `spec/modules/DEVICE_NOTIFICATIONS.md`.
 - **Hub-guided type create:** office leaf hub add-tiles per content kind (except fiche); جدول wizard = schema+type; unused types hard-deletable — `RAPPORT_SERVICE_TYPES.md`, `SCHEMA_CONFIGURATION.md`.

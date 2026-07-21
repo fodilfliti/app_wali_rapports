@@ -1,5 +1,5 @@
 const { Op } = require("sequelize");
-const { User, Service, Department, Rapport, RapportType } = require("../../db");
+const { User, Service, Department, Rapport, RapportType, UserServiceGrant } = require("../../db");
 const { getAccessMapForUser, filterServiceTree } = require("./serviceAccessService");
 const hubCountsService = require("./hubCountsService");
 
@@ -27,40 +27,74 @@ function serializeServiceNode(s, includeChildren = true) {
   return node;
 }
 
+/**
+ * Pending count per office user = inbox rapports in that user's granted services
+ * (grantee lens; co-grantees share the same pending work).
+ */
+async function pendingCountsByOfficeUser(statusList) {
+  const grants = await UserServiceGrant.findAll({
+    attributes: ["user_id", "service_id"],
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["id"],
+        required: true,
+        where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+      },
+    ],
+  });
+  const servicesByUser = new Map();
+  for (const g of grants) {
+    const uid = Number(g.user_id);
+    const sid = Number(g.service_id);
+    if (!uid || !sid) continue;
+    if (!servicesByUser.has(uid)) servicesByUser.set(uid, new Set());
+    servicesByUser.get(uid).add(sid);
+  }
+  if (!servicesByUser.size) return {};
+
+  const allServiceIds = [
+    ...new Set([...servicesByUser.values()].flatMap((s) => [...s])),
+  ];
+  const pendingByService = await Rapport.findAll({
+    attributes: [
+      "service_id",
+      [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"],
+    ],
+    where: {
+      status: { [Op.in]: statusList },
+      hidden_at: null,
+      service_id: { [Op.in]: allServiceIds },
+    },
+    group: ["service_id"],
+    raw: true,
+  });
+  const countByService = {};
+  for (const row of pendingByService) {
+    countByService[Number(row.service_id)] = Number(row.pending_count) || 0;
+  }
+
+  const countByUser = {};
+  for (const [uid, serviceIds] of servicesByUser) {
+    let total = 0;
+    for (const sid of serviceIds) {
+      total += countByService[sid] || 0;
+    }
+    countByUser[uid] = total;
+  }
+  return countByUser;
+}
+
 async function listOfficeUsersForWali(statusList = hubCountsService.WALI_INBOX_ACTION_STATUSES) {
   const users = await User.findAll({
-    where: { role: "OFFICE_USER", is_blocked: false },
+    where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
     order: [["name", "ASC"], ["id", "ASC"]],
     attributes: ["id", "username", "name", "job_title", "department_id"],
     include: [{ model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] }]
   });
 
-  const rows = await Rapport.findAll({
-    attributes: [
-      "owner_office_user_id",
-      "created_by_user_id",
-      [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "pending_count"]
-    ],
-    where: {
-      status: { [Op.in]: statusList },
-      hidden_at: null,
-      [Op.or]: [
-        { owner_office_user_id: { [Op.ne]: null } },
-        { created_by_user_id: { [Op.ne]: null } },
-      ],
-    },
-    group: ["owner_office_user_id", "created_by_user_id"],
-    raw: true
-  });
-  const countByUser = {};
-  for (const c of rows) {
-    const n = Number(c.pending_count) || 0;
-    const oid = c.owner_office_user_id != null ? Number(c.owner_office_user_id) : null;
-    const cid = c.created_by_user_id != null ? Number(c.created_by_user_id) : null;
-    const uid = oid || cid;
-    if (!uid) continue;
-    countByUser[uid] = (countByUser[uid] || 0) + n;
-  }
+  const countByUser = await pendingCountsByOfficeUser(statusList);
 
   return users.map((u) => ({
     id: u.id,
@@ -68,7 +102,7 @@ async function listOfficeUsersForWali(statusList = hubCountsService.WALI_INBOX_A
     name: u.name,
     job_title: u.job_title,
     department: u.department,
-    pending_rapports_count: countByUser[u.id] || 0
+    pending_rapports_count: countByUser[Number(u.id)] || 0
   }));
 }
 

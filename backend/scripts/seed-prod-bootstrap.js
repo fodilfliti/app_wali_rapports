@@ -1,14 +1,18 @@
 "use strict";
 
 /**
- * Production bootstrap: wipe demo domain data, create cabinet users + root leaf services.
+ * Production bootstrap: wipe user-domain activity, recreate cabinet users + root leaf services.
  *
- * Usage (once, after backup):
- *   CONFIRM_PROD_BOOTSTRAP=YES npm run db:seed-prod-bootstrap
+ * Usage (once, after backup) — cPanel-friendly, no env prefix needed:
+ *   npm run db:seed-prod-bootstrap
  *
- * Keeps: ADMIN users, dairas/communes/directions, access role templates.
- * Creates: office users with flat root services (no person folders) + wali/chef.
- * Writes Excel credentials under backend/storage/bootstrap/ (gitignored).
+ * Keeps: ADMIN users, dairas/communes/directions, access role templates,
+ *        guide videos (+ their uploaded files), fiche_lecture rapport types
+ *        (instances/rapports still wiped; types recreated on each leaf service).
+ * Wipes: non-admin users, services/departments, rapports (incl. fiche docs), other types/schemas,
+ *        notifications, instructions/broadcasts, tokens — then recreates cabinet from inventory.
+ * Each new leaf service gets a fiche_lecture type (same as admin UI).
+ * Writes Excel credentials + printable PDF under backend/private/bootstrap/ (gitignored).
  *
  * For later additions without wipe, use: npm run db:seed-prod-ensure
  */
@@ -30,28 +34,33 @@ const {
   DEPT_NAME_FR,
   generatePassword,
   createUser,
+  ensureFicheLectureType,
   writeCredentialsSheet,
   bootstrapOutDir,
   credentialRow,
 } = require("./lib/prodCabinetUsers");
+const { writeCredentialsHandoutPdf } = require("../src/services/credentialsPdfService");
 
 function assertConfirm() {
-  if (process.env.CONFIRM_PROD_BOOTSTRAP !== "YES") {
+  const confirmed =
+    process.env.CONFIRM_PROD_BOOTSTRAP === "YES" || process.argv.includes("--confirm");
+  if (!confirmed) {
     console.error(`
-Refusing to run. This script WIPES services, rapports, and non-admin users.
+Refusing to run. This script WIPES office/wali/chef data (rapports, non-fiche types, users…) but keeps guide videos + ADMIN; recreates fiche_lecture per leaf.
 
-Set CONFIRM_PROD_BOOTSTRAP=YES and run again:
-  CONFIRM_PROD_BOOTSTRAP=YES npm run db:seed-prod-bootstrap
+Run via npm (passes --confirm):
+  npm run db:seed-prod-bootstrap
 `);
     process.exit(1);
   }
 }
 
 async function clearDomain() {
-  console.log("Wiping domain data (keeping ADMIN + org reference)...");
+  console.log("Wiping office/wali/chef data (keeping ADMIN, guide videos, org reference)...");
 
   await sequelize.query("UPDATE rapports SET current_version_id = NULL");
 
+  // Everything office / wali / chef create or use — keep guide_videos (admin).
   const tables = [
     "notifications",
     "web_push_subscriptions",
@@ -62,7 +71,6 @@ async function clearDomain() {
     "wali_instruction_recipients",
     "wali_instruction_files",
     "wali_instructions",
-    "guide_videos",
     "rapport_comments",
     "chef_responses",
     "rapport_views",
@@ -70,10 +78,8 @@ async function clearDomain() {
     "wali_responses",
     "rapport_versions",
     "rapports",
-    "uploaded_files",
     "user_service_grants",
     "rapport_document_templates",
-    "rapport_types",
     "rapport_table_schemas",
     "refresh_tokens",
     "user_permission_overrides",
@@ -89,6 +95,39 @@ async function clearDomain() {
     }
   }
 
+  // Keep fiche_lecture types on services; wipe other rapport types (office-created schemas).
+  // (Services wipe below still cascades remaining fiche types — recreated per leaf after.)
+  try {
+    await sequelize.query(`DELETE FROM rapport_types WHERE content_kind <> 'fiche_lecture'`);
+  } catch (err) {
+    if (!String(err.message || "").includes("does not exist")) throw err;
+  }
+
+  // Keep uploaded_files used by guide videos; drop the rest (rapport media, etc.).
+  try {
+    await sequelize.query(`
+      DELETE FROM uploaded_files
+      WHERE id NOT IN (
+        SELECT uploaded_file_id FROM guide_videos
+      )
+    `);
+  } catch (err) {
+    if (!String(err.message || "").includes("does not exist")) throw err;
+  }
+
+  // guide_videos.created_by_user_id ON DELETE CASCADE — reassign to an ADMIN before user wipe.
+  const [admins] = await sequelize.query(
+    `SELECT id FROM users WHERE role = 'ADMIN' ORDER BY id ASC LIMIT 1`,
+  );
+  const adminId = admins?.[0]?.id;
+  if (adminId) {
+    await sequelize.query(`UPDATE guide_videos SET created_by_user_id = :adminId`, {
+      replacements: { adminId },
+    });
+  } else {
+    console.warn("  No ADMIN user found — guide videos may be removed when non-admin users are deleted.");
+  }
+
   await sequelize.query("UPDATE users SET department_id = NULL");
   await sequelize.query("UPDATE services SET parent_service_id = NULL");
   await sequelize.query("DELETE FROM services");
@@ -102,7 +141,7 @@ async function clearDomain() {
     console.log(`  Removed non-admin users: ${removed.join(", ")}`);
   }
 
-  console.log("Wipe done.");
+  console.log("Wipe done (guide videos kept; fiche types recreated with services).");
 }
 
 async function main() {
@@ -153,6 +192,7 @@ async function main() {
         is_folder: false,
         parent_service_id: null,
       });
+      await ensureFicheLectureType(leaf);
       await UserServiceGrant.create({
         user_id: user.id,
         service_id: leaf.id,
@@ -188,12 +228,15 @@ async function main() {
   const outDir = bootstrapOutDir();
   const officePath = path.join(outDir, "credentials-office.xlsx");
   const reviewPath = path.join(outDir, "credentials-chef-wali.xlsx");
+  const handoutPath = path.join(outDir, "credentials-handout.pdf");
   await writeCredentialsSheet(officePath, officeCreds);
   await writeCredentialsSheet(reviewPath, reviewCreds);
+  await writeCredentialsHandoutPdf(handoutPath, [...officeCreds, ...reviewCreds]);
 
   console.log("\nBootstrap complete.");
   console.log(`  Office credentials: ${officePath}`);
   console.log(`  Chef/Wali credentials: ${reviewPath}`);
+  console.log(`  Print handout (1 page/user): ${handoutPath}`);
   console.log("  Keep these files private — change passwords after first handoff if needed.");
 
   await sequelize.close();

@@ -134,7 +134,7 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 - `id`, `service_id`, `rapport_type_id`, `title`, `reference_date`, `status`
 
-- `current_version_id`, `created_by_user_id`, `owner_office_user_id` (for Wali browsing by user)
+- `current_version_id`, `created_by_user_id`, `owner_office_user_id` (who “owns” non-shared work; Wali/Chef per-user lists with `office_user_id` use the **grantee lens** — all rapports in that user’s granted services — see `SERVICE_SHARING.md`. `fiche_lecture` keeps `owner_office_user_id` null through submit.)
 
 - `created_at`, `updated_at`
 

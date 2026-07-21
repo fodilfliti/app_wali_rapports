@@ -8,6 +8,7 @@ async function enrichSessionUser(user) {
     name: user.name,
     role: user.role,
     is_blocked: user.is_blocked,
+    is_super_admin: Boolean(user.is_super_admin),
     job_title: user.job_title,
     department: user.department
       ? { id: user.department.id, name_ar: user.department.name_ar, name_fr: user.department.name_fr }

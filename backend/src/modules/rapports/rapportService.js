@@ -399,19 +399,13 @@ async function listRapports(query, opts = {}) {
   const statusGroup = normalizeStatusGroup(query);
   if (query.service_id) where.service_id = query.service_id;
   if (query.rapport_type_id) where.rapport_type_id = query.rapport_type_id;
+  // Grantee lens: office_user_id means "services granted to this attaché", not owner-only.
   const ownerUserId = Number(
     query.owner_user_id || query.office_user_id || query.owner_office_user_id,
   );
+  let grantScopedOfficeUserId = null;
   if (Number.isFinite(ownerUserId) && ownerUserId > 0) {
-    where[Op.and] = [
-      ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
-      {
-        [Op.or]: [
-          { owner_office_user_id: ownerUserId },
-          { created_by_user_id: ownerUserId },
-        ],
-      },
-    ];
+    grantScopedOfficeUserId = ownerUserId;
   }
   if (query.search) {
     where.title = { [Op.iLike]: `%${String(query.search).trim()}%` };
@@ -493,11 +487,11 @@ async function listRapports(query, opts = {}) {
     await applyStatusListFilter(where, query, opts);
   }
 
-  // Office: only rapports in services the user is granted.
-  if (opts.restrictToOfficeUserId) {
-    const { getAccessMapForUser } = require("./serviceAccessService");
-    const accessMap = await getAccessMapForUser(opts.restrictToOfficeUserId);
-    const grantedIds = Object.keys(accessMap).map(Number).filter(Boolean);
+  // Office caller OR Wali/Chef grantee lens: only rapports in granted services.
+  const grantUserId = opts.restrictToOfficeUserId || grantScopedOfficeUserId;
+  if (grantUserId) {
+    const { getAccessibleServiceIds } = require("./serviceAccessService");
+    const grantedIds = await getAccessibleServiceIds(grantUserId);
     if (!grantedIds.length) {
       return { rapports: [], total: 0, page, pageSize };
     }
@@ -1204,12 +1198,18 @@ async function submitRapport(id, actor, req) {
   const needsChef = chefGate === "required";
   const nextStatus = needsChef ? "pending_chef" : "submitted";
 
-  await rapport.update({
+  const isFiche =
+    rapport.rapportType?.content_kind === "fiche_lecture";
+  const submitPatch = {
     status: nextStatus,
     current_version_id: versionId,
     updated_at: now,
-    owner_office_user_id: actor.id,
-  });
+  };
+  // fiche_lecture stays shared (owner null); other kinds stamp the submitting attaché.
+  if (!isFiche) {
+    submitPatch.owner_office_user_id = actor.id;
+  }
+  await rapport.update(submitPatch);
 
   if (needsChef) {
     await notifyActiveRole("CHEF_CABINET", {
@@ -1219,6 +1219,10 @@ async function submitRapport(id, actor, req) {
   } else {
     await notifyActiveRole("CHEF_CABINET", {
       message_key: "rapportResubmittedBypass",
+      rapport_id: rapport.id,
+    });
+    await notifyActiveRole("WALI", {
+      message_key: "rapportPendingWali",
       rapport_id: rapport.id,
     });
   }
@@ -1443,21 +1447,23 @@ async function waliRespond(id, data, actor, req) {
     await rapport.update({ status: nextStatus, updated_at: new Date() });
   }
 
-  const notifyUserId =
-    rapport.owner_office_user_id || rapport.created_by_user_id;
-  if (notifyUserId && data.decision === "accepted") {
+  const {
+    resolveOfficeFeedbackRecipientIds,
+  } = require("./serviceAccessService");
+  const officeRecipientIds = await resolveOfficeFeedbackRecipientIds(rapport);
+  if (officeRecipientIds.length && data.decision === "accepted") {
     let messageKey = "waliAccepted";
     if (followUpStatus === "pending") messageKey = "waliAcceptedPending";
     if (followUpStatus === "completed") messageKey = "waliAcceptedCompleted";
     await notifyUsers({
-      userIds: [notifyUserId],
+      userIds: officeRecipientIds,
       rapport_id: rapport.id,
       wali_response_id: response.id,
       message_key: messageKey,
     });
-  } else if (notifyUserId && data.decision === "changes_requested") {
+  } else if (officeRecipientIds.length && data.decision === "changes_requested") {
     await notifyUsers({
-      userIds: [notifyUserId],
+      userIds: officeRecipientIds,
       rapport_id: rapport.id,
       wali_response_id: response.id,
       message_key: "waliChangesRequested",
@@ -1467,9 +1473,9 @@ async function waliRespond(id, data, actor, req) {
       wali_response_id: response.id,
       message_key: "waliChangesRequested",
     });
-  } else if (notifyUserId && data.decision === "viewed" && bodyText) {
+  } else if (officeRecipientIds.length && data.decision === "viewed" && bodyText) {
     await notifyUsers({
-      userIds: [notifyUserId],
+      userIds: officeRecipientIds,
       rapport_id: rapport.id,
       wali_response_id: response.id,
       message_key: "waliFeedback",
@@ -1523,8 +1529,10 @@ async function chefRespond(id, data, actor, req) {
     created_by_user_id: actor.id,
   });
 
-  const notifyUserId =
-    rapport.owner_office_user_id || rapport.created_by_user_id;
+  const {
+    resolveOfficeFeedbackRecipientIds,
+  } = require("./serviceAccessService");
+  const officeRecipientIds = await resolveOfficeFeedbackRecipientIds(rapport);
 
   if (data.decision === "accepted") {
     await rapport.update({
@@ -1532,9 +1540,9 @@ async function chefRespond(id, data, actor, req) {
       chef_gate: "required",
       updated_at: new Date(),
     });
-    if (notifyUserId) {
+    if (officeRecipientIds.length) {
       await notifyUsers({
-        userIds: [notifyUserId],
+        userIds: officeRecipientIds,
         rapport_id: rapport.id,
         chef_response_id: response.id,
         message_key: "chefAccepted",
@@ -1551,9 +1559,9 @@ async function chefRespond(id, data, actor, req) {
       chef_gate: "required",
       updated_at: new Date(),
     });
-    if (notifyUserId) {
+    if (officeRecipientIds.length) {
       await notifyUsers({
-        userIds: [notifyUserId],
+        userIds: officeRecipientIds,
         rapport_id: rapport.id,
         chef_response_id: response.id,
         message_key: "chefChangesRequested",
@@ -1561,9 +1569,9 @@ async function chefRespond(id, data, actor, req) {
     }
   } else {
     await rapport.update({ status: "pending_chef", updated_at: new Date() });
-    if (notifyUserId && bodyText) {
+    if (officeRecipientIds.length && bodyText) {
       await notifyUsers({
-        userIds: [notifyUserId],
+        userIds: officeRecipientIds,
         rapport_id: rapport.id,
         chef_response_id: response.id,
         message_key: "chefFeedback",

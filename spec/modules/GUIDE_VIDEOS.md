@@ -11,9 +11,12 @@
 
 ### Roles & rules
 
-- **ADMIN**:
+- **Super-admin** (`is_super_admin`):
   - Full CRUD (upload, edit metadata, replace file, toggle `is_new`, delete).
   - Sees all audiences including `ADMIN`.
+  - Hub tile → `/admin/guide`.
+- **Regular ADMIN** (not super):
+  - Read-only list of all audiences including `ADMIN` (no upload/edit/delete).
   - Hub tile → `/admin/guide`.
 - **OFFICE_USER** / **CHEF_CABINET** / **WALI**:
   - Read-only list + large video player.

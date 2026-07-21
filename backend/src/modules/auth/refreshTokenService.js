@@ -169,7 +169,7 @@ async function rotateRefresh(req, res) {
     }
 
     const user = await User.findByPk(existing.user_id, { transaction });
-    if (!user || user.is_blocked) {
+    if (!user || user.is_blocked || user.deleted_at) {
       await revokeFamily(existing.family_id, transaction);
       clearRefreshCookie(res);
       const err = new Error("Invalid token");

@@ -1,7 +1,20 @@
 const { Op } = require("sequelize");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const { Municipality, User, Daira, Direction } = require("../../db");
+const {
+  Municipality,
+  User,
+  Daira,
+  Direction,
+  UserServiceGrant,
+  UserPermissionOverride,
+  Notification,
+  UserNotificationPreference,
+  WebPushSubscription,
+  WaliBroadcastRecipient,
+  WaliInstructionRecipient,
+  sequelize,
+} = require("../../db");
 const { audit } = require("../../services/audit");
 const { generateCredentialsPdf } = require("../../services/credentialsPdfService");
 const { revokeAllForUser } = require("../auth/refreshTokenService");
@@ -10,6 +23,28 @@ function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize, 10) || 20));
   return { page, pageSize, offset: (page - 1) * pageSize, limit: pageSize };
+}
+
+function forbidden(message = "Forbidden") {
+  const err = new Error(message);
+  err.status = 403;
+  throw err;
+}
+
+function isSuperAdmin(user) {
+  return Boolean(user?.is_super_admin);
+}
+
+/** Regular admins cannot manage the super-admin account. */
+function assertCanManageUser(actor, target) {
+  if (!target) return;
+  if (target.is_super_admin && Number(actor.id) !== Number(target.id)) {
+    forbidden("cannotManageSuperAdmin");
+  }
+}
+
+function requireSuperAdmin(actor) {
+  if (!isSuperAdmin(actor)) forbidden("superAdminRequired");
 }
 
 function refSearchWhere(q) {
@@ -240,7 +275,7 @@ async function restoreMunicipality(id, actor, req) {
 }
 
 function userSearchWhere(q, role) {
-  const where = {};
+  const where = { deleted_at: null };
   if (role) where.role = role;
   if (q && String(q).trim()) {
     const s = `%${String(q).trim()}%`;
@@ -307,11 +342,12 @@ async function createUser(data, actor, req) {
 
 async function updateUser(id, data, actor, req) {
   const user = await User.findByPk(id);
-  if (!user) {
+  if (!user || user.deleted_at) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
+  assertCanManageUser(actor, user);
   await user.update({
     ...(data.name != null ? { name: data.name } : {}),
     ...(data.department_id !== undefined ? { department_id: data.department_id } : {}),
@@ -323,7 +359,7 @@ async function updateUser(id, data, actor, req) {
 
 async function toggleBlockUser(id, actor, req) {
   const user = await User.findByPk(id);
-  if (!user) {
+  if (!user || user.deleted_at) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
@@ -333,6 +369,7 @@ async function toggleBlockUser(id, actor, req) {
     err.status = 400;
     throw err;
   }
+  assertCanManageUser(actor, user);
   await user.update({ is_blocked: !user.is_blocked });
   if (user.is_blocked) {
     await revokeAllForUser(user.id);
@@ -343,11 +380,12 @@ async function toggleBlockUser(id, actor, req) {
 
 async function resetUserPassword(id, actor, req) {
   const user = await User.scope("withPassword").findByPk(id);
-  if (!user) {
+  if (!user || user.deleted_at) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
+  assertCanManageUser(actor, user);
   const newPassword = randomPassword8();
   await user.update({ password_hash: await bcrypt.hash(newPassword, 10) });
   await revokeAllForUser(user.id);
@@ -371,6 +409,51 @@ async function resetUserPassword(id, actor, req) {
   };
 }
 
+/**
+ * Soft-delete: keep users row for FKs; clear grants/sessions/personal notifs.
+ * Super-admin only. Cannot delete self or another super-admin.
+ */
+async function softDeleteUser(id, actor, req) {
+  requireSuperAdmin(actor);
+  const user = await User.findByPk(id);
+  if (!user || user.deleted_at) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  if (Number(user.id) === Number(actor.id)) {
+    const err = new Error("cannotDeleteSelf");
+    err.status = 400;
+    throw err;
+  }
+  if (user.is_super_admin) {
+    forbidden("cannotDeleteSuperAdmin");
+  }
+
+  const userId = user.id;
+  await sequelize.transaction(async (transaction) => {
+    await user.update(
+      { deleted_at: new Date(), is_blocked: true },
+      { transaction },
+    );
+    await UserServiceGrant.destroy({ where: { user_id: userId }, transaction });
+    await UserPermissionOverride.destroy({ where: { user_id: userId }, transaction });
+    await Notification.destroy({ where: { user_id: userId }, transaction });
+    await UserNotificationPreference.destroy({ where: { user_id: userId }, transaction });
+    await WebPushSubscription.destroy({ where: { user_id: userId }, transaction });
+    await WaliBroadcastRecipient.destroy({ where: { user_id: userId }, transaction });
+    await WaliInstructionRecipient.destroy({ where: { user_id: userId }, transaction });
+  });
+  await revokeAllForUser(userId);
+  await audit(
+    actor.id,
+    "USER_SOFT_DELETE",
+    { user_id: userId, role: user.role, username: user.username },
+    { req },
+  );
+  return { ok: true, user_id: userId };
+}
+
 module.exports = {
   listDairas,
   createDaira,
@@ -391,5 +474,9 @@ module.exports = {
   createUser,
   updateUser,
   toggleBlockUser,
-  resetUserPassword
+  resetUserPassword,
+  softDeleteUser,
+  isSuperAdmin,
+  assertCanManageUser,
+  requireSuperAdmin,
 };

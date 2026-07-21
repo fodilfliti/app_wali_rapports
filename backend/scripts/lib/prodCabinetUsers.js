@@ -11,12 +11,32 @@ const path = require("path");
 const bcrypt = require("bcryptjs");
 const ExcelJS = require("exceljs");
 
-const { AccessRoleTemplate, User } = require("../../src/db");
+const { AccessRoleTemplate, User, RapportType } = require("../../src/db");
+const { buildFicheDefaultBlocks } = require("../../src/modules/rapports/documentDefaults");
 
 const OUT_DIR = path.join(__dirname, "..", "..", "private", "bootstrap");
 
 const DEPT_NAME_AR = "ديوان الولاية";
 const DEPT_NAME_FR = "Cabinet de la wilaya";
+
+/** Canonical fiche lecture type on a leaf service (same as admin createService). */
+async function ensureFicheLectureType(service) {
+  if (!service || service.is_folder) return null;
+  const existing = await RapportType.findOne({
+    where: { service_id: service.id, content_kind: "fiche_lecture" },
+  });
+  if (existing) return existing;
+  return RapportType.create({
+    service_id: service.id,
+    slug: "fiche_lecture",
+    name_ar: "مذكرة استخلاصية",
+    name_fr: "Fiche lecture",
+    layout_kind: "memo",
+    content_kind: "fiche_lecture",
+    versioning_mode: "standalone",
+    schema_json: { default_blocks: buildFicheDefaultBlocks() },
+  });
+}
 
 function generatePassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -77,6 +97,7 @@ module.exports = {
   DEPT_NAME_FR,
   generatePassword,
   createUser,
+  ensureFicheLectureType,
   writeCredentialsSheet,
   bootstrapOutDir,
   credentialRow,

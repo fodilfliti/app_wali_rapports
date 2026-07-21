@@ -268,6 +268,7 @@ adminRouter.patch(
       const user = await org.updateUser(req.params.id, req.validatedBody, req.user, req);
       res.json({ user });
     } catch (e) {
+      if (e.status === 403 || e.status === 404) return res.status(e.status).json({ error: e.message });
       next(e);
     }
   }
@@ -278,7 +279,9 @@ adminRouter.post("/users/:id/block", requirePermission("organization.users.manag
     const user = await org.toggleBlockUser(req.params.id, req.user, req);
     res.json({ user });
   } catch (e) {
-    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 400 || e.status === 403 || e.status === 404) {
+      return res.status(e.status).json({ error: e.message });
+    }
     next(e);
   }
 });
@@ -291,9 +294,26 @@ adminRouter.post(
       const { user, newPassword, credentials } = await org.resetUserPassword(req.params.id, req.user, req);
       res.json({ user, newPassword, credentials });
     } catch (e) {
+      if (e.status === 400 || e.status === 403) return res.status(e.status).json({ error: e.message });
       next(e);
     }
   }
+);
+
+adminRouter.delete(
+  "/users/:id",
+  requirePermission("organization.users.manage", "manage"),
+  async (req, res, next) => {
+    try {
+      const result = await org.softDeleteUser(req.params.id, req.user, req);
+      res.json(result);
+    } catch (e) {
+      if (e.status === 400 || e.status === 403 || e.status === 404) {
+        return res.status(e.status).json({ error: e.message });
+      }
+      next(e);
+    }
+  },
 );
 
 adminRouter.get("/departments", async (req, res, next) => {
@@ -584,6 +604,7 @@ adminRouter.post("/guide-videos", optionalSingleUpload("file"), async (req, res,
     if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
     if (e.status === 413) return res.status(413).json({ error: e.message });
     if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 403) return res.status(403).json({ error: e.message });
     next(e);
   }
 });
@@ -609,6 +630,7 @@ adminRouter.patch("/guide-videos/:id", optionalSingleUpload("file"), async (req,
     if (e.status === 413) return res.status(413).json({ error: e.message });
     if (e.status === 400) return res.status(400).json({ error: e.message });
     if (e.status === 404) return res.status(404).json({ error: e.message });
+    if (e.status === 403) return res.status(403).json({ error: e.message });
     next(e);
   }
 });
@@ -618,6 +640,7 @@ adminRouter.delete("/guide-videos/:id", async (req, res, next) => {
     res.json(await guideVideoService.deleteGuideVideo(req.params.id, req.user, req));
   } catch (e) {
     if (e.status === 404) return res.status(404).json({ error: e.message });
+    if (e.status === 403) return res.status(403).json({ error: e.message });
     next(e);
   }
 });

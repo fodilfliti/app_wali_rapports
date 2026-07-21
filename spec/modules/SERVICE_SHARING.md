@@ -31,6 +31,15 @@ Admin creates **services** (UI: **مجالات المتابعة** / **Domaines d
 - UI hides save/submit/create when `accessLevel === 'view'`
 - Service config page (`/office/services/:id/config`) visible only when `manage`
 
+#### Visibility after grant
+
+When several attachés share the same leaf service:
+
+- **Office:** all non-hidden rapports in granted services appear in hubs / lists (service-scoped, not owner-only).
+- **Wali / Chef per-user navigation** (`office_user_id` = attaché U → service → type): list and pending badges are **service-scoped** for U’s grants — every inbox-visible rapport in those services, not only rows where `owner_office_user_id` / `created_by_user_id` = U. The same rapport may appear under every co-grantee. Global Wali/Chef inboxes (no `office_user_id`) stay status-only and unduplicated.
+- **Feedback notifications** (`wali*` / `chef*` decision keys): all active, non-blocked `OFFICE_USER`s with a grant on that service (not only owner/creator). Preference filtering still applies.
+- **Discussion** (`rapportComment`): existing recipients plus other attachés with **`manage`** on the service (view-only grantees are not auto-added).
+
 #### UI
 
 - Admin hub → **مجالات المتابعة / Domaines de suivi** → `/admin/services`

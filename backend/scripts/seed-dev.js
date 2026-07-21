@@ -108,6 +108,15 @@ async function main() {
     await seedDairas();
     await seedMunicipalities();
     await seedAdmin();
+    const { ensureSuperAdminFromEnv } = require("./lib/ensureSuperAdmin");
+    const superResult = await ensureSuperAdminFromEnv({ resetPassword: true });
+    if (superResult.skipped) {
+      console.log("Super-admin skipped (SUPER_ADMIN_* / DEV_ADMIN_* not set).");
+    } else if (superResult.created) {
+      console.log(`Created super-admin "${superResult.username}".`);
+    } else {
+      console.log(`Updated super-admin "${superResult.username}".`);
+    }
     const cfg = devAdminConfig();
     console.log("\nDev login (also saved in backend/.env):");
     console.log(`  username: ${cfg.username}`);

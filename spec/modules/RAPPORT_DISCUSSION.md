@@ -19,6 +19,8 @@ Non-live **comment thread** at the bottom of a rapport so **office**, **Chef cab
 
 UI labels: ملحق بالديوان / Attaché de cabinet · رئيس الديوان · حساب الوالي — never raw enums.
 
+**Deleted authors:** soft-deleted users keep `author_user_id` on comments. API returns `author.is_deleted` (and may clear `name`). UI shows the **role label** (`roleOffice` / `roleChefCabinet` / `roleWali` / `roleAdmin`) instead of the person’s name — see `ORGANIZATION.md` soft-delete.
+
 ### Data model
 
 #### `rapport_comments`
@@ -35,7 +37,8 @@ Never notify the author. Notify:
 
 1. Every non-blocked `CHEF_CABINET` and `WALI`
 2. Rapport office owner (`owner_office_user_id`) or creator (`created_by_user_id`) if OFFICE_USER
-3. Any other `OFFICE_USER` who already posted on this thread
+3. Other attachés with **`manage`** grant on the rapport’s service (`SERVICE_SHARING.md`)
+4. Any other `OFFICE_USER` who already posted on this thread
 
 Opening rapport / comments marks unread discussion notifications for that `rapport_id` + current user. Chef/Wali opening a rapport marks **all** unread notifications for that rapport (not only `rapportComment`), so info keys like bypass-resubmit are cleared.
 

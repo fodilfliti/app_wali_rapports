@@ -1,15 +1,34 @@
 const fs = require("fs");
 const path = require("path");
 
-function fontsDir() {
+/** Bundled fallback (Latin + Arabic) when OS fonts are missing — e.g. cPanel Linux. */
+const BUNDLED_FONTS_DIR = path.join(__dirname, "..", "..", "assets", "fonts");
+
+function windowsFontsDir() {
   return path.join(process.env.WINDIR || "C:\\Windows", "Fonts");
 }
 
+function linuxFontDirs() {
+  return [
+    "/usr/share/fonts",
+    "/usr/share/fonts/truetype",
+    "/usr/share/fonts/truetype/dejavu",
+    "/usr/share/fonts/truetype/liberation",
+    "/usr/share/fonts/truetype/noto",
+    "/usr/share/fonts/TTF",
+    "/usr/local/share/fonts",
+    path.join(process.env.HOME || "", ".fonts"),
+  ];
+}
+
 function findFontFile(names) {
-  const dir = fontsDir();
+  const searchDirs = [BUNDLED_FONTS_DIR, windowsFontsDir(), ...linuxFontDirs()];
   for (const name of names) {
-    const fp = path.join(dir, name);
-    if (fs.existsSync(fp)) return fp;
+    for (const dir of searchDirs) {
+      if (!dir) continue;
+      const fp = path.join(dir, name);
+      if (fs.existsSync(fp)) return fp;
+    }
   }
   return null;
 }
@@ -25,16 +44,21 @@ function pdfTextOpts(locale, opts = {}) {
   };
 }
 
-/** Register Arabic/French body fonts for PDFKit (Tahoma preferred for Arabic shaping). */
+/**
+ * Register Arabic/French body fonts for PDFKit (same path as rapport PDF export).
+ * Prefers Tahoma/Arial (both AR + FR/EN), then bundled DejaVu Sans on Linux hosts.
+ */
 function registerPdfFonts(doc, locale) {
   const isAr = locale === "ar";
   const regularPath = findFontFile(
     isAr
-      ? ["tahoma.ttf", "arial.ttf", "trado.ttf", "arabtype.ttf", "calibri.ttf"]
-      : ["calibri.ttf", "arial.ttf", "times.ttf", "tahoma.ttf"]
+      ? ["tahoma.ttf", "arial.ttf", "DejaVuSans.ttf", "trado.ttf", "arabtype.ttf", "calibri.ttf"]
+      : ["calibri.ttf", "arial.ttf", "tahoma.ttf", "DejaVuSans.ttf", "times.ttf"],
   );
   const boldPath = findFontFile(
-    isAr ? ["tahomabd.ttf", "arialbd.ttf", "tradbdo.ttf"] : ["calibrib.ttf", "arialbd.ttf", "timesbd.ttf"]
+    isAr
+      ? ["tahomabd.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf", "tradbdo.ttf"]
+      : ["calibrib.ttf", "arialbd.ttf", "tahomabd.ttf", "DejaVuSans-Bold.ttf", "timesbd.ttf"],
   );
 
   if (regularPath) {
@@ -60,8 +84,13 @@ function docxFontFamily(locale) {
   return locale === "ar" ? "Tahoma" : "Calibri";
 }
 
+function containsArabic(text) {
+  return /[\u0600-\u06FF]/.test(String(text || ""));
+}
+
 module.exports = {
   registerPdfFonts,
   docxFontFamily,
-  pdfTextOpts
+  pdfTextOpts,
+  containsArabic,
 };

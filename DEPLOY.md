@@ -160,12 +160,13 @@ npm run db:seed-dev
 | `npm run db:seed-dev` | Yes (once / as needed) | Does **not** wipe data; inserts dairas/municipalities if empty; creates/updates admin |
 | `npm run db:seed-test` | **No** | `DELETE FROM` services, rapports, versions, notifications, broadcasts, etc. |
 | `npm run db:seed-demo` | **No** | Same wipe as test seed, plus deletes **departments** |
-| `npm run db:seed-prod-bootstrap` | **Once only** (after backup) | Wipes domain data + loads cabinet users and **root leaf** services from `spec/data/PROD_BOOTSTRAP.md` (no person folders); requires `CONFIRM_PROD_BOOTSTRAP=YES`. Temporary — do not re-run after the initial reset. |
-| `npm run db:seed-prod-ensure` | **Safe ongoing** | Adds missing users/services/grants from the same inventory; never deletes or resets passwords; requires `CONFIRM_PROD_ENSURE=YES`. New passwords only in `credentials-added-*.xlsx`. |
+| `npm run db:seed-prod-bootstrap` | **Once only** (after backup) | Wipes **office/wali/chef data** (rapports incl. fiche docs, other schemas, non-admin users, services…) then loads cabinet + **fiche_lecture type per leaf**. **Keeps** guide videos (+ files), ADMIN, org reference. |
+| `npm run db:seed-prod-ensure` | **Safe ongoing** | Adds missing users/services/grants from the same inventory; never deletes or resets passwords. Plain `npm run …` (passes `--confirm`). New passwords only in `credentials-added-*.xlsx` / printable `credentials-added-*.pdf` (1 page/user). Also ensures fiche_lecture on inventory leaves. |
+| `npm run db:ensure-fiche-lecture` | **Safe** | Creates missing `fiche_lecture` types on all leaf services only. No wipe, no users. |
 | `npm run db:seed-demo-cabinet` | **Dev only** | Fills cabinet bootstrap services with presentation data; refuses when `NODE_ENV=production` |
 | `npm run db:migrate:undo` / `db:migrate:undo:all` | **No** | Rolls back migrations; can drop tables / remove seed rows |
 
-**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `CONFIRM_PROD_BOOTSTRAP=YES npm run db:seed-prod-bootstrap` once — credentials under **`backend/private/bootstrap/`** (outside `FILE_STORAGE_ROOT`; never served via `/files`). For later people/services: edit inventory, then `CONFIRM_PROD_ENSURE=YES npm run db:seed-prod-ensure` (no wipe). If credential sheets were ever under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords` once (quarantines sheets + rotates those users’ passwords into a new private Excel).
+**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `npm run db:seed-prod-bootstrap` once (keeps guide videos; wipes office/wali/chef data including schemas) — credentials under **`backend/private/bootstrap/`** (outside `FILE_STORAGE_ROOT`; never served via `/files`). For later people/services: edit inventory, then `npm run db:seed-prod-ensure` (no wipe). If credential sheets were ever under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords` once (quarantines sheets + rotates those users’ passwords into a new private Excel).
 
 ### 6. Frontend build (on your PC)
 

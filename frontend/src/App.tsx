@@ -400,7 +400,7 @@ function AppShell() {
                 element={<AdminDirectionsListPage token={token} />}
               />
               <Route path="/modiriyat" element={<Navigate to="/directions" replace />} />
-              <Route path="/users" element={<AdminUsersPage token={token} currentUserId={me.id} />} />
+              <Route path="/users" element={<AdminUsersPage token={token} currentUserId={me.id} isSuperAdmin={Boolean(me.is_super_admin)} />} />
               <Route
                 path="/admin/rapports"
                 element={<AdminRapportsListPage token={token} />}
@@ -425,7 +425,7 @@ function AppShell() {
               {ENABLE_GUIDE_VIDEOS ? (
                 <Route
                   path="/admin/guide"
-                  element={<GuideVideosPage token={token} listRole="admin" canManage />}
+                  element={<GuideVideosPage token={token} listRole="admin" canManage={Boolean(me.is_super_admin)} />}
                 />
               ) : null}
             </>

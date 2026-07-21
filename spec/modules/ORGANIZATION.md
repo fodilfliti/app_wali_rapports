@@ -35,7 +35,19 @@
 - `department_id` (FK, nullable — not exposed in current admin UI), `job_title` (nullable string), `email` (nullable string), `email_hidden` (boolean, default false)
 - `access_role_template_id` (nullable FK to role templates), `use_custom_permissions` (boolean, default false)
 - `is_blocked`, `created_at`
+- `is_super_admin` (boolean, default false) — set only via env bootstrap; never via admin create/patch UI
+- `deleted_at` (nullable timestamptz) — soft-delete; row kept for FKs (rapports, discussion, etc.)
 - No `municipality_id` — communes are reference only
+
+#### Super-admin (مسؤول أعلى)
+
+- Created/marked by env: prefer `SUPER_ADMIN_USERNAME` / `SUPER_ADMIN_PASSWORD` (optional `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`); if unset, fall back to `DEV_ADMIN_*` — upsert `role=ADMIN`, `is_super_admin=true`.
+- Regular admins **cannot** edit / block / reset-password the super-admin account.
+- Only the super-admin may **soft-delete** users and **manage guide videos** (upload/edit/delete) — see `GUIDE_VIDEOS.md`.
+- Soft-delete targets: `OFFICE_USER`, `CHEF_CABINET`, `WALI`, and other non-super `ADMIN`s. **Cannot** soft-delete self or another `is_super_admin`.
+- Soft-delete does **not** remove the `users` row: sets `deleted_at` + `is_blocked`, revokes tokens, clears grants/overrides/personal notifications/push/prefs and instruction/broadcast recipient rows. Discussion comments and rapports stay; UI shows role label when author is deleted — `RAPPORT_DISCUSSION.md`.
+- Login / refresh reject soft-deleted users (`deleted_at` set). Default user lists exclude soft-deleted rows.
+- Expose `is_super_admin` on `GET /auth/me` and admin user list for UI gating only.
 
 ### Workflows
 
@@ -53,8 +65,9 @@
 #### Users
 
 - Admin creates accounts with role (including رئيس الديوان), initial password (8 digits, **CSPRNG** via `crypto.randomInt`), optional access template.
-- Block/unblock, reset password; cannot block own account.
-- **Reset password (users list):** shown only for **other** users (never on the logged-in admin’s own row). Must open a **confirm dialog** before calling `POST /admin/users/:id/reset-password` — never reset on a single click. Confirm copy should name the target user (username / display name). On confirm → new random 8-digit code + credentials PDF modal (same as create).
+- Block/unblock, reset password; cannot block own account; cannot edit/block/reset a **super-admin** unless you are that same user (self still cannot block/reset self).
+- **Soft-delete (super-admin only):** `DELETE /admin/users/:id` — see Super-admin section. Confirm dialog in UI.
+- **Reset password (users list):** shown only for **other** users (never on the logged-in admin’s own row; never on super-admin when actor is not super). Must open a **confirm dialog** before calling `POST /admin/users/:id/reset-password` — never reset on a single click. Confirm copy should name the target user (username / display name). On confirm → new random 8-digit code + credentials PDF modal (same as create).
 - **Self-service profile:** any logged-in user may update **own** `name` and `job_title` via `PATCH /auth/me` (see `AUTH.md`); username/role remain admin-managed.
 - **Self-service code (الرمز):** any logged-in user changes **own** password via `POST /auth/change-password` — must enter **current code** then **new code** (see `AUTH.md`). UI: profile menu → تغيير الرمز / Changer le code. Admin must **not** use the users-list reset action for self.
 - On **create** and **password reset**, the server generates an **8-digit code** and a **credentials PDF** (`credentialsPdfService.js`) returned as `credentials.pdf_url` (**ADMIN-only** via `/files` ACL).
@@ -82,11 +95,12 @@
 | `PATCH` | `/admin/municipalities/:id` | Update commune |
 | `POST` | `/admin/municipalities/:id/hide` | Soft-hide commune |
 | `POST` | `/admin/municipalities/:id/restore` | Restore commune |
-| `GET` | `/admin/users` | List users: `page`, `pageSize`, `q`, optional `role` |
+| `GET` | `/admin/users` | List users: `page`, `pageSize`, `q`, optional `role` (excludes soft-deleted) |
 | `POST` | `/admin/users` | Create user |
-| `PATCH` | `/admin/users/:id` | Update name, department |
-| `POST` | `/admin/users/:id/block` | Toggle block |
-| `POST` | `/admin/users/:id/reset-password` | New random 8-digit password |
+| `PATCH` | `/admin/users/:id` | Update name, department (403 if target is super-admin and actor is not that user) |
+| `POST` | `/admin/users/:id/block` | Toggle block (403 on super-admin target for other admins; cannot block self) |
+| `POST` | `/admin/users/:id/reset-password` | New random 8-digit password (403 on super-admin for other admins) |
+| `DELETE` | `/admin/users/:id` | Soft-delete (super-admin only; not self / not other super-admin) |
 
 **Client validation:** `frontend/src/validation/schemas/forms.ts`  
 **Server validation:** `backend/src/validation/schemas/adminCrud.js`
@@ -117,6 +131,7 @@
 | `USER_UPDATE` | PATCH user |
 | `USER_BLOCK` | Block toggle |
 | `USER_PASSWORD_RESET` | Reset password |
+| `USER_SOFT_DELETE` | Super-admin soft-deletes a user |
 
 ### Migration notes
 

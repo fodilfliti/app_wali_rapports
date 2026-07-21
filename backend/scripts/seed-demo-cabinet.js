@@ -506,7 +506,7 @@ async function main() {
   });
   if (offices.length < inventory.officeUsers.length) {
     console.error(
-      "Bootstrap users missing. Run first:\n  CONFIRM_PROD_BOOTSTRAP=YES npm run db:seed-prod-bootstrap",
+      "Bootstrap users missing. Run first:\n  npm run db:seed-prod-bootstrap",
     );
     process.exit(1);
   }

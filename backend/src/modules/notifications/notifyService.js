@@ -176,7 +176,10 @@ async function notifyUsers(opts) {
   if (!userIds.length) return [];
 
   const blocked = await User.findAll({
-    where: { id: userIds, is_blocked: true },
+    where: {
+      id: userIds,
+      [Op.or]: [{ is_blocked: true }, { deleted_at: { [Op.ne]: null } }],
+    },
     attributes: ["id"],
   });
   const blockedSet = new Set(blocked.map((u) => Number(u.id)));
@@ -257,7 +260,7 @@ async function notifyUsers(opts) {
 
 async function notifyActiveRole(role, opts) {
   const users = await User.findAll({
-    where: { role, is_blocked: false },
+    where: { role, is_blocked: false, deleted_at: null },
     attributes: ["id"],
   });
   return notifyUsers({

@@ -80,7 +80,7 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
 
     const user = await User.scope("withPassword").findOne({ where: { username } });
     const ok = user ? await bcrypt.compare(password, user.password_hash) : false;
-    const blocked = Boolean(user?.is_blocked);
+    const blocked = Boolean(user?.is_blocked) || Boolean(user?.deleted_at);
 
     await audit(user?.id, "LOGIN_ATTEMPT", { username, success: ok && !blocked, blocked }, { req });
 

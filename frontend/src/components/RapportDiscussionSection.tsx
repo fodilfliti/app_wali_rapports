@@ -24,6 +24,16 @@ function roleLabel(role: string | undefined, t: (k: string) => string) {
   return t('roleOffice')
 }
 
+function authorDisplayName(
+  author: { name?: string | null; username?: string | null; role?: string; is_deleted?: boolean } | null | undefined,
+  t: (k: string) => string,
+) {
+  if (!author || author.is_deleted || (!author.name && !author.username)) {
+    return roleLabel(author?.role, t)
+  }
+  return author.name || author.username || roleLabel(author.role, t)
+}
+
 function listFn(mode: Props['mode']) {
   if (mode === 'chef') return api.listChefRapportComments
   if (mode === 'wali') return api.listWaliRapportComments
@@ -134,9 +144,11 @@ export function RapportDiscussionSection({ token, rapportId, mode, enabled = tru
             <article key={c.id} className={`discussionMsg ${roleClass}`}>
               <header className="discussionMsgHead">
                 <strong className="discussionMsgAuthor">
-                  {c.author?.name || c.author?.username || '—'}
+                  {authorDisplayName(c.author, t)}
                 </strong>
-                <span className="discussionMsgRole muted small">{roleLabel(role, t)}</span>
+                {!c.author?.is_deleted ? (
+                  <span className="discussionMsgRole muted small">{roleLabel(role, t)}</span>
+                ) : null}
                 {c.created_at ? (
                   <time className="discussionMsgTime muted small" dateTime={c.created_at}>
                     {new Date(c.created_at).toLocaleString(

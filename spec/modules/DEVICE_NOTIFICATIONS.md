@@ -24,9 +24,9 @@ Extend the existing in-app `notifications` system with **Web Push** (browser / p
 | ----- | ----------------- | ------------- |
 | Office Envoyer → `pending_chef` | Active Chef only (**not** Wali) | `rapportPendingChef` |
 | Chef accept → `submitted` | Active Wali | `rapportPendingWali` |
-| Bypass resubmit | Chef info | `rapportResubmittedBypass` (existing) |
-| Chef/Wali respond | Office (existing keys) | `chef*` / `wali*` |
-| Discussion comment | Fanout per `RAPPORT_DISCUSSION.md` | `rapportComment` |
+| Bypass resubmit → `submitted` | Chef info + active Wali | `rapportResubmittedBypass` + `rapportPendingWali` |
+| Chef/Wali respond | All active `OFFICE_USER` with a grant on the rapport’s service (`SERVICE_SHARING.md`); fallback owner/creator | `chef*` / `wali*` |
+| Discussion comment | Fanout per `RAPPORT_DISCUSSION.md` + other **`manage`** grantees on the service | `rapportComment` |
 | Instruction / broadcast | Recipients | `waliInstruction` / `waliBroadcast*` |
 | Calendar today / tomorrow | Active Wali + Chef (same visibility as hub calendar) | `calendarToday` / `calendarTomorrow` |
 
@@ -135,4 +135,4 @@ Hub-counts endpoints keep their paths; calendar day-scan is a side effect.
 - Existing in-app notification creators move through `notifyService` (prefs + push).
 - Dedicated hub counters (instructions / shared) unchanged; prefs can still hide those channels.
 - Commune-list embedded `data_json` calendar events remain out of hub reminder scan (same as hub calendar DB-only).
-- Cross-refs: `CHEF_CABINET.md`, `MEDIA_CALENDAR_WALI_SHARING.md`, `RAPPORTS.md`, `RAPPORT_SERVICE_TYPES.md`, `RAPPORT_DISCUSSION.md`, `WALI_INSTRUCTIONS.md`.
+- Cross-refs: `CHEF_CABINET.md`, `MEDIA_CALENDAR_WALI_SHARING.md`, `RAPPORTS.md`, `RAPPORT_SERVICE_TYPES.md`, `RAPPORT_DISCUSSION.md`, `WALI_INSTRUCTIONS.md`, `SERVICE_SHARING.md`.

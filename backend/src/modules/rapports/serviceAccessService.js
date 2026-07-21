@@ -1,4 +1,5 @@
-const { UserServiceGrant, Rapport, Service } = require("../../db");
+const { Op } = require("sequelize");
+const { UserServiceGrant, Rapport, Service, User } = require("../../db");
 
 const LEVEL_RANK = { none: 0, view: 1, manage: 2 };
 
@@ -9,6 +10,72 @@ function rank(level) {
 async function getAccessMapForUser(userId) {
   const grants = await UserServiceGrant.findAll({ where: { user_id: userId } });
   return Object.fromEntries(grants.map((g) => [Number(g.service_id), g.access_level]));
+}
+
+/** Granted leaf service ids for an office user (empty if none). */
+async function getAccessibleServiceIds(userId) {
+  const accessMap = await getAccessMapForUser(userId);
+  return Object.keys(accessMap).map(Number).filter(Boolean);
+}
+
+/**
+ * Sequelize where fragment: rapports in services granted to officeUserId.
+ * Returns { service_id: { [Op.in]: [] } } when the user has no grants (matches nothing).
+ */
+async function officeUserServiceScopeWhere(officeUserId) {
+  const grantedIds = await getAccessibleServiceIds(officeUserId);
+  return { service_id: { [Op.in]: grantedIds } };
+}
+
+/**
+ * Active, non-blocked OFFICE_USER ids with a grant on serviceId.
+ * @param {number} serviceId
+ * @param {{ minLevel?: 'view'|'manage' }} [opts]
+ */
+async function getOfficeUserIdsWithServiceAccess(serviceId, opts = {}) {
+  const minLevel = opts.minLevel || "view";
+  if (!serviceId) return [];
+  const grants = await UserServiceGrant.findAll({
+    where: { service_id: serviceId },
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["id", "role", "is_blocked", "deleted_at"],
+        required: true,
+      },
+    ],
+  });
+  const ids = [];
+  for (const g of grants) {
+    const u = g.user;
+    if (!u || u.role !== "OFFICE_USER" || u.is_blocked || u.deleted_at) continue;
+    if (rank(g.access_level) < rank(minLevel)) continue;
+    ids.push(Number(u.id));
+  }
+  return ids;
+}
+
+/**
+ * Office recipients for feedback on a rapport: all grant holders, else owner/creator fallback.
+ */
+async function resolveOfficeFeedbackRecipientIds(rapport) {
+  const serviceId = rapport?.service_id != null ? Number(rapport.service_id) : null;
+  if (serviceId) {
+    const grantees = await getOfficeUserIdsWithServiceAccess(serviceId, {
+      minLevel: "view",
+    });
+    if (grantees.length) return grantees;
+  }
+  const fallback = [rapport?.owner_office_user_id, rapport?.created_by_user_id]
+    .map((x) => (x != null ? Number(x) : null))
+    .filter(Boolean);
+  if (!fallback.length) return [];
+  const users = await User.findAll({
+    where: { id: fallback, role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+    attributes: ["id"],
+  });
+  return users.map((u) => Number(u.id));
 }
 
 async function resolveAccessLevel(user, serviceId) {
@@ -90,7 +157,7 @@ async function replaceServiceGrants(serviceId, grantRows, actor, req) {
   const normalized = [];
   for (const row of grantRows || []) {
     const user = await User.findByPk(row.user_id);
-    if (!user || user.role !== "OFFICE_USER" || user.is_blocked) continue;
+    if (!user || user.role !== "OFFICE_USER" || user.is_blocked || user.deleted_at) continue;
     if (!["view", "manage"].includes(row.access_level)) continue;
     normalized.push({
       user_id: user.id,
@@ -109,10 +176,14 @@ async function replaceServiceGrants(serviceId, grantRows, actor, req) {
 
 module.exports = {
   getAccessMapForUser,
+  getAccessibleServiceIds,
+  officeUserServiceScopeWhere,
+  getOfficeUserIdsWithServiceAccess,
+  resolveOfficeFeedbackRecipientIds,
   resolveAccessLevel,
   assertServiceAccess,
   assertRapportAccess,
   filterServiceTree,
   listGrantsForService,
-  replaceServiceGrants
+  replaceServiceGrants,
 };
