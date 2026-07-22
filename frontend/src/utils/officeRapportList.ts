@@ -11,14 +11,20 @@ export function rapportNeedsAttention(r: {
 
 export function waliCommentPreview(r: { latest_wali_response?: { body_text?: string | null } | null }) {
   const raw = r.latest_wali_response?.body_text
-  const text = String(raw || '').trim()
+  const text = String(raw || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .trim()
   if (!text || text === '—') return null
   return text.length > 140 ? `${text.slice(0, 140)}…` : text
 }
 
 export function chefCommentPreview(r: { latest_chef_response?: { body_text?: string | null } | null }) {
   const raw = r.latest_chef_response?.body_text
-  const text = String(raw || '').trim()
+  const text = String(raw || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .trim()
   if (!text || text === '—') return null
   return text.length > 140 ? `${text.slice(0, 140)}…` : text
 }

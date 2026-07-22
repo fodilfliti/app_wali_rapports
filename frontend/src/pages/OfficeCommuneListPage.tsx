@@ -65,6 +65,7 @@ export function OfficeCommuneListPage({ token }: Props) {
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [startingNewVersion, setStartingNewVersion] = useState(false);
   const [inclusionOpen, setInclusionOpen] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -285,6 +286,21 @@ export function OfficeCommuneListPage({ token }: Props) {
     }
   }
 
+  async function startNewVersionFromCurrent() {
+    if (!workspace?.rapport?.id) return;
+    setStartingNewVersion(true);
+    try {
+      await api.startOfficeNewVersion(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      snack.show(t("startNewVersionDone"), "success");
+      loadWorkspace();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setStartingNewVersion(false);
+    }
+  }
+
   async function deleteCurrentRapport() {
     if (!workspace?.rapport?.id) return;
     setDeleting(true);
@@ -497,10 +513,13 @@ export function OfficeCommuneListPage({ token }: Props) {
         <>
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
+            versioningMode={workspace.rapportType?.versioning_mode}
             editable={!!editable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}
             returning={returningToDraft}
+            onStartNewVersion={startNewVersionFromCurrent}
+            startingNewVersion={startingNewVersion}
             onFinish={finishCurrentRapport}
             finishing={finishing}
           />
@@ -622,6 +641,7 @@ export function OfficeCommuneListPage({ token }: Props) {
               rapportId={Number(workspace.rapport.id)}
               mode="office"
               enabled={isDiscussionEnabledByStatus(workspace.rapport.status)}
+              versionId={workspace.rapport.current_version_id ?? null}
             />
           ) : null}
         </>

@@ -181,6 +181,14 @@ export function canOfficeReturnToDraft(status: string) {
   )
 }
 
+/** Versioned + acknowledged — office may fork a new draft from the latest snapshot. */
+export function canOfficeStartNewVersion(
+  status?: string | null,
+  versioningMode?: string | null,
+) {
+  return status === 'acknowledged' && versioningMode === 'versioned'
+}
+
 export function officeDeleteMode(rapport: {
   can_instant_delete?: boolean
   can_request_delete?: boolean
@@ -213,11 +221,14 @@ export function isAwaitingReviewerResponse(status: string) {
   return isAwaitingChefResponse(status) || isAwaitingWaliResponse(status)
 }
 
-/** Archived version UI for versioned types once at least one snapshot was submitted. */
+/** Archived version UI for versioned types once at least one snapshot was submitted.
+ * Fiche lecture / document composé are standalone files — never show version history. */
 export function supportsRapportVersionArchive(
-  rapportType?: { versioning_mode?: string } | null,
+  rapportType?: { versioning_mode?: string; content_kind?: string } | null,
   versions: { submitted_at?: string | null }[] = [],
 ) {
+  const kind = rapportType?.content_kind
+  if (kind === 'fiche_lecture' || kind === 'document_compose') return false
   return (
     rapportType?.versioning_mode === 'versioned' &&
     versions.some((v) => v.submitted_at)

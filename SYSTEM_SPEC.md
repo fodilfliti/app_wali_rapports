@@ -9,6 +9,8 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Core (shared standards + app shell + export + validation)**: `spec/CORE.md`
 - **System Architecture Context (directories + models + flows)**: `spec/ARCHITECTURE_CONTEXT.md`
 - **Deploy (DZSecurity cPanel / File Manager / Node.js App)**: `DEPLOY.md`
+- **Platform hardening plan (access-policy, routes, UUID — planned, not started)**: `PLATFORM_HARDENING_PLAN.md`
+- **Cursor rules library (draft copies; copy to `.cursor/rules/` as `.mdc` when needed)**: `cursor-rules-library/`
 - **Modules**:
   - **Organization (communes reference + user accounts)**: `spec/modules/ORGANIZATION.md`
   - **Access profiles (domain permissions)**: `spec/modules/ACCESS_PROFILES.md`

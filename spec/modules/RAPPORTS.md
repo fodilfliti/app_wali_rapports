@@ -175,6 +175,8 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 - **Versioned:** each send → new `rapport_versions` row; UI **Versions archivées** lists history (read-only).
 
+- **Chef/Wali live preview:** when `current_version` has no `submitted_at` (office draft after fork / start-new-version while still visible), show the **latest submitted** snapshot for table / liste / document content. Explicit archive `versionId` always loads that exact version. Office editors always use the true current draft.
+
 - **Standalone:** new `rapport` row per file/subject/date (types 2, 3, some type 4).
 
 
@@ -206,6 +208,18 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
    - **UI:** confirm dialog (AR « تعديل بعد الإرسال » / FR « Modifier après envoi ») explaining return to brouillon, wipe of current-cycle Chef/Wali notes + discussion, archive preserved, and removal from Chef/Wali until re-send.
    - Distinct from Chef/Wali `changes_requested` reopen (which forks a new version for versioned types).
 
+5b. **Office start new version** — after Wali accept, for `versioning_mode=versioned` only (table / liste / versioned document):
+
+   - **Who:** `OFFICE_USER` with service **`manage`** (Éditeur).
+   - **When:** status = `acknowledged`.
+   - **Not for:** `standalone` types (create another rapport from the service hub instead); awaiting Chef/Wali (use §5 return-to-draft when still allowed).
+   - **Effect:**
+     - Fork a new `rapport_versions` row (clone current `data_json`, next `version_number`, no `submitted_at`); set `current_version_id` to it.
+     - Set `status = draft`, `chef_gate = required`; clear pending delete-request columns; clear `hidden_at` if soft-hidden so the draft is active again.
+     - Previous acknowledged version stays in the archive (immutable). Discussion on the **new** version starts at **0**.
+   - **UI:** read-only workspace banner + rapports list secondary action — confirm « نسخة جديدة » / « Nouvelle version », then reload editor as brouillon.
+   - Distinct from §5 return-to-draft (**no fork**, wipe current cycle) and from Chef/Wali `changes_requested` reopen (same fork idea, different trigger).
+
 6. **Office delete** — Éditeur (`manage`); always a confirm dialog first (copy depends on path); then a snackbar explaining the outcome:
 
    - **Gate:** any `chef_responses` or `wali_responses` on the rapport (any version) = Chef/Wali already acted → **delete request** (never instant).
@@ -235,6 +249,7 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 | Method | Path | Notes |
 | ------ | ---- | ----- |
 | `POST` | `/office/rapports/:id/return-to-draft` | Éditeur (`manage`); recall sent rapport to draft (see workflow §5). `409` if status not allowed or Wali already accepted/viewed current version |
+| `POST` | `/office/rapports/:id/new-version` | Éditeur (`manage`); fork next draft after `acknowledged` for `versioned` types (see workflow §5b). `409` if not versioned / not acknowledged |
 | `POST` | `/office/rapports/:id/delete` | Éditeur (`manage`); instant full/draft-version delete **or** open delete request (see workflow §6). `409` if already requested |
 | `POST` | `/office/rapports/:id/cancel-delete-request` | Éditeur (`manage`); clear pending delete request |
 | `POST` | `/chef/rapports/:id/delete-decision` | Chef; body `{ decision: "approved" \| "rejected" }` — see `CHEF_CABINET.md` |
@@ -247,7 +262,7 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 - Wali: office user list → service tree → content by kind; presentation like Excel/Word.
 
-- Office: service tree, draft/save (first Enregistrer creates the row), version archive button, notification bell; **Modifier après envoi** on awaiting Chef/Wali banner (confirm → draft).
+- Office: service tree, draft/save (first Enregistrer creates the row), version archive button, notification bell; **Modifier après envoi** on awaiting Chef/Wali banner (confirm → draft); after **acknowledged** on versioned types, banner + list CTA **nouvelle version** (fork draft from latest).
 
 - **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**. Primary tabs: **التقارير** / **المناقشة** only. Finished soft-hidden list via segment chips **النشطة** / **المنتهية** (same row as status + sort; `?hidden=1` → `hidden_only`). Discussion inbox: `?view=discussion` (New / All) — see **`RAPPORT_DISCUSSION.md`**.
 - **Global rapport lists** (`/admin/rapports`, `/office/rapports`, `/wali/rapports`, `/chef/rapports`): optional title **search** query param (`search`) filters by rapport title (`iLike`); same search field in UI across roles.
@@ -281,6 +296,8 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 | `RAPPORT_SUBMIT` | Submit to wali |
 
 | `RAPPORT_RETURN_TO_DRAFT` | Office recalls sent rapport to draft (before Wali accept/view) |
+
+| `RAPPORT_NEW_VERSION` | Office forks a new draft version after `acknowledged` (versioned types) |
 
 | `RAPPORT_DELETE` | Instant or Chef-approved permanent delete (full or draft-version discard) |
 

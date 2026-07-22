@@ -45,23 +45,29 @@ function ResponseNotesList({
     <div className={`section waliResponsesSection${className ? ` ${className}` : ''}`}>
       <h2>{heading}</h2>
       <div className="waliNotesList">
-        {paged.map((w) => (
-          <div key={w.id} className={`waliNote waliNote-${w.decision}`}>
-            <div className="waliNoteHeader">
-              <span className={`badge badge-wali-${w.decision}`}>
-                {waliDecisionLabel(w.decision, t, w.follow_up_status)}
-              </span>
-              {w.created_at ? (
-                <time className="waliNoteDate muted small" dateTime={w.created_at}>
-                  {new Date(w.created_at).toLocaleString(i18n.language === 'fr' ? 'fr-FR' : 'ar-DZ')}
-                </time>
-              ) : null}
+        {paged.map((w) => {
+          const body = waliResponseBodyText(w.body_text)
+          return (
+            <div
+              key={w.id}
+              className={`waliNote waliNote-${w.decision}${body ? '' : ' waliNote--noBody'}`}
+            >
+              <div className="waliNoteHeader">
+                <span className={`badge badge-wali-${w.decision}`}>
+                  {waliDecisionLabel(w.decision, t, w.follow_up_status)}
+                </span>
+                {w.created_at ? (
+                  <time className="waliNoteDate muted small" dateTime={w.created_at}>
+                    {new Date(w.created_at).toLocaleString(
+                      i18n.language === 'fr' ? 'fr-FR' : 'ar-DZ',
+                    )}
+                  </time>
+                ) : null}
+              </div>
+              {body ? <p className="waliNoteBody">{body}</p> : null}
             </div>
-            {waliResponseBodyText(w.body_text) ? (
-              <p className="waliNoteBody">{waliResponseBodyText(w.body_text)}</p>
-            ) : null}
-          </div>
-        ))}
+          )
+        })}
       </div>
       <TablePagination page={page} total={list.length} onPageChange={setPage} />
     </div>

@@ -999,6 +999,29 @@ async function getRapportDetail(id, versionId = null) {
   return attachDeleteCapability(plain);
 }
 
+/**
+ * Chef/Wali live views: if current version is an unsubmitted draft, show the
+ * latest submitted snapshot instead. Explicit archive versionId must not call this.
+ */
+async function applyReviewerDisplayVersion(plain) {
+  if (!plain) return plain;
+  const current = plain.currentVersion;
+  if (current?.submitted_at) return plain;
+
+  const latest = await RapportVersion.findOne({
+    where: {
+      rapport_id: plain.id,
+      submitted_at: { [Op.ne]: null },
+    },
+    order: [["version_number", "DESC"]],
+  });
+  if (!latest) return plain;
+
+  plain.currentVersion = latest.toJSON ? latest.toJSON() : latest;
+  plain.reviewer_display_version_id = Number(latest.id);
+  return plain;
+}
+
 async function hasChefOrWaliAction(rapportId) {
   const [chefCount, waliCount] = await Promise.all([
     ChefResponse.count({ where: { rapport_id: rapportId } }),
@@ -1574,6 +1597,80 @@ async function returnRapportToDraft(id, actor, req) {
       version_id: versionId,
       previous_status: previousStatus,
       wiped: wipeCounts,
+    },
+    { req },
+  );
+  return getRapportDetail(rapport.id);
+}
+
+/**
+ * After Wali accept: fork a new draft version from the acknowledged snapshot
+ * (versioned types only). Previous version stays in the archive.
+ */
+async function startOfficeNewVersion(id, actor, req) {
+  const rapport = await Rapport.findByPk(id, {
+    include: [{ model: RapportType, as: "rapportType" }],
+  });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+
+  if (rapport.rapportType?.versioning_mode !== "versioned") {
+    const err = new Error("Not versioned");
+    err.status = 409;
+    throw err;
+  }
+
+  if (rapport.status !== "acknowledged") {
+    const err = new Error("Cannot start new version");
+    err.status = 409;
+    throw err;
+  }
+
+  if (!rapport.current_version_id) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+
+  const current = await RapportVersion.findByPk(rapport.current_version_id);
+  if (!current) {
+    const err = new Error("No version");
+    err.status = 409;
+    throw err;
+  }
+
+  const previousStatus = rapport.status;
+  const previousVersionId = Number(current.id);
+
+  const draft = await createNextRapportVersion(
+    rapport.id,
+    current.data_json,
+    draftAuthorId(rapport, actor),
+  );
+
+  const now = new Date();
+  await rapport.update({
+    current_version_id: draft.id,
+    status: "draft",
+    chef_gate: "required",
+    delete_requested_at: null,
+    delete_requested_by_user_id: null,
+    hidden_at: null,
+    updated_at: now,
+  });
+
+  await audit(
+    actor.id,
+    "RAPPORT_NEW_VERSION",
+    {
+      rapport_id: rapport.id,
+      previous_version_id: previousVersionId,
+      new_version_id: Number(draft.id),
+      previous_status: previousStatus,
+      version_number: draft.version_number,
     },
     { req },
   );
@@ -2437,12 +2534,14 @@ module.exports = {
   listRapports,
   unreadDiscussionRapportIds,
   getRapportDetail,
+  applyReviewerDisplayVersion,
   assertVisibleToWali,
   assertVisibleToChef,
   createRapport,
   updateRapportDraft,
   submitRapport,
   returnRapportToDraft,
+  startOfficeNewVersion,
   markUnderReview,
   waliRespond,
   chefRespond,

@@ -185,6 +185,7 @@ const resources = {
       discussionPlaceholder: "اكتب تعليقاً…",
       discussionSend: "إرسال",
       discussionNotAvailable: "المناقشة متاحة بعد أول إرسال للتقرير.",
+      discussionReadOnlyHint: "التعليق متاح فقط على الإصدار الحالي.",
       notifRapportComment: "تعليق جديد على التقرير",
       rapportComment: "تعليق جديد على التقرير",
       navDiscussion: "المناقشة",
@@ -614,7 +615,16 @@ const resources = {
       openEditor: "فتح المحرر",
       rapportReadOnlyVersionHint:
         "هذا التقرير مرسل ولا يمكن تعديله. لعرض نسخة مؤرشفة للقراءة فقط استخدم «النسخ المؤرشفة» أو الزر أدناه.",
+      rapportReadOnlyStandaloneHint:
+        "هذا التقرير مقبول ولا يمكن تعديله. لإنشاء تقرير جديد استخدم المجال من القائمة.",
       rapportReadOnlyTitle: "عرض فقط",
+      startNewVersion: "نسخة جديدة",
+      startNewVersionHint:
+        "تم قبول هذا التقرير. يمكنك بدء نسخة جديدة انطلاقاً من المحتوى الحالي (مسودة)، ثم الإرسال عبر رئيس الديوان فالوالي. تبقى النسخة المقبولة في الأرشيف.",
+      startNewVersionConfirmTitle: "بدء نسخة جديدة؟",
+      startNewVersionConfirmMessage:
+        "سيتم إنشاء نسخة جديدة بنسخ المحتوى الحالي كمسودة. تبقى النسخة المقبولة في الأرشيف دون تعديل. عند الإرسال مجدداً يمر التقرير عبر رئيس الديوان ثم الوالي. مناقشة النسخة الجديدة تبدأ من الصفر.",
+      startNewVersionDone: "تم إنشاء نسخة جديدة — يمكن التعديل ثم الإرسال",
       rapportAwaitingWaliTitle: "تم الإرسال لحساب الوالي",
       rapportAwaitingWaliHint:
         "التقرير بانتظار مصادقة حساب الوالي. لا يمكن التعديل حتى يطلب تعديلات أو يرد.",
@@ -1447,6 +1457,8 @@ const resources = {
       discussionPlaceholder: "Écrire un commentaire…",
       discussionSend: "Envoyer",
       discussionNotAvailable: "La discussion est disponible après le premier envoi.",
+      discussionReadOnlyHint:
+        "Les commentaires sont possibles uniquement sur la version actuelle.",
       notifRapportComment: "Nouveau commentaire sur le rapport",
       rapportComment: "Nouveau commentaire sur le rapport",
       navDiscussion: "Discussion",
@@ -1930,7 +1942,16 @@ const resources = {
       openEditor: "Ouvrir l'éditeur",
       rapportReadOnlyVersionHint:
         "Ce rapport est envoyé et n'est plus modifiable. Pour consulter une version archivée en lecture seule, utilisez « Versions archivées » ou le bouton ci-dessous.",
+      rapportReadOnlyStandaloneHint:
+        "Ce rapport est accepté et n'est plus modifiable. Pour créer un nouveau fichier, utilisez le domaine depuis la liste.",
       rapportReadOnlyTitle: "Lecture seule",
+      startNewVersion: "Nouvelle version",
+      startNewVersionHint:
+        "Ce rapport a été accepté. Vous pouvez démarrer une nouvelle version à partir du contenu actuel (brouillon), puis renvoyer via le chef de cabinet puis le wali. La version acceptée reste dans l'archive.",
+      startNewVersionConfirmTitle: "Démarrer une nouvelle version ?",
+      startNewVersionConfirmMessage:
+        "Une nouvelle version sera créée en copiant le contenu actuel en brouillon. La version acceptée reste dans l'archive sans modification. Au prochain envoi, le rapport repassera par le chef puis le wali. La discussion de la nouvelle version recommence à zéro.",
+      startNewVersionDone: "Nouvelle version créée — vous pouvez modifier puis renvoyer",
       rapportAwaitingWaliTitle: "Envoyé au compte wali",
       rapportAwaitingWaliHint:
         "Le rapport attend la validation du wali. Modification impossible jusqu'à sa réponse ou une demande de modification.",

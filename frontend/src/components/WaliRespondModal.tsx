@@ -201,7 +201,10 @@ export function WaliRespondModal({ open, onClose, onSubmit, mode = 'wali' }: Pro
 }
 
 export function waliResponseBodyText(body: string | null | undefined) {
-  const text = String(body || '').trim()
+  const text = String(body || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .trim()
   if (!text || text === '—') return ''
   return text
 }

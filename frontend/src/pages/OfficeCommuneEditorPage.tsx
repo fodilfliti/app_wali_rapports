@@ -70,6 +70,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
   const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [startingNewVersion, setStartingNewVersion] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancellingDelete, setCancellingDelete] = useState(false);
   const createdIdRef = useRef<number | null>(
@@ -314,6 +315,21 @@ export function OfficeCommuneEditorPage({ token }: Props) {
     }
   }
 
+  async function startNewVersionFromCurrent() {
+    if (!rapportId) return;
+    setStartingNewVersion(true);
+    try {
+      await api.startOfficeNewVersion(token, rapportId);
+      await notifyHubCountsRefresh();
+      snack.show(t("startNewVersionDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setStartingNewVersion(false);
+    }
+  }
+
   async function deleteCurrentRapport() {
     if (!rapportId) return;
     setDeleting(true);
@@ -425,10 +441,13 @@ export function OfficeCommuneEditorPage({ token }: Props) {
         <>
           <RapportOfficeStatusBanner
             rapport={workspace?.rapport}
+            versioningMode={workspace?.rapportType?.versioning_mode}
             editable={isEditable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}
             returning={returningToDraft}
+            onStartNewVersion={startNewVersionFromCurrent}
+            startingNewVersion={startingNewVersion}
           />
 
           {workspace?.rapportType?.commune_content_kind === "table" ? (

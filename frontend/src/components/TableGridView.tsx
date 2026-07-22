@@ -598,7 +598,7 @@ export function TableGridView({
 
   editable = false,
 
-  showRowMeta = false,
+  showRowMeta = true,
 
   showAdminMeta: showAdminMetaProp,
 
@@ -863,9 +863,7 @@ export function TableGridView({
 
                   {showLineNumbers ? (
                     <th rowSpan={2} className="tableRowNumCol">
-
                       #
-
                     </th>
                   ) : null}
 

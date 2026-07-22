@@ -1,6 +1,10 @@
 import { useTranslation } from 'react-i18next'
-import { canOfficeReturnToDraft } from '../utils/rapportNavigation'
+import {
+  canOfficeReturnToDraft,
+  canOfficeStartNewVersion,
+} from '../utils/rapportNavigation'
 import { ReturnRapportToDraftConfirm } from './ReturnRapportToDraftConfirm'
+import { StartNewVersionConfirm } from './StartNewVersionConfirm'
 import { BusyButton } from './BusyButton'
 
 type Props = {
@@ -10,12 +14,17 @@ type Props = {
     hidden_at?: string | null
     delete_requested?: boolean
     delete_requested_at?: string | null
+    rapportType?: { versioning_mode?: string } | null
   } | null
+  /** Fallback when rapport.rapportType is absent (workspace.rapportType). */
+  versioningMode?: string | null
   editable: boolean
-  /** Éditeur (`manage`) — required to show return-to-draft. */
+  /** Éditeur (`manage`) — required for return-to-draft / new version. */
   canManage?: boolean
   onReturnToDraft?: () => void | Promise<void>
   returning?: boolean
+  onStartNewVersion?: () => void | Promise<void>
+  startingNewVersion?: boolean
   /** Kept for call-site compatibility; hide/finish is not offered while awaiting validation. */
   onFinish?: () => void | Promise<void>
   finishing?: boolean
@@ -23,10 +32,13 @@ type Props = {
 
 export function RapportOfficeStatusBanner({
   rapport,
+  versioningMode,
   editable,
   canManage,
   onReturnToDraft,
   returning,
+  onStartNewVersion,
+  startingNewVersion,
 }: Props) {
   const { t } = useTranslation()
   if (!rapport?.id) return null
@@ -46,10 +58,20 @@ export function RapportOfficeStatusBanner({
 
   if (editable) return null
 
+  const mode =
+    versioningMode ||
+    rapport.rapportType?.versioning_mode ||
+    null
+
   const showReturn =
     canManage === true &&
     typeof onReturnToDraft === 'function' &&
     canOfficeReturnToDraft(rapport.status)
+
+  const showNewVersion =
+    canManage === true &&
+    typeof onStartNewVersion === 'function' &&
+    canOfficeStartNewVersion(rapport.status, mode)
 
   const returnAction = showReturn ? (
     <ReturnRapportToDraftConfirm onConfirm={onReturnToDraft}>
@@ -65,6 +87,22 @@ export function RapportOfficeStatusBanner({
         </BusyButton>
       )}
     </ReturnRapportToDraftConfirm>
+  ) : null
+
+  const newVersionAction = showNewVersion ? (
+    <StartNewVersionConfirm onConfirm={onStartNewVersion}>
+      {(openConfirm) => (
+        <BusyButton
+          type="button"
+          className="btn btn-primary"
+          onClick={openConfirm}
+          busy={!!startingNewVersion}
+          busyLabel={t('loading')}
+        >
+          {t('startNewVersion')}
+        </BusyButton>
+      )}
+    </StartNewVersionConfirm>
   ) : null
 
   if (rapport.status === 'pending_chef') {
@@ -90,6 +128,25 @@ export function RapportOfficeStatusBanner({
         </div>
         {returnAction ? (
           <div className="rapportOfficeStatusBannerActions">{returnAction}</div>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (rapport.status === 'acknowledged') {
+    const readOnlyHint = showNewVersion
+      ? t('startNewVersionHint')
+      : mode === 'versioned'
+        ? t('rapportReadOnlyVersionHint')
+        : t('rapportReadOnlyStandaloneHint')
+    return (
+      <div className="card rapportOfficeStatusBanner">
+        <div className="rapportOfficeStatusBannerBody">
+          <strong className="rapportOfficeStatusBannerTitle">{t('rapportReadOnlyTitle')}</strong>
+          <p className="muted small">{readOnlyHint}</p>
+        </div>
+        {newVersionAction ? (
+          <div className="rapportOfficeStatusBannerActions">{newVersionAction}</div>
         ) : null}
       </div>
     )

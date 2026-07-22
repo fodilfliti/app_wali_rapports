@@ -59,6 +59,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
   const [addRowEntityKey, setAddRowEntityKey] = useState("");
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [startingNewVersion, setStartingNewVersion] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancellingDelete, setCancellingDelete] = useState(false);
   const keysPresentAtLoadRef = useRef<Set<string>>(new Set());
@@ -304,6 +305,21 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
     }
   }
 
+  async function startNewVersionFromCurrent() {
+    if (!workspace?.rapport?.id) return;
+    setStartingNewVersion(true);
+    try {
+      await api.startOfficeNewVersion(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      snack.show(t("startNewVersionDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setStartingNewVersion(false);
+    }
+  }
+
   async function deleteCurrentRapport() {
     if (!workspace?.rapport?.id) return;
     setDeleting(true);
@@ -402,10 +418,13 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
         <>
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
+            versioningMode={workspace.rapportType?.versioning_mode}
             editable={editable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}
             returning={returningToDraft}
+            onStartNewVersion={startNewVersionFromCurrent}
+            startingNewVersion={startingNewVersion}
           />
 
           {editable ? (

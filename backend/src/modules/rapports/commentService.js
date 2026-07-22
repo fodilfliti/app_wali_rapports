@@ -84,6 +84,38 @@ async function assertCanDiscuss(rapportId, actor, { asWali = false } = {}) {
   return rapport;
 }
 
+/** Resolve version for list; must belong to the rapport. Default = current. */
+async function resolveListVersionId(rapport, queryVersionId) {
+  const currentId =
+    rapport.current_version_id != null
+      ? Number(rapport.current_version_id)
+      : null;
+  if (queryVersionId == null || queryVersionId === "") {
+    if (!currentId) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
+    return currentId;
+  }
+  const requested = Number(queryVersionId);
+  if (!Number.isFinite(requested) || requested <= 0) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  const version = await RapportVersion.findOne({
+    where: { id: requested, rapport_id: rapport.id },
+    attributes: ["id"],
+  });
+  if (!version) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  return Number(version.id);
+}
+
 async function resolveRecipientIds(rapport, authorId) {
   const ids = new Set();
 
@@ -140,12 +172,19 @@ async function resolveRecipientIds(rapport, authorId) {
 }
 
 async function listComments(rapportId, actor, query, opts = {}) {
-  await assertCanDiscuss(rapportId, actor, opts);
+  const rapport = await assertCanDiscuss(rapportId, actor, opts);
   await markCommentNotificationsRead(rapportId, actor.id);
+
+  const versionId = await resolveListVersionId(rapport, query.versionId);
+  const currentId =
+    rapport.current_version_id != null
+      ? Number(rapport.current_version_id)
+      : null;
+  const canComment = Boolean(currentId && versionId === currentId);
 
   const { page, pageSize, offset, limit } = parsePagination(query);
   const { rows, count } = await RapportComment.findAndCountAll({
-    where: { rapport_id: rapportId },
+    where: { rapport_id: rapportId, rapport_version_id: versionId },
     order: [["created_at", "ASC"], ["id", "ASC"]],
     offset,
     limit,
@@ -163,7 +202,9 @@ async function listComments(rapportId, actor, query, opts = {}) {
     total: count,
     page,
     pageSize,
-    discussion_available: true
+    discussion_available: true,
+    can_comment: canComment,
+    rapport_version_id: versionId,
   };
 }
 
@@ -181,11 +222,39 @@ async function createComment(rapportId, bodyText, actor, req, opts = {}) {
     throw err;
   }
 
+  const currentId =
+    rapport.current_version_id != null
+      ? Number(rapport.current_version_id)
+      : null;
+  if (!currentId) {
+    const err = new Error("discussionNotAvailable");
+    err.status = 409;
+    throw err;
+  }
+
+  const bodyVersion =
+    opts.versionId != null && opts.versionId !== ""
+      ? Number(opts.versionId)
+      : req?.validatedBody?.versionId != null
+        ? Number(req.validatedBody.versionId)
+        : req?.body?.versionId != null && req.body.versionId !== ""
+          ? Number(req.body.versionId)
+          : null;
+  if (
+    bodyVersion != null &&
+    Number.isFinite(bodyVersion) &&
+    bodyVersion !== currentId
+  ) {
+    const err = new Error("discussionReadOnly");
+    err.status = 409;
+    throw err;
+  }
+
   const comment = await RapportComment.create({
     rapport_id: rapport.id,
     author_user_id: actor.id,
     body_text: text,
-    rapport_version_id: rapport.current_version_id || null,
+    rapport_version_id: currentId,
     created_at: new Date()
   });
 
@@ -202,7 +271,11 @@ async function createComment(rapportId, bodyText, actor, req, opts = {}) {
   await audit(
     actor.id,
     "RAPPORT_COMMENT_CREATE",
-    { rapport_id: rapport.id, comment_id: comment.id },
+    {
+      rapport_id: rapport.id,
+      comment_id: comment.id,
+      rapport_version_id: currentId,
+    },
     { req }
   );
 
@@ -229,7 +302,16 @@ async function markCommentNotificationsRead(rapportId, userId) {
 
 async function getDiscussionMeta(rapportId) {
   const rapport = await loadRapportOrThrow(rapportId);
-  return { discussion_available: await discussionAvailable(rapport) };
+  const available = await discussionAvailable(rapport);
+  const currentId =
+    rapport.current_version_id != null
+      ? Number(rapport.current_version_id)
+      : null;
+  return {
+    discussion_available: available,
+    can_comment: Boolean(available && currentId),
+    rapport_version_id: currentId,
+  };
 }
 
 module.exports = {

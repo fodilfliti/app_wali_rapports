@@ -262,8 +262,19 @@ function AppShell() {
       const data = event.data;
       if (!data || typeof data !== "object") return;
       if (data.type === "hub-counts-refresh") {
-        import("./utils/hubCountsRefresh").then(({ notifyHubCountsRefresh }) =>
-          notifyHubCountsRefresh(),
+        import("./utils/hubCountsRefresh").then(
+          ({ notifyHubCountsRefresh, notifyDiscussionRefresh }) => {
+            void notifyHubCountsRefresh();
+            // Prefer explicit discussion push; hub soft-sync covers missing fields / no-push.
+            if (
+              data.rapport_id != null &&
+              Number(data.rapport_id) > 0 &&
+              (data.message_key == null ||
+                data.message_key === "rapportComment")
+            ) {
+              notifyDiscussionRefresh(Number(data.rapport_id));
+            }
+          },
         );
       }
       if (data.type === "navigate" && typeof data.url === "string") {

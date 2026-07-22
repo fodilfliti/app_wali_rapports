@@ -173,6 +173,8 @@ function buildPushPayload(messageKey, fields, overrides = {}) {
     body_fr: overrides.body_fr || copy.body_fr,
     url: overrides.url || urlFn(fields),
     tag: overrides.tag || `${messageKey}-${fields.rapport_id || fields.calendar_event_id || fields.broadcast_id || fields.instruction_id || "x"}`,
+    message_key: messageKey,
+    rapport_id: fields.rapport_id != null ? Number(fields.rapport_id) : null,
   };
 }
 

@@ -255,6 +255,7 @@ export function CommuneListVersionView({
               rows={allTableRows}
               layoutJson={layoutJson}
               editable={false}
+              showRowMeta
               rowFilterMode="active"
             />
           ) : (
@@ -324,6 +325,7 @@ export function CommuneListVersionView({
                     rows={selected.entry.rows || []}
                     layoutJson={layoutJson}
                     editable={false}
+                    showRowMeta
                     rowFilterMode="active"
                   />
                 </div>

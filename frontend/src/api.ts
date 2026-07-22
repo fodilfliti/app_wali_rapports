@@ -614,6 +614,13 @@ export function returnRapportToDraft(token: string, id: number) {
   });
 }
 
+export function startOfficeNewVersion(token: string, id: number) {
+  return request<{ rapport: any }>(`/office/rapports/${id}/new-version`, {
+    method: "POST",
+    token,
+  });
+}
+
 export function officeDeleteRapport(token: string, id: number) {
   return request<{
     mode:
@@ -1944,17 +1951,20 @@ export async function downloadRapportExcel(
 export function listOfficeRapportComments(
   token: string,
   rapportId: number,
-  params: { page?: number; pageSize?: number } = {},
+  params: { page?: number; pageSize?: number; versionId?: number } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  if (params.versionId) q.set("versionId", String(params.versionId));
   return request<{
     comments: any[];
     total: number;
     page: number;
     pageSize: number;
     discussion_available?: boolean;
+    can_comment?: boolean;
+    rapport_version_id?: number | null;
   }>(`/office/rapports/${rapportId}/comments?${q}`, { token });
 }
 
@@ -1962,28 +1972,35 @@ export function createOfficeRapportComment(
   token: string,
   rapportId: number,
   body_text: string,
+  versionId?: number,
 ) {
   return request<{ comment: any }>(`/office/rapports/${rapportId}/comments`, {
     method: "POST",
     token,
-    body: JSON.stringify({ body_text }),
+    body: JSON.stringify({
+      body_text,
+      ...(versionId != null ? { versionId } : {}),
+    }),
   });
 }
 
 export function listChefRapportComments(
   token: string,
   rapportId: number,
-  params: { page?: number; pageSize?: number } = {},
+  params: { page?: number; pageSize?: number; versionId?: number } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  if (params.versionId) q.set("versionId", String(params.versionId));
   return request<{
     comments: any[];
     total: number;
     page: number;
     pageSize: number;
     discussion_available?: boolean;
+    can_comment?: boolean;
+    rapport_version_id?: number | null;
   }>(`/chef/rapports/${rapportId}/comments?${q}`, { token });
 }
 
@@ -1991,28 +2008,35 @@ export function createChefRapportComment(
   token: string,
   rapportId: number,
   body_text: string,
+  versionId?: number,
 ) {
   return request<{ comment: any }>(`/chef/rapports/${rapportId}/comments`, {
     method: "POST",
     token,
-    body: JSON.stringify({ body_text }),
+    body: JSON.stringify({
+      body_text,
+      ...(versionId != null ? { versionId } : {}),
+    }),
   });
 }
 
 export function listWaliRapportComments(
   token: string,
   rapportId: number,
-  params: { page?: number; pageSize?: number } = {},
+  params: { page?: number; pageSize?: number; versionId?: number } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  if (params.versionId) q.set("versionId", String(params.versionId));
   return request<{
     comments: any[];
     total: number;
     page: number;
     pageSize: number;
     discussion_available?: boolean;
+    can_comment?: boolean;
+    rapport_version_id?: number | null;
   }>(`/wali/rapports/${rapportId}/comments?${q}`, { token });
 }
 
@@ -2020,11 +2044,15 @@ export function createWaliRapportComment(
   token: string,
   rapportId: number,
   body_text: string,
+  versionId?: number,
 ) {
   return request<{ comment: any }>(`/wali/rapports/${rapportId}/comments`, {
     method: "POST",
     token,
-    body: JSON.stringify({ body_text }),
+    body: JSON.stringify({
+      body_text,
+      ...(versionId != null ? { versionId } : {}),
+    }),
   });
 }
 

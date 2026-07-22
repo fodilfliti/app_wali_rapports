@@ -59,7 +59,7 @@ import {
 } from "../components/RapportTitleField";
 import { TablePagination } from "../components/TablePagination";
 import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
-import { ArchiveVersionsLink, WaliArchiveVersionsLink } from "./RapportVersionsArchivePage";
+import { ArchiveVersionsLink, ChefArchiveVersionsLink, WaliArchiveVersionsLink } from "./RapportVersionsArchivePage";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
 import { ServiceRapportTypesHub } from "../components/ServiceRapportTypesHub";
 import { ServiceContentKindsHub } from "../components/ServiceContentKindsHub";
@@ -76,6 +76,7 @@ import {
   officeRapportTypeWorkspacePath,
   officeServiceHubPath,
   rapportTypesForContentKind,
+  supportsRapportVersionArchive,
 } from "../utils/rapportNavigation";
 import {
   activeRemarksVersionId,
@@ -128,6 +129,7 @@ export function OfficeTableGridPage({ token }: Props) {
     useState<TableRowFilterMode>("active");
   const [finishing, setFinishing] = useState(false);
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [startingNewVersion, setStartingNewVersion] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancellingDelete, setCancellingDelete] = useState(false);
 
@@ -315,6 +317,21 @@ export function OfficeTableGridPage({ token }: Props) {
       snack.show(t("errorGeneric"), "error");
     } finally {
       setReturningToDraft(false);
+    }
+  }
+
+  async function startNewVersionFromCurrent() {
+    if (!workspace?.rapport?.id) return;
+    setStartingNewVersion(true);
+    try {
+      await api.startOfficeNewVersion(token, workspace.rapport.id);
+      await notifyHubCountsRefresh();
+      snack.show(t("startNewVersionDone"), "success");
+      load();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setStartingNewVersion(false);
     }
   }
 
@@ -562,10 +579,13 @@ export function OfficeTableGridPage({ token }: Props) {
         <>
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
+            versioningMode={workspace.rapportType?.versioning_mode}
             editable={isEditable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}
             returning={returningToDraft}
+            onStartNewVersion={startNewVersionFromCurrent}
+            startingNewVersion={startingNewVersion}
             onFinish={finishCurrentRapport}
             finishing={finishing}
           />
@@ -645,6 +665,7 @@ export function OfficeTableGridPage({ token }: Props) {
               rapportId={Number(workspace.rapport.id)}
               mode="office"
               enabled={isDiscussionEnabledByStatus(workspace.rapport.status)}
+              versionId={workspace.rapport.current_version_id ?? null}
             />
           ) : null}
         </>
@@ -1178,6 +1199,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const [versions, setVersions] = useState<any[]>([]);
   const [finishing, setFinishing] = useState(false);
   const [returningToDraft, setReturningToDraft] = useState(false);
+  const [startingNewVersion, setStartingNewVersion] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancellingDelete, setCancellingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1490,6 +1512,21 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     }
   }
 
+  async function startNewVersionFromCurrent() {
+    if (!rid) return;
+    setStartingNewVersion(true);
+    try {
+      await api.startOfficeNewVersion(token, rid);
+      await notifyHubCountsRefresh();
+      snack.show(t("startNewVersionDone"), "success");
+      loadCurrent();
+    } catch {
+      snack.show(t("errorGeneric"), "error");
+    } finally {
+      setStartingNewVersion(false);
+    }
+  }
+
   async function deleteCurrentRapport() {
     if (!rid) return;
     setDeleting(true);
@@ -1622,10 +1659,13 @@ export function OfficeDocumentEditorPage({ token }: Props) {
 
       <RapportOfficeStatusBanner
         rapport={rapport}
+        versioningMode={rapport?.rapportType?.versioning_mode}
         editable={!!editable}
         canManage={canEdit}
         onReturnToDraft={returnCurrentToDraft}
         returning={returningToDraft}
+        onStartNewVersion={startNewVersionFromCurrent}
+        startingNewVersion={startingNewVersion}
         onFinish={finishCurrentRapport}
         finishing={finishing}
       />
@@ -1718,6 +1758,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           rapportId={rid}
           mode="office"
           enabled={isDiscussionEnabledByStatus(rapport?.status)}
+          versionId={rapport?.current_version_id ?? null}
         />
       ) : null}
     </div>
@@ -1851,8 +1892,13 @@ export function WaliRapportViewPage({
       <div className="pageHeader row">
         <h1>{view?.rapport?.title || t("navInbox")}</h1>
         <div className="pageHeaderActions">
-          {view?.versions?.length > 0 ? (
-            isWali ? (
+          {supportsRapportVersionArchive(
+            view?.rapport?.rapportType,
+            view?.versions || [],
+          ) ? (
+            isChef ? (
+              <ChefArchiveVersionsLink rapportId={rid} />
+            ) : isWali ? (
               <WaliArchiveVersionsLink rapportId={rid} />
             ) : (
               <ArchiveVersionsLink rapportId={rid} />
@@ -1907,6 +1953,7 @@ export function WaliRapportViewPage({
             layoutJson={layoutJson}
             tableMeta={tableMeta}
             editable={false}
+            showRowMeta
             rowFilterMode="active"
           />
           <MediaRowsView
@@ -1969,6 +2016,7 @@ export function WaliRapportViewPage({
           rapportId={rid}
           mode={isChef ? "chef" : "wali"}
           enabled={isDiscussionEnabledByStatus(view?.rapport?.status)}
+          versionId={view?.rapport?.current_version_id ?? null}
         />
       ) : null}
 

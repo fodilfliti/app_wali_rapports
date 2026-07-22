@@ -11,6 +11,10 @@ import { RichDocumentView } from "../components/RichDocumentEditor";
 import { MediaRowsView } from "../components/MediaBlocks";
 import { CalendarEventsView } from "../components/CalendarEventsEditor";
 import { WaliResponsesSection } from "../components/WaliResponsesSection";
+import {
+  RapportDiscussionSection,
+  isDiscussionEnabledByStatus,
+} from "../components/RapportDiscussionSection";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import {
   rowsWithCommuneNames,
@@ -455,7 +459,7 @@ export function RapportVersionDetail({
               versionId={vid}
             />
           ) : null}
-          <BackButton to={archiveListPath} fallbackTo={archiveListPath} replace />
+          <BackButton fallbackTo={archiveListPath} />
         </div>
       </div>
 
@@ -543,6 +547,20 @@ export function RapportVersionDetail({
         <WaliResponsesSection
           chefResponses={versionChefResponses}
           responses={versionWaliResponses}
+        />
+      ) : null}
+
+      {!loading && rid && vid ? (
+        <RapportDiscussionSection
+          token={token}
+          rapportId={rid}
+          mode={chef ? "chef" : wali ? "wali" : "office"}
+          enabled={
+            Boolean(version?.submitted_at) ||
+            isDiscussionEnabledByStatus(rapport?.status)
+          }
+          versionId={vid}
+          readOnly
         />
       ) : null}
     </div>

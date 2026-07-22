@@ -881,7 +881,10 @@ async function getWaliTableView(
   markReview = true,
   versionId = null,
 ) {
-  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
+  let rapport = await rapportService.getRapportDetail(rapportId, versionId);
+  if (!versionId) {
+    rapport = await rapportService.applyReviewerDisplayVersion(rapport);
+  }
   if (markReview) await rapportService.markUnderReview(rapportId, null);
 
   const schema = await resolveTableSchema(rapport.rapportType, rapport.service_id);
@@ -921,7 +924,10 @@ async function getWaliDocumentView(
   markReview = true,
   versionId = null,
 ) {
-  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
+  let rapport = await rapportService.getRapportDetail(rapportId, versionId);
+  if (!versionId) {
+    rapport = await rapportService.applyReviewerDisplayVersion(rapport);
+  }
   if (markReview) await rapportService.markUnderReview(rapportId, null);
   const dj = rapport.currentVersion?.data_json || {};
   const blocks = dj.blocks || [];
@@ -1635,7 +1641,10 @@ async function getWaliCommuneView(rapportId, versionId = null, markReview = true
   } = require("./entityKeys");
   const { Daira, Direction } = require("../../db");
 
-  const rapport = await rapportService.getRapportDetail(rapportId, versionId);
+  let rapport = await rapportService.getRapportDetail(rapportId, versionId);
+  if (!versionId) {
+    rapport = await rapportService.applyReviewerDisplayVersion(rapport);
+  }
   if (markReview) await rapportService.markUnderReview(rapportId, null);
   const schemaRow =
     rapport.rapportType?.commune_content_kind === "table"

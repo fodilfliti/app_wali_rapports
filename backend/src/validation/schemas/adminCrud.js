@@ -127,7 +127,8 @@ const waliRespondSchema = z
   });
 
 const rapportCommentSchema = z.object({
-  body_text: z.string().trim().min(1, V.required).max(5000, V.maxLength)
+  body_text: z.string().trim().min(1, V.required).max(5000, V.maxLength),
+  versionId: z.coerce.number().int().positive().optional(),
 });
 
 /** null = reset to all entities of the rapport type's target kinds */

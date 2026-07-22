@@ -16,6 +16,7 @@ import { useSnackbar } from '../snackbar/SnackbarContext'
 import {
   canOfficeEditRapport,
   canOfficeReturnToDraft,
+  canOfficeStartNewVersion,
   isDirectWorkspaceKind,
   localizedRapportTypeName,
   officeNewDocumentPath,
@@ -59,6 +60,7 @@ import { localizedName } from '../utils/schemaColumns'
 import { RapportExportButtons } from '../components/ExportPdfButton'
 import { BusyButton } from '../components/BusyButton'
 import { ReturnRapportToDraftConfirm } from '../components/ReturnRapportToDraftConfirm'
+import { StartNewVersionConfirm } from '../components/StartNewVersionConfirm'
 import {
   ChefRapportDeleteControls,
   OfficeRapportDeleteControls,
@@ -315,6 +317,7 @@ function buildRapportListParams(opts: {
 export function OfficeRapportsListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const invalidate = useInvalidateAppQueries()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -332,6 +335,7 @@ export function OfficeRapportsListPage({ token }: Props) {
   const [searchInput, setSearchInput] = useState('')
   const [submittingId, setSubmittingId] = useState<number | null>(null)
   const [returningId, setReturningId] = useState<number | null>(null)
+  const [startingNewVersionId, setStartingNewVersionId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [cancellingDeleteId, setCancellingDeleteId] = useState<number | null>(null)
   const [importFor, setImportFor] = useState<{ rapportId: number; serviceId: number; typeId: number } | null>(
@@ -503,6 +507,26 @@ export function OfficeRapportsListPage({ token }: Props) {
       snack.show(t('errorGeneric'), 'error')
     } finally {
       setReturningId(null)
+    }
+  }
+
+  async function startNewVersion(id: number, r: any) {
+    setStartingNewVersionId(id)
+    try {
+      await api.startOfficeNewVersion(token, id)
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office' },
+      })
+      snack.show(t('startNewVersionDone'), 'success')
+      const path = officeRapportWorkspacePath(r)
+      if (path) navigate(path)
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setStartingNewVersionId(null)
     }
   }
 
@@ -807,6 +831,25 @@ export function OfficeRapportsListPage({ token }: Props) {
                           )}
                         </ReturnRapportToDraftConfirm>
                       ) : null}
+                      {!discussionView &&
+                      canOfficeStartNewVersion(
+                        r.status,
+                        r.rapportType?.versioning_mode,
+                      ) ? (
+                        <StartNewVersionConfirm onConfirm={() => startNewVersion(r.id, r)}>
+                          {(openConfirm) => (
+                            <BusyButton
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              busy={startingNewVersionId === r.id}
+                              busyLabel={t('loading')}
+                              onClick={openConfirm}
+                            >
+                              {t('startNewVersion')}
+                            </BusyButton>
+                          )}
+                        </StartNewVersionConfirm>
+                      ) : null}
                       {!discussionView ? (
                         <OfficeRapportDeleteControls
                           rapport={r}
@@ -867,6 +910,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const [showHidden, setShowHidden] = useState(false)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
   const [returningId, setReturningId] = useState<number | null>(null)
+  const [startingNewVersionId, setStartingNewVersionId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [cancellingDeleteId, setCancellingDeleteId] = useState<number | null>(null)
 
@@ -989,6 +1033,30 @@ export function OfficeServiceRapportListPage({ token }: Props) {
       snack.show(t('errorGeneric'), 'error')
     } finally {
       setReturningId(null)
+    }
+  }
+
+  async function startNewVersion(id: number, r: any) {
+    setStartingNewVersionId(id)
+    try {
+      await api.startOfficeNewVersion(token, id)
+      await invalidate({
+        rapports: true,
+        hubCounts: 'office',
+        serviceTrees: true,
+        serviceHub: { scope: 'office', serviceId: sid },
+      })
+      snack.show(t('startNewVersionDone'), 'success')
+      const path =
+        officeRapportWorkspacePath(r) ||
+        (rapportType
+          ? officeRapportTypeWorkspacePath(sid, rapportType, r.id)
+          : null)
+      if (path) navigate(path)
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setStartingNewVersionId(null)
     }
   }
 
@@ -1232,6 +1300,25 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                         </BusyButton>
                       )}
                     </ReturnRapportToDraftConfirm>
+                  ) : null}
+                  {canEdit &&
+                  canOfficeStartNewVersion(
+                    r.status,
+                    r.rapportType?.versioning_mode || rapportType?.versioning_mode,
+                  ) ? (
+                    <StartNewVersionConfirm onConfirm={() => startNewVersion(r.id, r)}>
+                      {(openConfirm) => (
+                        <BusyButton
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          busy={startingNewVersionId === r.id}
+                          busyLabel={t('loading')}
+                          onClick={openConfirm}
+                        >
+                          {t('startNewVersion')}
+                        </BusyButton>
+                      )}
+                    </StartNewVersionConfirm>
                   ) : null}
                   <OfficeRapportDeleteControls
                     rapport={r}

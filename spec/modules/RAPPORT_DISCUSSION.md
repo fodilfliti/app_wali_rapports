@@ -6,14 +6,17 @@ Non-live **comment thread** at the bottom of a rapport so **office**, **Chef cab
 
 - Available only **after first Envoyer** (at least one version with `submitted_at`, or status in `pending_chef` | `submitted` | `under_review` | `changes_requested` | `acknowledged`).
 - Pure drafts (never submitted) → discussion disabled.
+- **Per-version threads:** comments are scoped to `rapport_version_id`. Listing defaults to the rapport’s **current** version. A **new version starts at 0** comments; older versions keep their own history.
+- **Post only on current version:** composer + `POST` allowed only when the target version is `current_version_id`. Archive / older version views are **read-only** (`can_comment: false`; `POST` → `409 discussionReadOnly`).
 - Append-only (no edit/delete in v1), **except** office **return to draft**: deletes `rapport_comments` for the **current** `rapport_version_id` only (older-version comments kept) — see **`RAPPORTS.md`** § Office recall. No live/WebSocket. No attachments in v1.
+- **Live refresh (tab open, current version only):** reload the open thread and scroll to the latest comments when (1) a `rapportComment` Web Push arrives for that `rapport_id`, or (2) hub counts refresh / `unread_discussion` rises while the page is open (works **without** push — soft-probe comment `total`), or (3) the tab becomes visible again / light periodic probe while visible. Do **not** auto-navigate from other pages. Archive / read-only version views do not soft-sync.
 
 ### Roles & rules
 
 | Role | Read / post | Notes |
 | ---- | ----------- | ----- |
-| `OFFICE_USER` | Yes if can open the rapport | Including while `pending_chef` |
-| `CHEF_CABINET` | Yes | Including while `pending_chef` |
+| `OFFICE_USER` | Yes if can open the rapport | Including while `pending_chef`; post only on current version |
+| `CHEF_CABINET` | Yes | Including while `pending_chef`; post only on current version |
 | `WALI` | Yes only if visible to Wali | Blocked for `pending_chef` / draft via `assertVisibleToWali` |
 | `ADMIN` | Yes (support) | Via chef/wali/office routes as applicable |
 
@@ -25,11 +28,11 @@ UI labels: ملحق بالديوان / Attaché de cabinet · رئيس الدي�
 
 #### `rapport_comments`
 
-- `id`, `rapport_id`, `author_user_id`, `body_text` (required, max 5000), `rapport_version_id` (nullable), `created_at`
+- `id`, `rapport_id`, `author_user_id`, `body_text` (required, max 5000), `rapport_version_id` (nullable; stamped to current on create), `created_at`
 
 #### `notifications`
 
-- `message_key = rapportComment`, `comment_id` (nullable FK), `rapport_id`
+- `message_key = rapportComment`, `comment_id` (nullable FK), `rapport_id` (inbox badges remain **per rapport**, not per version)
 
 ### Notify fanout (on create)
 
@@ -38,18 +41,18 @@ Never notify the author. Notify:
 1. Every non-blocked `CHEF_CABINET` and `WALI`
 2. Rapport office owner (`owner_office_user_id`) or creator (`created_by_user_id`) if OFFICE_USER
 3. Other attachés with **`manage`** grant on the rapport’s service (`SERVICE_SHARING.md`)
-4. Any other `OFFICE_USER` who already posted on this thread
+4. Any other `OFFICE_USER` who already posted on this rapport (any version)
 
 Opening rapport / comments marks unread discussion notifications for that `rapport_id` + current user. Chef/Wali opening a rapport marks **all** unread notifications for that rapport (not only `rapportComment`), so info keys like bypass-resubmit are cleared.
 
 ### API
 
 | Method | Path | Role |
-| ------ | ---- | ---- |
-| `GET` | `/office/rapports/:id/comments` | Office |
-| `POST` | `/office/rapports/:id/comments` | Office |
-| `GET`/`POST` | `/chef/rapports/:id/comments` | Chef |
-| `GET`/`POST` | `/wali/rapports/:id/comments` | Wali (+ visibility gate) |
+| ------ | ---- | ----- |
+| `GET` | `/office/rapports/:id/comments` | Office — query `versionId` (default = `current_version_id`) |
+| `POST` | `/office/rapports/:id/comments` | Office — always stamps current version; `409 discussionReadOnly` if body `versionId` ≠ current |
+| `GET`/`POST` | `/chef/rapports/:id/comments` | Chef (same `versionId` rules) |
+| `GET`/`POST` | `/wali/rapports/:id/comments` | Wali (+ visibility gate; same `versionId` rules) |
 | `GET` | `/wali/rapports?unread_discussion=1` | Wali discussion New |
 | `GET` | `/wali/rapports?has_discussion=1` | Wali discussion All (by latest comment) |
 | `GET` | `/chef/rapports?unread_discussion=1` | Chef discussion New |
@@ -57,13 +60,17 @@ Opening rapport / comments marks unread discussion notifications for that `rappo
 | `GET` | `/office/rapports?unread_discussion=1` | Office discussion New |
 | `GET` | `/office/rapports?has_discussion=1` | Office discussion All (by latest comment; scoped) |
 
-Comment thread pagination: `page`, `pageSize` (default 20, max 100). Order: `created_at ASC` within page (page 1 = oldest, or reverse-pagination for “load older” — implementation: list newest page last in UI chronologically). Discussion list rows include `last_comment_at` and `has_unread_discussion`.
+Comment thread pagination: `page`, `pageSize` (default 20, max 100). Order: `created_at ASC` within page (page 1 = oldest). Discussion list rows include `last_comment_at` and `has_unread_discussion`.
+
+List response extras: `discussion_available`, `can_comment` (true only when `versionId` is current and discussion is enabled), `rapport_version_id` (the version being listed).
 
 ### UI/UX
 
 - Section title: **مناقشة التقرير** / Discussion du rapport
 - Below Chef/Wali decision remarks
-- Thread + composer; role-colored rows using teal/gold tokens
+- Thread + composer (composer only when `can_comment`); role-colored rows using teal/gold tokens
+- **Version archive / version detail:** show that version’s discussion **read-only** + hint that commenting is only on the current version. Enable the thread when the **viewed version** has `submitted_at`, even if the rapport’s live status is now `draft` (e.g. after office start-new-version).
+- Live editors (table / document / fiche / commune list) and chef/wali live view: current version thread + composer when enabled
 - Office notifications list: show `rapportComment` with link to rapport
 - Office / Chef / Wali hub: `unread_discussion` badge = **distinct rapports** with unread `rapportComment` (not raw notification row count). For Wali, exclude `pending_chef` / draft so the badge matches inbox visibility.
 - Office discussion list scope = rapports the user owns/created/commented on **or** any non-draft rapport in a service they can access (so the top-bar badge matches a clickable inbox row).

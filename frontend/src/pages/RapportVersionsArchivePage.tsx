@@ -166,7 +166,7 @@ function RapportVersionsArchiveListPage({
     <div className="page rapportVersionsPage">
       <div className="pageHeader row compact">
         <h1>{t("archivedVersions")}</h1>
-        <BackButton to={previewBack} fallbackTo={previewBack} replace />
+        <BackButton fallbackTo={previewBack} />
       </div>
 
       {loading ? <p className="muted">{t("loading")}</p> : null}
@@ -217,17 +217,19 @@ export function RapportVersionsArchivePage({
 export function ArchiveVersionsLink({
   rapportId,
   wali = false,
+  chef = false,
   className = "btn btn-secondary",
 }: {
   rapportId: number;
   wali?: boolean;
+  chef?: boolean;
   className?: string;
 }) {
   const { t } = useTranslation();
   return (
     <Link
       className={className}
-      to={versionsListPath(rapportId, wali)}
+      to={versionsListPath(rapportId, wali, chef)}
     >
       {t("archivedVersions")}
     </Link>
@@ -245,6 +247,22 @@ export function WaliArchiveVersionsLink({
     <ArchiveVersionsLink
       rapportId={rapportId}
       wali
+      className={className}
+    />
+  );
+}
+
+export function ChefArchiveVersionsLink({
+  rapportId,
+  className = "btn btn-secondary",
+}: {
+  rapportId: number;
+  className?: string;
+}) {
+  return (
+    <ArchiveVersionsLink
+      rapportId={rapportId}
+      chef
       className={className}
     />
   );
