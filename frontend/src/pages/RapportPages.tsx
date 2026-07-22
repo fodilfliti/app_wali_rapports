@@ -1107,7 +1107,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
             />
           </div>
         ) : null}
-        <BackButton fallbackTo={`/office/services/${sid}`} />
+        <BackButton to={`/office/services/${sid}`} fallbackTo={`/office/services/${sid}`} />
       </div>
 
       {canEdit && rapportType ? (

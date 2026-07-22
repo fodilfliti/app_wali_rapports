@@ -340,6 +340,7 @@ export function OfficeTableGridPage({ token }: Props) {
           typeId
             ? `/office/services/${sid}/rapports/${typeId}`
             : `/office/services/${sid}`,
+          { replace: true },
         );
       }
     } catch {
@@ -1223,7 +1224,14 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           {};
         applyDocumentJson(dj);
       })
-      .catch(() => snack.show(t("errorGeneric"), "error"));
+      .catch((e) => {
+        // Deleted or inaccessible — leave the broken editor URL (Back after delete).
+        if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
+          navigate("/office/services", { replace: true });
+          return;
+        }
+        snack.show(t("errorGeneric"), "error");
+      });
     api
       .getRapportMediaFiles(token, rid)
       .then((r) => setMediaFiles(r.files || {}))
@@ -1236,7 +1244,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       .listRapportVersions(token, rid)
       .then((r) => setVersions(r.versions || []))
       .catch(() => {});
-  }, [rid, token, snack, t, applyDocumentJson]);
+  }, [rid, token, snack, t, applyDocumentJson, navigate]);
 
   // New-draft preview only — must NOT depend on rid/loadCurrent. Assigning an id
   // during media upload must not remount the editor or re-apply empty preview JSON.
@@ -1423,9 +1431,13 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       ? true
       : !!(rapport && ["draft", "changes_requested"].includes(rapport.status)));
   const docBackPath =
-    rapport?.service_id || newDraftMeta?.service?.id
-      ? officeServiceHubPath(rapport?.service_id || newDraftMeta!.service.id)
-      : "/office/services";
+    rapport?.service_id && rapport?.rapport_type_id
+      ? `/office/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
+      : Number.isFinite(sid) && sid > 0 && newTypeId
+        ? `/office/services/${sid}/rapports/${newTypeId}`
+        : rapport?.service_id || newDraftMeta?.service?.id
+          ? officeServiceHubPath(rapport?.service_id || newDraftMeta!.service.id)
+          : "/office/services";
 
   const docRemarksVersionId = useMemo(
     () =>
@@ -1454,6 +1466,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         rapport?.service_id && rapport?.rapport_type_id
           ? `/office/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
           : "/office/rapports",
+        { replace: true },
       );
     } catch {
       snack.show(t("errorGeneric"), "error");
@@ -1494,11 +1507,11 @@ export function OfficeDocumentEditorPage({ token }: Props) {
         loadCurrent();
       } else {
         snack.show(t("deleteRapportDone"), "success");
-        navigate(
+        const listTarget =
           rapport?.service_id && rapport?.rapport_type_id
             ? `/office/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
-            : "/office/rapports",
-        );
+            : "/office/rapports";
+        navigate(listTarget, { replace: true });
       }
     } catch {
       snack.show(t("errorGeneric"), "error");
@@ -1604,7 +1617,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
             onPreparePreview={editable ? saveForPreview : undefined}
           />
         ) : null}
-        <BackButton fallbackTo={docBackPath} />
+        <BackButton to={docBackPath} fallbackTo={docBackPath} />
       </div>
 
       <RapportOfficeStatusBanner
@@ -1819,11 +1832,16 @@ export function WaliRapportViewPage({
       ),
     [waliResponses, viewRemarksVersionId],
   );
-  const documentDataJson = view?.rapport?.currentVersion?.data_json || {};
+  const documentDataJson =
+    view?.rapport?.currentVersion?.data_json ||
+    (view?.rapport?.versions || []).find(
+      (v: { id?: number }) => Number(v.id) === Number(view?.rapport?.current_version_id),
+    )?.data_json ||
+    {};
   const documentViewData = {
     rich_html_ar: documentDataJson.rich_html_ar,
     rich_html_fr: documentDataJson.rich_html_fr,
-    blocks: view?.blocks ?? documentDataJson.blocks,
+    blocks: view?.blocks?.length ? view.blocks : documentDataJson.blocks,
     embedded_tables: documentDataJson.embedded_tables,
   };
   const documentMediaRows = view?.media_rows ?? documentDataJson.media_rows ?? [];

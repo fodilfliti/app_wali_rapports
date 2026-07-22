@@ -325,6 +325,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
           rapportTypeId
             ? `/office/services/${sid}/rapports/${rapportTypeId}`
             : `/office/services/${sid}`,
+          { replace: true },
         );
       }
     } catch {

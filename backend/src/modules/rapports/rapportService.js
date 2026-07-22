@@ -848,8 +848,15 @@ async function enrichOfficeRapportList(rapports, userId) {
       latestByRapport.has(rid) || latestChefByRapport.has(rid);
     const current = currentByRapport.get(rid);
     const olderCount = Math.max(0, (countByRapport.get(rid) || 0) - 1);
-    const canDiscard = Boolean(current && olderCount > 0 && !hasAction);
-    const canResetFreshV1 = Boolean(current && olderCount === 0 && !hasAction);
+    const isVersioned = r.rapportType?.versioning_mode === "versioned";
+    const canDiscard = Boolean(
+      isVersioned && current && olderCount > 0 && !hasAction,
+    );
+    // Versioned sole draft only — fiche / fichier complexe (standalone) wipe fully.
+    const canResetFreshV1 = Boolean(
+      isVersioned && current && olderCount === 0 && !hasAction,
+    );
+    const canInstantFullDelete = Boolean(!hasAction && !canDiscard && !canResetFreshV1);
     const deleteRequested = Boolean(r.delete_requested_at);
     return {
       ...r,
@@ -859,7 +866,7 @@ async function enrichOfficeRapportList(rapports, userId) {
       has_chef_or_wali_action: hasAction,
       can_discard_draft_version: canDiscard,
       can_reset_fresh_v1: canResetFreshV1,
-      can_instant_delete: canDiscard || canResetFreshV1,
+      can_instant_delete: canDiscard || canResetFreshV1 || canInstantFullDelete,
       can_request_delete: hasAction && !deleteRequested,
       delete_requested: deleteRequested,
     };
@@ -1063,15 +1070,33 @@ async function resolveDeleteCapability(rapport) {
     },
   });
   const deleteRequested = Boolean(rapport.delete_requested_at);
-  // Multi-version, never Chef/Wali action → roll back current instantly.
-  const canDiscardVersion = Boolean(current && olderCount > 0 && !hasAction);
-  // Sole version, never acted → wipe content and start a fresh draft v1 (keep rapport row).
-  const canResetFreshV1 = Boolean(current && olderCount === 0 && !hasAction);
+  let versioningMode = rapport.rapportType?.versioning_mode;
+  if (!versioningMode && rapport.rapport_type_id) {
+    const rt = await RapportType.findByPk(rapport.rapport_type_id, {
+      attributes: ["versioning_mode"],
+    });
+    versioningMode = rt?.versioning_mode;
+  }
+  const isVersioned = versioningMode === "versioned";
+  // Multi-version (versioned types only), never Chef/Wali action → roll back current.
+  const canDiscardVersion = Boolean(
+    isVersioned && current && olderCount > 0 && !hasAction,
+  );
+  // Versioned sole version, never acted → wipe content and start fresh draft v1.
+  // Standalone (fiche lecture / document complexe) → full destroy instead.
+  const canResetFreshV1 = Boolean(
+    isVersioned && current && olderCount === 0 && !hasAction,
+  );
+  const canInstantFullDelete = Boolean(
+    !hasAction && !canDiscardVersion && !canResetFreshV1,
+  );
   return {
     has_chef_or_wali_action: hasAction,
     can_discard_draft_version: canDiscardVersion,
     can_reset_fresh_v1: canResetFreshV1,
-    can_instant_delete: canDiscardVersion || canResetFreshV1,
+    can_instant_full_delete: canInstantFullDelete,
+    can_instant_delete:
+      canDiscardVersion || canResetFreshV1 || canInstantFullDelete,
     can_request_delete: hasAction && !deleteRequested,
     delete_requested: deleteRequested,
     delete_requested_at: rapport.delete_requested_at || null,

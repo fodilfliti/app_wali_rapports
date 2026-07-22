@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { contentLocale } from '../config/features'
+import { pickBilingualText } from '../utils/bilingual'
 import { ImageLightbox, useImageLightbox } from './ImageLightbox'
 import { UploadProgressBar } from './UploadProgressBar'
 import type { MediaFile, MediaRow } from '../utils/media'
@@ -252,9 +254,10 @@ export function DocumentBlocksView({
   token: string
 }) {
   const { i18n } = useTranslation()
+  const locale = contentLocale(i18n.language)
 
   function blockText(block: any) {
-    return i18n.language === 'fr' ? block.text_fr ?? block.text ?? '' : block.text_ar ?? block.text ?? ''
+    return pickBilingualText(block.text_ar ?? block.text, block.text_fr ?? block.text, locale)
   }
 
   return (

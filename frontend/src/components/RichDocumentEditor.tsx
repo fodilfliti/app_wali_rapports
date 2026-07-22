@@ -5,7 +5,7 @@ import { contentLocale } from '../config/features'
 import type { EmbeddedTable } from '../types/embeddedTable'
 import { pruneEmbeddedTables } from '../types/embeddedTable'
 import { fileUrl } from '../utils/media'
-import { getRichHtml } from '../utils/richDocument'
+import { getRichHtml, richHtmlIsEmpty } from '../utils/richDocument'
 import {
   prepareRichHtmlForDisplay,
   prepareRichHtmlForSave,
@@ -249,7 +249,9 @@ export function RichDocumentView({
   token?: string
   serviceId?: number
 }) {
-  const html = prepareRichHtmlForDisplay(getRichHtml(data, locale), token)
+  // Match editor storage locale (AR-only when FR value inputs are off) + bilingual fallback in getRichHtml.
+  const contentLang = contentLocale(locale)
+  const html = prepareRichHtmlForDisplay(getRichHtml(data, contentLang), token)
   const tables = data?.embedded_tables || []
   const tableMap = Object.fromEntries(tables.map((t) => [t.id, t]))
   const ids = extractSchemaTableIds(html)
@@ -298,7 +300,7 @@ export function RichDocumentView({
             {token && serviceId ? (
               <SyncLinkedSchemaTables token={token} serviceId={serviceId} initial={tables} />
             ) : null}
-            <RichTextEditor value={html} editable={false} enableSchemaTables locale={locale} onChange={() => {}} />
+            <RichTextEditor value={html} editable={false} enableSchemaTables locale={contentLang} onChange={() => {}} />
           </div>
         </SchemaTableProvider>
         <ImageLightbox
@@ -312,7 +314,7 @@ export function RichDocumentView({
     )
   }
 
-  if (!html || html === '<p></p>') return null
+  if (!html || richHtmlIsEmpty(html)) return null
   return (
     <>
       <div

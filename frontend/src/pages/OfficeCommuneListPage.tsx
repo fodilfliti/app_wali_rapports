@@ -306,6 +306,7 @@ export function OfficeCommuneListPage({ token }: Props) {
           rapportTypeId
             ? `/office/services/${sid}/rapports/${rapportTypeId}`
             : `/office/services/${sid}`,
+          { replace: true },
         );
       }
     } catch {
