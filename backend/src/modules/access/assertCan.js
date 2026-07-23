@@ -1,4 +1,4 @@
-const path = require("path");
+const { resolveSharedDist } = require("../../lib/resolveShared");
 const {
   canAction,
   canOfficeEditRapport,
@@ -12,7 +12,7 @@ const {
   isAwaitingWaliResponse,
   canChefRespondFromList,
   canReviewerRespondFromList,
-} = require(path.join(__dirname, "../../../../shared/access-policy/dist"));
+} = require(resolveSharedDist("access-policy"));
 
 function forbidden(message = "Forbidden") {
   const err = new Error(message);

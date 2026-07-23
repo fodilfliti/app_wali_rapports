@@ -32,12 +32,13 @@ Output in `deploy-out/` (gitignored):
 | Zip | Upload to | Contains | Never included (keep your server copies) |
 | --- | --------- | -------- | ---------------------------------------- |
 | `wali-frontend-public_html.zip` | extract **into** `public_html/` | `dist/` assets only | `.htaccess`, env, `src/`, `node_modules` |
-| `wali-api.zip` | extract **into** `~/wali-api/` | `src/`, `config/`, `package*.json`, `.sequelizerc` | `.env`, env examples, `scripts/` (seeds/tests), `node_modules`, `storage/` |
+| `wali-api.zip` | extract **into** `~/wali-api/` | `src/`, `config/`, `package*.json`, `.sequelizerc`, **`shared/*/dist`** (access-policy + routes) | `.env`, env examples, demo seed scripts, `node_modules`, `storage/` |
 
 After upload:
 
 1. Frontend: unzip into `public_html` — your existing `.htaccess` is left alone.
 2. Backend: unzip into `wali-api` — your existing `.env` is left alone → cPanel **Run NPM Install** → **Restart** → `npm run db:migrate` if new migrations (under `src/db/migrations`, not `scripts/`).
+3. Confirm `~/wali-api/shared/access-policy/dist/index.js` and `~/wali-api/shared/routes/dist/index.js` exist after unzip (bundled by `package-deploy.ps1`).
 
 `deploy/public_html.htaccess` is a first-version **reference only** — never upload it over the cPanel `.htaccess`.
 

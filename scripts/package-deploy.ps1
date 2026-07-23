@@ -37,6 +37,7 @@ $BackendLatest = Join-Path $OutDir "wali-api.zip"
 
 $FrontendDir = Join-Path $Root "frontend"
 $BackendDir = Join-Path $Root "backend"
+$SharedDir = Join-Path $Root "shared"
 
 function Write-Step($msg) {
   Write-Host ""
@@ -53,6 +54,19 @@ Write-Step "Prepare output folder"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 Get-ChildItem $OutDir -Filter "wali-*-*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
 Remove-Item $FrontendLatest, $BackendLatest -ErrorAction SilentlyContinue
+
+# Shared packages must be compiled for backend (cPanel has no monorepo root).
+Write-Step "Build shared packages (access-policy, routes)"
+Push-Location $Root
+try {
+  npm run build:shared
+  if ($LASTEXITCODE -ne 0) { throw "build:shared failed (exit $LASTEXITCODE)" }
+}
+finally {
+  Pop-Location
+}
+Assert-Path (Join-Path $SharedDir "access-policy\dist\index.js") "shared/access-policy/dist"
+Assert-Path (Join-Path $SharedDir "routes\dist\index.js") "shared/routes/dist"
 
 # --- Frontend ---
 if (-not $SkipBuild) {
@@ -108,6 +122,19 @@ foreach ($file in $IncludeFiles) {
   $src = Join-Path $BackendDir $file
   Assert-Path $src "backend/$file"
   Copy-Item -Path $src -Destination (Join-Path $BackendStage $file) -Force
+}
+
+# Bundle compiled shared packages inside wali-api/shared (resolveShared looks here on cPanel).
+Write-Step "Bundle shared/*/dist into wali-api/shared"
+foreach ($pkg in @("access-policy", "routes")) {
+  $srcDist = Join-Path $SharedDir "$pkg\dist"
+  $destDist = Join-Path $BackendStage "shared\$pkg\dist"
+  New-Item -ItemType Directory -Force -Path $destDist | Out-Null
+  Copy-Item -Path (Join-Path $srcDist "*") -Destination $destDist -Recurse -Force
+  $pkgJson = Join-Path $SharedDir "$pkg\package.json"
+  if (Test-Path $pkgJson) {
+    Copy-Item -Path $pkgJson -Destination (Join-Path $BackendStage "shared\$pkg\package.json") -Force
+  }
 }
 
 # Whitelist prod cabinet scripts only (wipe once + safe ensure).
@@ -167,5 +194,7 @@ Write-Host "  - wali-api/.env and any env templates"
 Write-Host "  - demo/dev/test seed scripts (prod bootstrap + ensure are included)"
 Write-Host "  - node_modules (Run NPM Install on cPanel)"
 Write-Host "  - local storage/, uploads, docs, frontend src"
+Write-Host ""
+Write-Host "Included for cPanel: wali-api/shared/{access-policy,routes}/dist"
 Write-Host ""
 Get-ChildItem $OutDir -Filter "wali-*.zip" | Format-Table Name, @{N = "MB"; E = { "{0:N1}" -f ($_.Length / 1MB) } }, LastWriteTime

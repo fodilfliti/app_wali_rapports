@@ -1,5 +1,4 @@
 const express = require("express");
-const path = require("path");
 const {
   requireAuth,
   attachUser,
@@ -14,12 +13,13 @@ const {
 const rapportService = require("../modules/rapports/rapportService");
 const navigationService = require("../modules/rapports/navigationService");
 const hubCountsService = require("../modules/rapports/hubCountsService");
+const { resolveSharedDist } = require("../lib/resolveShared");
 const {
   LISTE_PATH_SEGMENT,
   LISTE_ENTITY_DATA_SEGMENT,
   LEGACY_LISTE_PATH_SEGMENT,
   LEGACY_LISTE_ENTITY_DATA_SEGMENT,
-} = require(path.join(__dirname, "../../../shared/routes/dist"));
+} = require(resolveSharedDist("routes"));
 
 const officeRouter = express.Router();
 officeRouter.use(
