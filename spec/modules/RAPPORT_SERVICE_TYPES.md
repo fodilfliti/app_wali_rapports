@@ -8,6 +8,8 @@ Define **how the Wali finds and reviews** office work, and **four content archit
 
 **Feedback loop:** When the Wali adds a note or command, the **office user must be notified** in-app (and spec allows future email). Office sees the Wali note on the rapport and can edit → save draft → resubmit (new version when versioned).
 
+**Hardening:** hub paths `/cabinet` / `/chief` / `/governor` (`ROUTES.md`); public ids UUID (`IDENTITY_UUID.md`); kind-aware UI/BE gates via `can*` / `assertCan` — always pass `content_kind` + `versioning_mode` (`ACCESS_PROFILES.md`). Role capability lists are product rules, not page `role ===` checks.
+
 ---
 
 ## Wali navigation model
@@ -166,6 +168,7 @@ Admin configures `content_kind` when creating a service / rapport type. A **serv
 ## Type 4 — قائمة / Liste (`commune_list`)
 
 - Collection of data for selected **entity kinds** in the Wilaya (not communes-only).
+- **Public URLs / API** use path segment **`entities`** (e.g. `/cabinet/services/:id/entities`, `/api/cabinet/rapports/:id/entities/:entityKey`). Internal kind key stays `commune_list`. Legacy `communes` / `commune-data` aliases for one release — see `ROUTES.md`.
 - **`entity_target_kinds`** on `rapport_types`: JSON array subset of `commune` | `daira` | `direction` (at least one). Default `["commune"]` for backward compatibility.
 - **Per-rapport membership** (`data_json.included_entity_keys`): optional non-empty array of prefixed keys (`daira:1301`, …). Absent / null = **all** entities of the type’s kinds. Office can narrow or expand the set while the rapport is `draft` / `changes_requested` (hub **Choisir la liste**). Removing a key hides it from the hub without deleting stored entity data (re-adding restores content). After finish (soft-hide), the next draft is created only on **first Enregistrer** and **inherits** the previous finished rapport’s `included_entity_keys`.
 - **Office view**: Hub grouped by kind (only included entities); progress counter sums filled across all kinds with kind-aware unit wording (بلدية / دائرة / مديرية / عنصر). Click one entity to edit **or** **Bulk Entry** (table mode) across selected kinds.
@@ -244,35 +247,35 @@ See **`SCHEMA_CONFIGURATION.md`** for admin API and workflow.
 
 | Method | Path                                  | Description                                     |
 | ------ | ------------------------------------- | ----------------------------------------------- |
-| `GET`  | `/wali/office-users`                  | List office users with pending/submitted counts |
-| `GET`  | `/wali/office-users/:userId/services` | Service tree for that user                      |
-| `GET`  | `/wali/services/:serviceId/content`   | Open service content (tables/docs/list)         |
+| `GET`  | `/governor/office-users`                  | List office users with pending/submitted counts |
+| `GET`  | `/governor/office-users/:userId/services` | Service tree for that user                      |
+| `GET`  | `/governor/services/:serviceId/content`   | Open service content (tables/docs/list)         |
 
 ### Office
 
 | Method  | Path                                       | Description                  |
 | ------- | ------------------------------------------ | ---------------------------- |
-| `GET`   | `/office/services/tree`                    | Own service/sub-service tree |
-| `GET`   | `/office/rapports/:id/versions`            | Archive list                 |
-| `GET`   | `/office/rapports/:id/versions/:versionId` | Read-only old version        |
-| `GET`   | `/office/notifications`                    | Wali notes unread            |
-| `PATCH` | `/office/notifications/:id/read`           | Mark read                    |
+| `GET`   | `/cabinet/services/tree`                    | Own service/sub-service tree |
+| `GET`   | `/cabinet/rapports/:id/versions`            | Archive list                 |
+| `GET`   | `/cabinet/rapports/:id/versions/:versionId` | Read-only old version        |
+| `GET`   | `/cabinet/notifications`                    | Wali notes unread            |
+| `PATCH` | `/cabinet/notifications/:id/read`           | Mark read                    |
 
 ### Table grid (type 1)
 
 | Method  | Path                                           | Description                                           |
 | ------- | ---------------------------------------------- | ----------------------------------------------------- |
-| `GET`   | `/office/rapports/:id/tables/:tableKey`        | Table data + schema                                   |
-| `PATCH` | `/office/rapports/:id/tables/:tableKey`        | Save draft rows + formulas                            |
-| `POST`  | `/office/rapports/:id/tables/:tableKey/submit` | Submit single table to wali (optional partial submit) |
+| `GET`   | `/cabinet/rapports/:id/tables/:tableKey`        | Table data + schema                                   |
+| `PATCH` | `/cabinet/rapports/:id/tables/:tableKey`        | Save draft rows + formulas                            |
+| `POST`  | `/cabinet/rapports/:id/tables/:tableKey/submit` | Submit single table to wali (optional partial submit) |
 
 ### Document templates & create (office)
 
 | Method | Path                                                        | Description                                         |
 | ------ | ----------------------------------------------------------- | --------------------------------------------------- |
-| `GET`  | `/office/services/:serviceId/document-templates/for-create` | Templates for new document/fiche                    |
-| `POST` | `/office/services/:serviceId/documents`                     | Create document; body `template_id`, `skip_default` |
-| `POST` | `/office/rapports/:id/document/apply-template`              | Import template (`replace` \| `append`)             |
+| `GET`  | `/cabinet/services/:serviceId/document-templates/for-create` | Templates for new document/fiche                    |
+| `POST` | `/cabinet/services/:serviceId/documents`                     | Create document; body `template_id`, `skip_default` |
+| `POST` | `/cabinet/rapports/:id/document/apply-template`              | Import template (`replace` \| `append`)             |
 
 See full CRUD in **`SCHEMA_CONFIGURATION.md`**.
 
@@ -280,12 +283,12 @@ See full CRUD in **`SCHEMA_CONFIGURATION.md`**.
 
 | Method | Path                               | Description                              |
 | ------ | ---------------------------------- | ---------------------------------------- |
-| `GET`  | `/office/rapports/:id/export.xlsx` | Excel (table grid; Wali/meta columns, cell colors) |
-| `GET`  | `/office/rapports/:id/export.pdf`  | PDF (`?locale=ar\|fr`)                   |
-| `GET`  | `/office/rapports/:id/export.docx` | Word                                     |
-| `GET`  | `/wali/rapports/:id/export.xlsx`   | Excel (same as office for table types)   |
-| `GET`  | `/wali/rapports/:id/export.pdf`    | PDF + `?showHidden=0\|1` for table grids |
-| `GET`  | `/wali/rapports/:id/export.docx`   | Word                                     |
+| `GET`  | `/cabinet/rapports/:id/export.xlsx` | Excel (table grid; Wali/meta columns, cell colors) |
+| `GET`  | `/cabinet/rapports/:id/export.pdf`  | PDF (`?locale=ar\|fr`)                   |
+| `GET`  | `/cabinet/rapports/:id/export.docx` | Word                                     |
+| `GET`  | `/governor/rapports/:id/export.xlsx`   | Excel (same as office for table types)   |
+| `GET`  | `/governor/rapports/:id/export.pdf`    | PDF + `?showHidden=0\|1` for table grids |
+| `GET`  | `/governor/rapports/:id/export.docx`   | Word                                     |
 
 Details: **`spec/CORE.md`** § Rapport export.
 
@@ -293,7 +296,7 @@ Details: **`spec/CORE.md`** § Rapport export.
 
 ## UI/UX — Wali presentation rules
 
-- **Inbox list** (`/wali/rapports` and `/chef/rapports`): columns for title, **service**, **rapport type**, status, actions; optional **title search**.
+- **Inbox list** (`/governor/rapports` and `/chief/rapports`): columns for title, **service**, **rapport type**, status, actions; optional **title search**.
 - **Status colors:** row background tints by status (`submitted`, `under_review`, `acknowledged`, `changes_requested`); legend bar at top of inbox.
 - **New submissions:** `is_inbox_new` shows **« جديد »** badge on title; row classes `waliInboxRowNew` / `waliInboxRowPending`.
 - **Wali decision on row:** when a response exists, show compact decision badge under status (not a duplicate full note).

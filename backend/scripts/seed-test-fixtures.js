@@ -24,6 +24,19 @@ const {
   Municipality,
 } = require("../src/db");
 
+const {
+  createRapportSeed,
+  createVersionSeed,
+  setRapportCurrentVersion,
+  createNotificationSeed,
+} = require("./lib/seedIdentity");
+const {
+  buildDocumentDefaultDataJson,
+  buildFicheDefaultDataJson,
+  buildCommuneDocumentDefaultDataJson,
+} = require("../src/modules/rapports/documentDefaults");
+const { appendAfterLetterhead } = require("./lib/demoPresentationData");
+
 const TEST_PASSWORD = process.env.TEST_USER_PASSWORD || "Test1234!";
 
 const TABLE_COLS = [
@@ -78,16 +91,39 @@ function communeTableRow(code, indicator, notes) {
 }
 
 function documentBlocks(titleAr, titleFr, bodyAr, bodyFr) {
-  return [
-    {
-      type: "heading",
-      align: "center",
-      bold: true,
-      text_ar: titleAr,
-      text_fr: titleFr,
-    },
+  return buildDocumentDefaultDataJson({ titleAr, titleFr }).blocks.concat([
     { type: "paragraph", text_ar: bodyAr, text_fr: bodyFr },
-  ];
+  ]);
+}
+
+function documentDataJson(titleAr, titleFr, bodyAr, bodyFr) {
+  const base = buildDocumentDefaultDataJson({ titleAr, titleFr });
+  return {
+    ...base,
+    rich_html_ar: appendAfterLetterhead(
+      base.rich_html_ar,
+      bodyAr ? `<p>${bodyAr}</p>` : "",
+    ),
+    rich_html_fr: appendAfterLetterhead(
+      base.rich_html_fr,
+      bodyFr ? `<p>${bodyFr}</p>` : "",
+    ),
+  };
+}
+
+function ficheDataJson(bodyAr, bodyFr) {
+  const base = buildFicheDefaultDataJson();
+  return {
+    ...base,
+    rich_html_ar: appendAfterLetterhead(
+      base.rich_html_ar,
+      bodyAr ? `<p>${bodyAr}</p>` : "",
+    ),
+    rich_html_fr: appendAfterLetterhead(
+      base.rich_html_fr,
+      bodyFr ? `<p>${bodyFr}</p>` : "",
+    ),
+  };
 }
 
 async function clearRapportDomain() {
@@ -194,7 +230,7 @@ async function createRapportWithVersions({
   versions,
   waliResponses = [],
 }) {
-  const rapport = await Rapport.create({
+  const rapport = await createRapportSeed({
     service_id: serviceId,
     rapport_type_id: typeId,
     title,
@@ -207,23 +243,21 @@ async function createRapportWithVersions({
 
   const versionRows = [];
   for (const v of versions) {
-    const row = await RapportVersion.create({
-      rapport_id: rapport.id,
-      version_number: v.number,
-      data_json: v.data_json,
-      submitted_at: v.submitted_at || null,
-      created_by_user_id: authorId,
-      created_at: v.submitted_at || new Date(),
-    });
+    const row = await createVersionSeed(
+      {
+        version_number: v.number,
+        data_json: v.data_json,
+        submitted_at: v.submitted_at || null,
+        created_by_user_id: authorId,
+        created_at: v.submitted_at || new Date(),
+      },
+      rapport,
+    );
     versionRows.push(row);
   }
 
   const current = versionRows[versionRows.length - 1];
-  await rapport.update({
-    current_version_id: current.id,
-    status,
-    updated_at: new Date(),
-  });
+  await setRapportCurrentVersion(rapport, current, { status });
 
   for (const wr of waliResponses) {
     const targetVersion = versionRows.find((r) => r.version_number === wr.versionNumber);
@@ -239,7 +273,7 @@ async function createRapportWithVersions({
       created_at: wr.created_at || new Date(),
     });
     if (wr.notifyOffice) {
-      await Notification.create({
+      await createNotificationSeed({
         user_id: ownerId,
         rapport_id: rapport.id,
         wali_response_id: response.id,
@@ -498,16 +532,12 @@ async function seedFixtures() {
     versions: [
       {
         number: 1,
-        data_json: {
-          blocks: documentBlocks(
-            "مسودة مستند",
-            "Brouillon document",
-            "هذا مستند standalone في وضع المسودة.",
-            "Document standalone en brouillon.",
-          ),
-          rich_html_ar: "<p>محتوى HTML تجريبي</p>",
-          rich_html_fr: "<p>Contenu HTML de test</p>",
-        },
+        data_json: documentDataJson(
+          "مسودة مستند",
+          "Brouillon document",
+          "محتوى HTML تجريبي — مستند standalone في وضع المسودة.",
+          "Contenu HTML de test — document standalone en brouillon.",
+        ),
       },
     ],
   });
@@ -522,14 +552,10 @@ async function seedFixtures() {
     versions: [
       {
         number: 1,
-        data_json: {
-          blocks: documentBlocks(
-            "بطاقة مطالعة مشتركة",
-            "Fiche lecture partagée",
-            "محتوى البطاقة المرسلة.",
-            "Contenu de la fiche envoyée.",
-          ),
-        },
+        data_json: ficheDataJson(
+          "محتوى البطاقة المرسلة.",
+          "Contenu de la fiche envoyée.",
+        ),
         submitted_at: dayAgo,
       },
     ],
@@ -584,22 +610,40 @@ async function seedFixtures() {
         number: 1,
         data_json: {
           communes: {
-            "1301": {
-              blocks: documentBlocks(
-                "تلمسان",
-                "Tlemcen",
-                "نص تجريبي للبلدية.",
-                "Texte test commune.",
-              ),
-            },
-            "1305": {
-              blocks: documentBlocks(
-                "صبرة",
-                "Sabra",
-                "محتوى بلدية ثانية.",
-                "Deuxième commune.",
-              ),
-            },
+            "1301": (() => {
+              const base = buildCommuneDocumentDefaultDataJson({
+                name_ar: "تلمسان",
+                name_fr: "Tlemcen",
+              });
+              return {
+                ...base,
+                rich_html_ar: appendAfterLetterhead(
+                  base.rich_html_ar,
+                  "<p>نص تجريبي للبلدية.</p>",
+                ),
+                rich_html_fr: appendAfterLetterhead(
+                  base.rich_html_fr,
+                  "<p>Texte test commune.</p>",
+                ),
+              };
+            })(),
+            "1305": (() => {
+              const base = buildCommuneDocumentDefaultDataJson({
+                name_ar: "صبرة",
+                name_fr: "Sabra",
+              });
+              return {
+                ...base,
+                rich_html_ar: appendAfterLetterhead(
+                  base.rich_html_ar,
+                  "<p>محتوى بلدية ثانية.</p>",
+                ),
+                rich_html_fr: appendAfterLetterhead(
+                  base.rich_html_fr,
+                  "<p>Deuxième commune.</p>",
+                ),
+              };
+            })(),
           },
         },
       },

@@ -21,7 +21,7 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 | `CHEF_CABINET` | رئيس الديوان / Chef de cabinet | First-line validation before Wali; same review tools as Wali (no instruction/broadcast create) |
 | `WALI` | حساب الوالي / Compte wali | Read validated rapports, respond, request changes, create instructions |
 
-**UI vocabulary (never show raw enums):** `OFFICE_USER` → ملحق بالديوان / Attaché de cabinet (plural: ملحقو الديوان / Attachés du cabinet). Domain tree nodes (`services` table): leaf UI = **مجال المتابعة** / **Domaine de suivi**; folder UI = **مجلد** / **Dossier**. Keep code/API names (`OFFICE_USER`, `/office/*`, `services`) unchanged.
+**UI vocabulary (never show raw enums):** `OFFICE_USER` → ملحق بالديوان / Attaché de cabinet (plural: ملحقو الديوان / Attachés du cabinet). Domain tree nodes (`services` table): leaf UI = **مجال المتابعة** / **Domaine de suivi**; folder UI = **مجلد** / **Dossier**. Keep code/API role enums (`OFFICE_USER`, …) and table name `services` unchanged. Hub **URL** segments are renameable via `shared/routes` (live: `/cabinet`, `/chief`, `/governor`) — see `spec/modules/ROUTES.md`.
 
 - **Reference geography/org:** `dairas`, `municipalities` (FK `daira_id`), `directions` (flat) — **not login accounts**.
 - **User**: `username`, `name`, `role`, optional `department_id`, access role template.
@@ -31,13 +31,14 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 - **Access JWT** required for protected endpoints (15m HS256, payload `{ sub, role, typ: "access" }`).
 - **Refresh session** (opaque HttpOnly cookie, 7 days absolute) renews access without re-login — full rules in `spec/modules/AUTH.md`.
 - **Blocked users** (`is_blocked = true`) rejected by `checkBlocked` middleware; block / password change / reset revoke refresh sessions.
-- **Route prefixes** by role:
+- **Route prefixes** by hub key (live English segments; see `ROUTES.md`):
   - `/admin/*` → `ADMIN`
-  - `/office/*` → `OFFICE_USER` or `ADMIN`
-  - `/chef/*` → `CHEF_CABINET` or `ADMIN`
-  - `/wali/*` → `WALI` or `ADMIN`
-- **Granular permissions** via access role templates — `spec/modules/ACCESS_PROFILES.md`.
-- UI must not expose internal role enum names.
+  - `/cabinet/*` (hub `office`) → `OFFICE_USER` or `ADMIN`
+  - `/chief/*` (hub `chef`) → `CHEF_CABINET` or `ADMIN`
+  - `/governor/*` (hub `wali`) → `WALI` or `ADMIN`
+  - Legacy `/office|/chef|/wali` dual-mounted / redirected for one release.
+- **Granular permissions** via access role templates + shared `can*` / `assertCan` — `spec/modules/ACCESS_PROFILES.md`.
+- UI must not expose internal role enum names; pages gate with `can*` / flags only (no `role ===`).
 
 ### Audit Logging (Mandatory)
 
@@ -71,9 +72,11 @@ Readable operational logs via **pino** (`backend/src/logger.js`) + **pino-http**
 ### File Storage & Downloads
 
 - Store under `storage/`; never public static middleware.
-- `GET /files/*` with JWT (`Authorization: Bearer` or `?access_token=` for browser downloads).
+- `GET /files/*`: authenticated stream with `Authorization: Bearer` (XHR), **or** short-lived **signed download token** in query `?dl=` (browser `<img>` / `<a>` / media). **Never** put the access JWT in file query strings.
+- Frontend: `SignedFileLink` / `useSignedFileUrl` obtain `?dl=`; do not rebuild file URLs with `?access_token=`.
 - Generated exports (Excel, Word, PDF): prefer API blob download with Bearer; audit where applicable.
 - **Excel export buttons**: shared green `btnExcel` class.
+- Entity ids in paths/payloads: public UUID — `spec/modules/IDENTITY_UUID.md`.
 
 ### Rich text editor (documents & fiches)
 
@@ -83,7 +86,12 @@ Used for `document_compose` and `fiche_lecture` (`RichDocumentEditor`, TipTap).
 - **Toolbar:** sticky at top of editor scroll area (`position: sticky` on `.richTextToolbar`).
 - **RTL alignment:** toolbar container uses `direction: ltr` so **left / center / right** buttons map to **physical** page sides in Arabic UI (not reversed by RTL flex).
 - **Editor font:** Tahoma for RTL content in the editor surface.
-- **Images:** uploaded via rapport uploads; embedded in HTML as `/files/uploads/...` URLs.
+- **Official letterhead (default on create):** for `fiche_lecture` and commune **fichier complexe** (`commune_list` + `commune_content_kind=complex`), and when no user document template applies, seed TipTap HTML with three **bold centered body-size** lines (not large headings): الجمهورية… / ولاية تلمسان / الديوان — then an optional title (`fiche_lecture`: **مذكرة استخلاصية** as `h3`; commune: entity name as `h2`). Source: `documentDefaults.js` / FE `documentDefaults.ts`. Editable after create. `skip_default` skips user templates only — **letterhead still applies**.
+- **Images / videos in HTML:** uploaded via rapport uploads; persist bare `/files/uploads/...` paths (and `data-file-id` = public UUID). **Never** persist `?dl=` / access tokens in stored HTML.
+- **Display (edit + view):** `usePreparedRichHtml` sanitizes and injects short-lived signed `?dl=` URLs for every `/files/` `src`/`href`. TipTap **edit** mode must show working media (same signing as view); when signed URLs arrive, refresh image/video `src` in place — do **not** remount the editor or `setContent` on every keystroke (caret loss).
+- **Empty-mount guard:** TipTap must not overwrite non-empty stored HTML with an empty first paint; gate editor mount until content is ready; ignore empty `onChange` when the prop still has content.
+- **Layout:** inline images ~⅓ width (**up to 3 per row**) in editor and view; click opens full-size lightbox. Videos remain denser (~4 per row).
+- **Spread row:** toolbar **|⋯|** (2 phrases) and **|⋯|⋯|** (3 phrases) insert a flex row with slots start / middle / end (`editor-spread-row`). In Arabic, caret opens in the **start** cell (visual **right**) with align-right; end cell is left. Click the **same** tool again on that row to unwrap back to normal paragraph(s). Align toolbar always highlights the **effective** direction (explicit `textAlign`, or spread slot, or locale default: ar→right / fr→left). Preserved in view + PDF/Word export.
 
 ### Rapport export (PDF & Word)
 
@@ -100,12 +108,12 @@ Shared backend: `rapportExportData.js`, `rapportPdfService.js`, `rapportDocxServ
 
 #### API
 
-| Method | Path | Notes |
+| Method | Path (via `paths.api.*`; hub segments) | Notes |
 | ------ | ---- | ----- |
-| `GET` | `/office/rapports/:id/export.pdf` | `?locale=ar\|fr` |
-| `GET` | `/office/rapports/:id/export.docx` | same |
-| `GET` | `/wali/rapports/:id/export.pdf` | `?locale=…&showHidden=0\|1` (hidden table rows) |
-| `GET` | `/wali/rapports/:id/export.docx` | same |
+| `GET` | `/cabinet/rapports/:id/export.pdf` | `?locale=ar\|fr`; `:id` = public UUID |
+| `GET` | `/cabinet/rapports/:id/export.docx` | same |
+| `GET` | `/governor/rapports/:id/export.pdf` | `?locale=…&showHidden=0\|1` (hidden table rows) |
+| `GET` | `/governor/rapports/:id/export.docx` | same |
 
 #### Filenames
 

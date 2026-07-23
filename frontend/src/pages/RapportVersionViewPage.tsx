@@ -38,6 +38,7 @@ import {
 } from "../utils/entityKeys";
 import type { EntityTargetKind } from "../utils/entityTargets";
 import { filterResponsesByVersionId } from "../utils/reviewResponses";
+import { entityIdsEqual } from "../utils/entityIds";
 import { countFinishedRows } from "../utils/tableRowMeta";
 
 type DetailProps = {
@@ -107,8 +108,8 @@ export function RapportVersionDetail({
   chef = false,
 }: DetailProps) {
   const { rapportId, versionId } = useParams();
-  const rid = Number(rapportId);
-  const vid = Number(versionId);
+  const rid = rapportId ?? "";
+  const vid = versionId ?? "";
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const [rapport, setRapport] = useState<any>(null);
@@ -120,9 +121,9 @@ export function RapportVersionDetail({
     entitiesData: Record<string, any>;
     communes: Record<string, any>;
     schema?: { columns?: any[]; layout_json?: any } | null;
-    files?: Record<number, MediaFile>;
+    files?: Record<string, MediaFile>;
   } | null>(null);
-  const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
+  const [mediaFiles, setMediaFiles] = useState<Record<string, MediaFile>>({});
   const [loading, setLoading] = useState(true);
 
   const archiveListPath = versionsListPath(rid, wali, chef);
@@ -311,7 +312,7 @@ export function RapportVersionDetail({
           ...(version?.waliResponses || []),
           ...(rapport?.waliResponses || []),
         ].filter(
-          (r, i, arr) => arr.findIndex((x) => Number(x.id) === Number(r.id)) === i,
+          (r, i, arr) => arr.findIndex((x) => entityIdsEqual(x.id, r.id)) === i,
         ),
         vid,
       ),
@@ -325,7 +326,7 @@ export function RapportVersionDetail({
           ...(version?.chefResponses || []),
           ...(rapport?.chefResponses || []),
         ].filter(
-          (r, i, arr) => arr.findIndex((x) => Number(x.id) === Number(r.id)) === i,
+          (r, i, arr) => arr.findIndex((x) => entityIdsEqual(x.id, r.id)) === i,
         ),
         vid,
       ),
@@ -457,6 +458,8 @@ export function RapportVersionDetail({
               wali={wali}
               chef={chef}
               versionId={vid}
+              contentKind={rapport?.rapportType?.content_kind}
+              communeContentKind={rapport?.rapportType?.commune_content_kind}
             />
           ) : null}
           <BackButton fallbackTo={archiveListPath} />

@@ -131,10 +131,13 @@ async function loadExportData(rapportId, showHidden, versionId = null) {
   }
 
   const { files } = await enrichDataJsonWithFiles(dataJson, rapportId);
-  const calendarEvents = await RapportCalendarEvent.findAll({
-    where: { rapport_id: rapportId },
-    order: [["event_date", "ASC"]]
-  });
+  const numericRapportId = await rapportService.resolveNumericRapportId(rapportId);
+  const calendarEvents = numericRapportId
+    ? await RapportCalendarEvent.findAll({
+        where: { rapport_id: numericRapportId },
+        order: [["event_date", "ASC"]],
+      })
+    : [];
 
   return {
     rapport,

@@ -1,7 +1,9 @@
+import type { EntityIdParam } from '../api'
+
 export type ReviewerMode = 'wali' | 'chef'
 
 export function reviewerBase(mode: ReviewerMode) {
-  return mode === 'chef' ? '/chef' : '/wali'
+  return mode === 'chef' ? '/chief' : '/governor'
 }
 
 export function reviewerHubPath(mode: ReviewerMode) {
@@ -16,14 +18,14 @@ export function reviewerOfficeUsersPath(mode: ReviewerMode) {
   return `${reviewerBase(mode)}/office-users`
 }
 
-export function reviewerUserServicesPath(mode: ReviewerMode, userId: number) {
+export function reviewerUserServicesPath(mode: ReviewerMode, userId: EntityIdParam) {
   return `${reviewerBase(mode)}/office-users/${userId}/services`
 }
 
 export function reviewerContentKindPath(
   mode: ReviewerMode,
-  userId: number,
-  serviceId: number,
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
   contentKind: string,
 ) {
   return `${reviewerBase(mode)}/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
@@ -31,14 +33,14 @@ export function reviewerContentKindPath(
 
 export function reviewerRapportTypeListPath(
   mode: ReviewerMode,
-  userId: number,
-  serviceId: number,
-  rapportTypeId: number,
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
+  rapportTypeId: EntityIdParam,
 ) {
   return `${reviewerBase(mode)}/office-users/${userId}/services/${serviceId}/rapports/${rapportTypeId}`
 }
 
-export function reviewerRapportViewPath(mode: ReviewerMode, rapportId: number) {
+export function reviewerRapportViewPath(mode: ReviewerMode, rapportId: EntityIdParam) {
   return `${reviewerBase(mode)}/rapports/${rapportId}/view`
 }
 

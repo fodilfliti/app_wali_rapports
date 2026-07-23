@@ -1,3 +1,4 @@
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { notifyHubCountsRefresh } from './hubCountsRefresh'
 import { waliDecisionLabel } from './waliDecision'
@@ -41,7 +42,7 @@ export function rapportStatusLabel(status: string, t: (k: string) => string) {
   return t(map[status] || 'statusDraft')
 }
 
-export async function markOfficeRapportOpened(token: string, rapportId: number) {
+export async function markOfficeRapportOpened(token: string, rapportId: EntityIdParam) {
   try {
     await api.markRapportNotificationsRead(token, rapportId)
     await notifyHubCountsRefresh()
@@ -50,12 +51,12 @@ export async function markOfficeRapportOpened(token: string, rapportId: number) 
   }
 }
 
-export function patchRapportUnread<T extends { id: number; has_unread_notification?: boolean }>(
+export function patchRapportUnread<T extends { id: EntityIdParam; has_unread_notification?: boolean }>(
   rows: T[],
-  rapportId: number,
+  rapportId: EntityIdParam,
 ): T[] {
   return rows.map((row) =>
-    Number(row.id) === Number(rapportId) ? { ...row, has_unread_notification: false } : row,
+    String(row.id) === String(rapportId) ? { ...row, has_unread_notification: false } : row,
   )
 }
 

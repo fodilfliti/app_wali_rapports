@@ -25,7 +25,7 @@ export function WaliInboxBell({ token }: Props) {
     <>
       <Link
         className="btn btn-ghost notifBell"
-        to="/wali/rapports"
+        to="/governor/rapports"
         title={label}
         aria-label={label}
       >
@@ -41,7 +41,7 @@ export function WaliInboxBell({ token }: Props) {
       </Link>
       <Link
         className="btn btn-ghost notifBell"
-        to="/wali/rapports?view=discussion"
+        to="/governor/rapports?view=discussion"
         title={discAria}
         aria-label={discAria}
       >

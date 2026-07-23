@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "Municipality",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       name_ar: { type: DataTypes.STRING(255), allowNull: false },
       name_fr: { type: DataTypes.STRING(255), allowNull: false },
       code: { type: DataTypes.STRING(50), allowNull: false, unique: true },

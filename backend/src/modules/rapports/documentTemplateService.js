@@ -4,7 +4,19 @@ const { assertServiceAccess, assertRapportAccess } = require("./serviceAccessSer
 const rapportService = require("./rapportService");
 const { audit } = require("../../services/audit");
 const { baseSlugFromNames, ensureUniqueSlug } = require("../../utils/slugUtils");
-const { buildDocumentDefaultBlocks } = require("./documentDefaults");
+const { buildDocumentDefaultDataJson, buildFicheDefaultDataJson } = require("./documentDefaults");
+const { findByPublicId, withPublicId, resolveNumericId } = require("../access/idResolver");
+const { resolveNumericServiceId } = require("./serviceAccessService");
+
+async function requireNumericServiceId(serviceId) {
+  const numericServiceId = await resolveNumericServiceId(serviceId);
+  if (!numericServiceId) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  return numericServiceId;
+}
 
 const DOCUMENT_KINDS = new Set(["document_compose", "fiche_lecture"]);
 
@@ -97,8 +109,13 @@ function defaultTemplateRank(template, rapportType) {
 }
 
 async function clearDefaultFlag(serviceId, { typeIds, contentKind, exceptId } = {}) {
+  const numericServiceId = await requireNumericServiceId(serviceId);
   const rows = await RapportDocumentTemplate.findAll({
-    where: { service_id: serviceId, is_default: true, ...(exceptId ? { id: { [Op.ne]: exceptId } } : {}) }
+    where: {
+      service_id: numericServiceId,
+      is_default: true,
+      ...(exceptId ? { id: { [Op.ne]: exceptId } } : {}),
+    },
   });
   const scope = {
     content_kind: contentKind || null,
@@ -114,7 +131,8 @@ async function clearDefaultFlag(serviceId, { typeIds, contentKind, exceptId } = 
 
 async function listForService(serviceId, user, { rapportTypeId, contentKind } = {}) {
   await assertServiceAccess(user, serviceId, "manage");
-  const where = { service_id: serviceId };
+  const numericServiceId = await requireNumericServiceId(serviceId);
+  const where = { service_id: numericServiceId };
   const rows = await RapportDocumentTemplate.findAll({
     where,
     order: [
@@ -122,38 +140,49 @@ async function listForService(serviceId, user, { rapportTypeId, contentKind } = 
       ["name_ar", "ASC"]
     ]
   });
-  return rows.filter((row) => {
-    if (rapportTypeId) {
-      return templateMatchesType(row, { id: rapportTypeId, content_kind: contentKind || row.content_kind });
-    }
-    if (contentKind && row.content_kind && row.content_kind !== contentKind) {
-      return false;
-    }
-    return true;
-  });
+  let matchTypeId = rapportTypeId;
+  if (rapportTypeId) {
+    matchTypeId = await resolveNumericId(RapportType, rapportTypeId);
+  }
+  return rows
+    .filter((row) => {
+      if (matchTypeId) {
+        return templateMatchesType(row, {
+          id: matchTypeId,
+          content_kind: contentKind || row.content_kind,
+        });
+      }
+      if (contentKind && row.content_kind && row.content_kind !== contentKind) {
+        return false;
+      }
+      return true;
+    })
+    .map((row) => withPublicId(row));
 }
 
 async function listForRapportCreate(serviceId, user, rapportTypeId) {
   await assertServiceAccess(user, serviceId, "manage");
-  const rapportType = await RapportType.findByPk(rapportTypeId);
-  if (!rapportType || Number(rapportType.service_id) !== Number(serviceId)) {
+  const numericServiceId = await requireNumericServiceId(serviceId);
+  const rapportType = await findByPublicId(RapportType, rapportTypeId);
+  if (!rapportType || Number(rapportType.service_id) !== Number(numericServiceId)) {
     const err = new Error("Invalid document type");
     err.status = 400;
     throw err;
   }
   const rows = await RapportDocumentTemplate.findAll({
-    where: { service_id: serviceId },
+    where: { service_id: numericServiceId },
     order: [
       ["is_default", "DESC"],
       ["name_ar", "ASC"]
     ]
   });
-  return rows.filter((row) => templateMatchesType(row, rapportType));
+  return rows.filter((row) => templateMatchesType(row, rapportType)).map((row) => withPublicId(row));
 }
 
 async function findDefaultTemplate(serviceId, rapportType) {
+  const numericServiceId = await requireNumericServiceId(serviceId);
   const rows = await RapportDocumentTemplate.findAll({
-    where: { service_id: serviceId, is_default: true }
+    where: { service_id: numericServiceId, is_default: true }
   });
   const matches = rows.filter((row) => templateMatchesType(row, rapportType));
   matches.sort((a, b) => defaultTemplateRank(a, rapportType) - defaultTemplateRank(b, rapportType));
@@ -162,17 +191,19 @@ async function findDefaultTemplate(serviceId, rapportType) {
 
 async function getTemplateForService(serviceId, templateId, user) {
   await assertServiceAccess(user, serviceId, "manage");
-  const row = await RapportDocumentTemplate.findByPk(templateId);
-  if (!row || Number(row.service_id) !== Number(serviceId)) {
+  const numericServiceId = await requireNumericServiceId(serviceId);
+  const row = await findByPublicId(RapportDocumentTemplate, templateId);
+  if (!row || Number(row.service_id) !== Number(numericServiceId)) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
-  return row;
+  return withPublicId(row);
 }
 
 async function createForService(serviceId, data, user, req) {
   await assertServiceAccess(user, serviceId, "manage");
+  const numericServiceId = await requireNumericServiceId(serviceId);
   let slug = data.slug?.trim();
   if (!slug) {
     const base = baseSlugFromNames(data.name_fr, data.name_ar, "doc-tpl");
@@ -187,14 +218,14 @@ async function createForService(serviceId, data, user, req) {
   }
   if (data.is_default) {
     const typeIds = normalizeTypeIdsInput(data, null);
-    await clearDefaultFlag(serviceId, {
+    await clearDefaultFlag(numericServiceId, {
       typeIds,
       contentKind: data.content_kind || null
     });
   }
   const typeIds = normalizeTypeIdsInput(data, null);
   const row = await RapportDocumentTemplate.create({
-    service_id: serviceId,
+    service_id: numericServiceId,
     rapport_type_id: legacyTypeIdFromIds(typeIds),
     rapport_type_ids: typeIds,
     slug,
@@ -205,12 +236,12 @@ async function createForService(serviceId, data, user, req) {
     content_json: data.content_json || { rich_html_ar: "<p></p>", rich_html_fr: "<p></p>" },
     updated_at: new Date()
   });
-  await audit(user.id, "DOCUMENT_TEMPLATE_CREATE", { template_id: row.id, service_id: serviceId }, { req });
-  return row;
+  await audit(user.id, "DOCUMENT_TEMPLATE_CREATE", { template_id: row.id, service_id: numericServiceId }, { req });
+  return withPublicId(row);
 }
 
 async function updateTemplate(templateId, data, user, req) {
-  const row = await RapportDocumentTemplate.findByPk(templateId);
+  const row = await findByPublicId(RapportDocumentTemplate, templateId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -241,11 +272,11 @@ async function updateTemplate(templateId, data, user, req) {
     updated_at: new Date()
   });
   await audit(user.id, "DOCUMENT_TEMPLATE_UPDATE", { template_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function deleteTemplate(templateId, user, req) {
-  const row = await RapportDocumentTemplate.findByPk(templateId);
+  const row = await findByPublicId(RapportDocumentTemplate, templateId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -253,28 +284,41 @@ async function deleteTemplate(templateId, user, req) {
   }
   await assertServiceAccess(user, row.service_id, "manage");
   await row.destroy();
-  await audit(user.id, "DOCUMENT_TEMPLATE_DELETE", { template_id: templateId }, { req });
+  await audit(user.id, "DOCUMENT_TEMPLATE_DELETE", { template_id: row.id }, { req });
 }
 
 async function resolveInitialDataJson(serviceId, rapportType, templateId) {
+  const numericServiceId = await requireNumericServiceId(serviceId);
   if (templateId) {
-    const tpl = await RapportDocumentTemplate.findByPk(templateId);
-    if (!tpl || Number(tpl.service_id) !== Number(serviceId) || !templateMatchesType(tpl, rapportType)) {
+    const tpl = await findByPublicId(RapportDocumentTemplate, templateId);
+    if (!tpl || Number(tpl.service_id) !== Number(numericServiceId) || !templateMatchesType(tpl, rapportType)) {
       const err = new Error("Invalid template");
       err.status = 400;
       throw err;
     }
     return templateContentToDataJson(tpl.content_json);
   }
-  const defaultTpl = await findDefaultTemplate(serviceId, rapportType);
+  const defaultTpl = await findDefaultTemplate(numericServiceId, rapportType);
   if (defaultTpl) return templateContentToDataJson(defaultTpl.content_json);
-  const defaultBlocks =
-    rapportType.schema_json?.default_blocks ||
-    buildDocumentDefaultBlocks({
-      titleAr: rapportType.name_ar,
-      titleFr: rapportType.name_fr,
-    });
-  return { blocks: defaultBlocks };
+  if (rapportType.schema_json?.default_blocks?.length) {
+    const blocks = rapportType.schema_json.default_blocks;
+    // Prefer rich_html defaults when schema only has legacy blocks.
+    const base =
+      rapportType.content_kind === "fiche_lecture"
+        ? buildFicheDefaultDataJson()
+        : buildDocumentDefaultDataJson({
+            titleAr: rapportType.name_ar,
+            titleFr: rapportType.name_fr,
+          });
+    return { ...base, blocks };
+  }
+  if (rapportType.content_kind === "fiche_lecture") {
+    return buildFicheDefaultDataJson();
+  }
+  return buildDocumentDefaultDataJson({
+    titleAr: rapportType.name_ar,
+    titleFr: rapportType.name_fr,
+  });
 }
 
 async function applyTemplateToRapport(rapportId, templateId, mode, actor, req) {
@@ -286,7 +330,7 @@ async function applyTemplateToRapport(rapportId, templateId, mode, actor, req) {
     err.status = 400;
     throw err;
   }
-  const tpl = await RapportDocumentTemplate.findByPk(templateId);
+  const tpl = await findByPublicId(RapportDocumentTemplate, templateId);
   if (!tpl || Number(tpl.service_id) !== Number(rapport.service_id)) {
     const err = new Error("Not found");
     err.status = 404;

@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "WaliBroadcast",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       uploaded_file_id: { type: DataTypes.BIGINT, allowNull: false },
       title_ar: { type: DataTypes.STRING(200), allowNull: false, defaultValue: "" },
       title_fr: { type: DataTypes.STRING(200), allowNull: false, defaultValue: "" },

@@ -28,6 +28,7 @@ const {
   getLatestWaliResponse,
   drawWaliResponseSectionPdf,
 } = require("./waliResponseExport");
+const { canShowWaliResponseExportBlock } = require("../modules/access/assertCan");
 
 const MARGIN = 40;
 const IMAGE_MAX_H = 220;
@@ -428,7 +429,7 @@ function renderPdfBuffer(data, locale) {
       for (const row of dataJson.media_rows || []) {
         drawMediaRow(doc, row, files, locale, fontName);
       }
-      if (kind === "fiche_lecture") {
+      if (canShowWaliResponseExportBlock({ content_kind: kind })) {
         const waliResponse = getLatestWaliResponse(rapport.waliResponses);
         drawWaliResponseSectionPdf(doc, waliResponse, locale, fontName, boldFontName, {
           margin: MARGIN,
@@ -445,7 +446,9 @@ async function generateRapportPdf(rapportId, { locale = "ar", showHidden = false
   const loc = locale === "fr" ? "fr" : "ar";
   const data = await loadExportData(rapportId, showHidden, versionId);
   const buffer = await renderPdfBuffer(data, loc);
-  await audit(actor?.id, "RAPPORT_PDF_EXPORT", { rapport_id: Number(rapportId), locale: loc }, { req });
+  const rapportService = require("../modules/rapports/rapportService");
+  const numericRapportId = await rapportService.resolveNumericRapportId(rapportId);
+  await audit(actor?.id, "RAPPORT_PDF_EXPORT", { rapport_id: numericRapportId, locale: loc }, { req });
   return { buffer, filename: rapportExportFilename(data.rapport, "pdf") };
 }
 

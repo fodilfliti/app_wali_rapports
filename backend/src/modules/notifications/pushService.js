@@ -23,29 +23,29 @@ function deepLinkForRole(role, meta = {}) {
   const rapportId = meta.rapport_id;
   const key = meta.message_key;
   if (key === "calendarToday" || key === "calendarTomorrow") {
-    return role === "CHEF_CABINET" ? "/chef/calendar" : "/wali/calendar";
+    return role === "CHEF_CABINET" ? "/chief/calendar" : "/governor/calendar";
   }
   if (key === "rapportPendingChef" || key === "rapportResubmittedBypass") {
-    return rapportId ? `/chef/rapports/${rapportId}` : "/chef";
+    return rapportId ? `/chief/rapports/${rapportId}` : "/chief";
   }
   if (key === "rapportPendingWali") {
-    return rapportId ? `/wali/rapports/${rapportId}` : "/wali";
+    return rapportId ? `/governor/rapports/${rapportId}` : "/governor";
   }
   if (key === "waliInstruction") {
     return meta.instruction_id
-      ? `/office/instructions/${meta.instruction_id}`
-      : "/office/instructions";
+      ? `/cabinet/instructions/${meta.instruction_id}`
+      : "/cabinet/instructions";
   }
   if (key === "waliBroadcast" || key === "waliBroadcastReminder") {
     if (role === "CHEF_CABINET") {
-      return meta.broadcast_id ? `/chef/shared/${meta.broadcast_id}` : "/chef/shared";
+      return meta.broadcast_id ? `/chief/shared/${meta.broadcast_id}` : "/chief/shared";
     }
-    return meta.broadcast_id ? `/office/shared/${meta.broadcast_id}` : "/office/shared";
+    return meta.broadcast_id ? `/cabinet/shared/${meta.broadcast_id}` : "/cabinet/shared";
   }
   if (rapportId) {
-    if (role === "WALI") return `/wali/rapports/${rapportId}`;
-    if (role === "CHEF_CABINET") return `/chef/rapports/${rapportId}`;
-    return `/office/rapports/${rapportId}`;
+    if (role === "WALI") return `/governor/rapports/${rapportId}`;
+    if (role === "CHEF_CABINET") return `/chief/rapports/${rapportId}`;
+    return `/cabinet/rapports/${rapportId}`;
   }
   return meta.url || "/";
 }

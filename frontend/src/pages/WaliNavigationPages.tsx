@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { HubTile } from '../components/HubTile'
@@ -55,9 +56,9 @@ function respondApi(reviewer: ReviewerMode) {
   return reviewer === 'chef' ? api.chefRespond : api.waliRespond
 }
 
-function findServiceInTree(nodes: any[], serviceId: number): any {
+function findServiceInTree(nodes: any[], serviceId: EntityIdParam): any {
   for (const n of nodes) {
-    if (Number(n.id) === serviceId) return n
+    if (String(n.id) === String(serviceId)) return n
     if (n.children?.length) {
       const hit = findServiceInTree(n.children, serviceId)
       if (hit) return hit
@@ -107,9 +108,9 @@ export function WaliOfficeUsersPage({ token, reviewer = 'wali' }: Props) {
   )
 }
 
-export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
+export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props & { userId: EntityIdParam }) {
   const { folderId } = useParams()
-  const fid = folderId ? Number(folderId) : undefined
+  const fid = folderId || undefined
   const { t, i18n } = useTranslation()
   const [page, setPage] = useState(1)
   const basePath = reviewerUserServicesPath(reviewer, userId)
@@ -161,9 +162,9 @@ export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props
   )
 }
 
-export function WaliServiceRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
+export function WaliServiceRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: EntityIdParam }) {
   const { serviceId } = useParams()
-  const sid = Number(serviceId)
+  const sid = serviceId ?? ''
   const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer)
   const hub = hubQuery.data
   const isInitialLoading = hubQuery.isLoading && !hub
@@ -190,9 +191,9 @@ export function WaliServiceRapportTypesPage({ token, userId, reviewer = 'wali' }
   )
 }
 
-export function WaliServiceKindRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
+export function WaliServiceKindRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: EntityIdParam }) {
   const { serviceId, contentKind } = useParams()
-  const sid = Number(serviceId)
+  const sid = serviceId ?? ''
   const kind = contentKind || ''
   const { t } = useTranslation()
   const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer)
@@ -223,25 +224,25 @@ export function WaliServiceKindRapportTypesPage({ token, userId, reviewer = 'wal
   )
 }
 
-export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }: Props & { userId: number }) {
+export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }: Props & { userId: EntityIdParam }) {
   const { serviceId, rapportTypeId } = useParams()
-  const sid = Number(serviceId)
-  const typeId = Number(rapportTypeId)
+  const sid = serviceId ?? ''
+  const typeId = rapportTypeId ?? ''
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const snack = useSnackbar()
   const invalidate = useInvalidateAppQueries()
   const listPath = currentPath(location)
-  const [respondId, setRespondId] = useState<number | null>(null)
-  const [deleteDecideId, setDeleteDecideId] = useState<number | null>(null)
+  const [respondId, setRespondId] = useState<EntityIdParam | null>(null)
+  const [deleteDecideId, setDeleteDecideId] = useState<EntityIdParam | null>(null)
   const [listPage, setListPage] = useState(1)
 
   const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer)
   const services = servicesQuery.data ?? []
   const service = sid ? findServiceInTree(services, sid) : null
   const rapportType =
-    (service?.rapportTypes || []).find((x: RapportTypeNav) => Number(x.id) === typeId) || null
+    (service?.rapportTypes || []).find((x: RapportTypeNav) => String(x.id) === String(typeId)) || null
 
   const listQuery = useReviewerRapportsListQuery(token, reviewer, {
     service_id: sid,

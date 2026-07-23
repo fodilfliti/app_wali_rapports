@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { ApiError } from '../api'
 import { SchemaListPanel, type SchemaBrowserRow } from './SchemaListPanel'
@@ -24,7 +25,7 @@ import { useSnackbar } from '../snackbar/SnackbarContext'
 
 type Props = {
   token: string
-  serviceId: number
+  serviceId: EntityIdParam
   open: boolean
   onClose: () => void
 }

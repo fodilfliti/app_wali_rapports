@@ -110,8 +110,11 @@ api.use("/files", secureFilesRouter());
 api.use("/auth", authRouter);
 api.use("/admin", adminRouter);
 api.use("/office", officeRouter);
+api.use("/cabinet", officeRouter); // alias — English hub segment
 api.use("/wali", waliRouter);
+api.use("/governor", waliRouter); // alias
 api.use("/chef", chefRouter);
+api.use("/chief", chefRouter); // alias
 
 app.use(apiBase, api);
 app.use(multerErrorHandler);

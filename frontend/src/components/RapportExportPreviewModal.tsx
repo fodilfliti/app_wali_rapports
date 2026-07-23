@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { renderAsync } from 'docx-preview'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import type { RapportExportOpts } from '../api'
 
@@ -8,7 +9,7 @@ type PreviewFormat = 'pdf' | 'docx'
 
 type Props = {
   token: string
-  rapportId: number
+  rapportId: EntityIdParam
   format: PreviewFormat
   opts: RapportExportOpts
   onClose: () => void

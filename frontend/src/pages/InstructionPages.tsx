@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
-import { apiFileUrl } from '../api'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
+import { BroadcastFileCard } from '../components/BroadcastSharedUi'
+import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { TablePagination } from '../components/TablePagination'
 import { QueryListShell } from '../components/QueryListShell'
 import { useSnackbar } from '../snackbar/SnackbarContext'
@@ -14,10 +15,13 @@ import { notifyHubCountsRefresh } from '../utils/hubCountsRefresh'
 import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
 import { useInstructionsListQuery } from '../hooks/queries/useListQueries'
 import { useOfficeHubCounts } from '../hooks/useHubCounts'
+import { useSignedFileUrl } from '../hooks/useSignedFileUrl'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import { MediaUploadError, prepareFileForUpload } from '../utils/media'
 import { blendedBatchPercent, runUploadQueue } from '../utils/uploadQueue'
 import { UploadProgressBar } from '../components/UploadProgressBar'
+import type { EntityIdParam } from '../api'
+import { asEntityId } from '../utils/entityIds'
 
 type Props = { token: string }
 
@@ -35,7 +39,18 @@ function formatInstructionDate(iso: string, locale: string) {
   return new Date(iso).toLocaleString(locale === 'fr' ? 'fr-FR' : 'ar-DZ')
 }
 
-function InstructionFilesList({ files, token }: { files: any[]; token: string }) {
+function InstructionAttachmentCard({ file }: { file: any }) {
+  const href = useSignedFileUrl(file?.url_path)
+  if (!file) return null
+  if (!href) {
+    return (
+      <span className="muted small instructionFilePending">{file.original_name || '…'}</span>
+    )
+  }
+  return <BroadcastFileCard file={file} href={href} compact />
+}
+
+function InstructionFilesList({ files }: { files: any[] }) {
   const { t } = useTranslation()
   if (!files?.length) return null
   return (
@@ -46,15 +61,8 @@ function InstructionFilesList({ files, token }: { files: any[]; token: string })
           const file = f.file
           if (!file) return null
           return (
-            <li key={f.id}>
-              <a
-                className="btn btn-ghost"
-                href={apiFileUrl(file.url || file.path, token)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {file.original_name || file.filename || t('downloadPdf')}
-              </a>
+            <li key={f.id || file.id}>
+              <InstructionAttachmentCard file={file} />
             </li>
           )
         })}
@@ -63,7 +71,7 @@ function InstructionFilesList({ files, token }: { files: any[]; token: string })
   )
 }
 
-async function fetchInstruction(audience: InstructionAudience, token: string, id: number) {
+async function fetchInstruction(audience: InstructionAudience, token: string, id: EntityIdParam) {
   if (audience === 'office') return api.getOfficeInstruction(token, id)
   if (audience === 'chef') return api.getChefInstruction(token, id)
   return api.getWaliInstruction(token, id)
@@ -74,15 +82,21 @@ function InstructionViewModal({
   audience,
   instructionId,
   onClose,
+  onDeleted,
 }: {
   token: string
   audience: InstructionAudience
-  instructionId: number
+  instructionId: EntityIdParam
   onClose: () => void
+  onDeleted?: () => void
 }) {
   const { t, i18n } = useTranslation()
+  const snack = useSnackbar()
   const [row, setRow] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const canDelete = audience === 'wali'
 
   useEffect(() => {
     let cancelled = false
@@ -105,81 +119,125 @@ function InstructionViewModal({
     }
   }, [token, instructionId, audience])
 
+  async function confirmDeleteInstruction() {
+    if (!canDelete) return
+    setDeleting(true)
+    try {
+      await api.deleteWaliInstruction(token, instructionId)
+      snack.show(t('deleteInstructionDone'), 'success')
+      setConfirmDelete(false)
+      onDeleted?.()
+      onClose()
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
-    <div
-      className="modalOverlay"
-      role="presentation"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose()
-      }}
-    >
+    <>
       <div
-        className="modalCard wide instructionViewModal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="instructionModalTitle"
-        onClick={(e) => e.stopPropagation()}
+        className="modalOverlay"
+        role="presentation"
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose()
+        }}
       >
-        {loading ? (
-          <p className="muted instructionModalLoading">{t('loading')}</p>
-        ) : row ? (
-          <>
-            <div className="instructionModalHeader">
-              <div className="instructionModalHeading">
-                <h2 id="instructionModalTitle">{instructionTitle(row, i18n.language)}</h2>
-                {row.created_at ? (
-                  <p className="muted small instructionModalMeta">
-                    {formatInstructionDate(row.created_at, i18n.language)}
-                  </p>
+        <div
+          className="modalCard wide instructionViewModal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="instructionModalTitle"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {loading ? (
+            <p className="muted instructionModalLoading">{t('loading')}</p>
+          ) : row ? (
+            <>
+              <div className="instructionModalHeader">
+                <div className="instructionModalHeading">
+                  <h2 id="instructionModalTitle">{instructionTitle(row, i18n.language)}</h2>
+                  {row.created_at ? (
+                    <p className="muted small instructionModalMeta">
+                      {formatInstructionDate(row.created_at, i18n.language)}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="instructionModalHeaderActions">
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      {t('deleteInstruction')}
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn btn-secondary" onClick={onClose}>
+                    {t('close')}
+                  </button>
+                </div>
+              </div>
+              <div className="instructionModalBody formStack">
+                {instructionBody(row, i18n.language) ? (
+                  <p className="instructionBody">{instructionBody(row, i18n.language)}</p>
+                ) : (
+                  <p className="muted">{t('instructionNoBody')}</p>
+                )}
+                <InstructionFilesList files={row.files || []} />
+                {audience === 'wali' && row.recipients?.length ? (
+                  <div className="instructionRecipientsBlock">
+                    <h3>{t('instructionRecipients')}</h3>
+                    <p className="muted small">
+                      {row.recipients.map((r: any) => r.user?.name || r.user?.username).join(' · ')}
+                    </p>
+                  </div>
                 ) : null}
               </div>
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                {t('close')}
-              </button>
-            </div>
-            <div className="instructionModalBody formStack">
-              {instructionBody(row, i18n.language) ? (
-                <p className="instructionBody">{instructionBody(row, i18n.language)}</p>
-              ) : (
-                <p className="muted">{t('instructionNoBody')}</p>
-              )}
-              <InstructionFilesList files={row.files || []} token={token} />
-              {audience === 'wali' && row.recipients?.length ? (
-                <div className="instructionRecipientsBlock">
-                  <h3>{t('instructionRecipients')}</h3>
-                  <p className="muted small">
-                    {row.recipients.map((r: any) => r.user?.name || r.user?.username).join(' · ')}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="muted">{t('errorGeneric')}</p>
-            <div className="modalActions">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                {t('close')}
-              </button>
-            </div>
-          </>
-        )}
+            </>
+          ) : (
+            <>
+              <p className="muted">{t('errorGeneric')}</p>
+              <div className="modalActions">
+                <button type="button" className="btn btn-secondary" onClick={onClose}>
+                  {t('close')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+
+      <ConfirmActionModal
+        open={confirmDelete}
+        title={t('deleteInstructionConfirmTitle')}
+        message={t('deleteInstructionConfirmMessage')}
+        confirmLabel={t('delete')}
+        variant="danger"
+        loading={deleting}
+        onConfirm={() => {
+          void confirmDeleteInstruction()
+        }}
+        onClose={() => {
+          if (!deleting) setConfirmDelete(false)
+        }}
+      />
+    </>
   )
 }
 
 function useOpenInstructionFromState() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [openId, setOpenId] = useState<number | null>(null)
+  const [openId, setOpenId] = useState<EntityIdParam | null>(null)
 
   useEffect(() => {
-    const state = location.state as { openInstructionId?: number } | null
-    const id = state?.openInstructionId
+    const state = location.state as { openInstructionId?: EntityIdParam } | null
+    const id = asEntityId(state?.openInstructionId)
     if (!id) return
-    setOpenId(Number(id))
+    setOpenId(id)
     navigate(location.pathname, { replace: true, state: {} })
   }, [location.state, location.pathname, navigate])
 
@@ -188,8 +246,8 @@ function useOpenInstructionFromState() {
 
 function InstructionDetailRedirect({ listPath }: { listPath: string }) {
   const { id } = useParams()
-  const instructionId = id ? Number(id) : NaN
-  if (!Number.isFinite(instructionId)) {
+  const instructionId = asEntityId(id)
+  if (!instructionId) {
     return <Navigate to={listPath} replace />
   }
   return <Navigate to={listPath} replace state={{ openInstructionId: instructionId }} />
@@ -197,6 +255,7 @@ function InstructionDetailRedirect({ listPath }: { listPath: string }) {
 
 export function WaliInstructionsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
+  const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
   const { openId, setOpenId } = useOpenInstructionFromState()
   const listQuery = useInstructionsListQuery(token, 'wali', { page, pageSize: DEFAULT_PAGE_SIZE })
@@ -205,14 +264,19 @@ export function WaliInstructionsPage({ token }: Props) {
   const isInitialLoading = listQuery.isLoading && !listQuery.data
   const isRefreshing = listQuery.isFetching && !listQuery.isLoading
 
+  async function refreshAfterDelete() {
+    await invalidate({ instructions: true, hubCounts: true })
+    notifyHubCountsRefresh()
+  }
+
   return (
     <div className="page instructionsPage">
       <div className="pageHeader row">
         <h1>{t('navWaliInstructions')}</h1>
-        <Link className="btn btn-primary" to="/wali/instructions/new">
+        <Link className="btn btn-primary" to="/governor/instructions/new">
           {t('createInstruction')}
         </Link>
-        <BackButton fallbackTo="/wali" />
+        <BackButton fallbackTo="/governor" />
       </div>
       <p className="muted small instructionsListHint">{t('instructionsListHint')}</p>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
@@ -228,7 +292,7 @@ export function WaliInstructionsPage({ token }: Props) {
                 <button
                   type="button"
                   className="instructionListItem"
-                  onClick={() => setOpenId(Number(row.id))}
+                  onClick={() => setOpenId(row.id)}
                 >
                   <span className="instructionListTitle">{instructionTitle(row, i18n.language)}</span>
                   <span className="instructionListMeta muted small">
@@ -255,6 +319,9 @@ export function WaliInstructionsPage({ token }: Props) {
           audience="wali"
           instructionId={openId}
           onClose={() => setOpenId(null)}
+          onDeleted={() => {
+            void refreshAfterDelete()
+          }}
         />
       ) : null}
     </div>
@@ -268,13 +335,13 @@ export function WaliInstructionCreatePage({ token }: Props) {
   const invalidate = useInvalidateAppQueries()
   const [users, setUsers] = useState<any[]>([])
   const [allUsers, setAllUsers] = useState(true)
-  const [selected, setSelected] = useState<number[]>([])
+  const [selected, setSelected] = useState<EntityIdParam[]>([])
   const [userSearch, setUserSearch] = useState('')
   const [titleAr, setTitleAr] = useState('')
   const [titleFr, setTitleFr] = useState('')
   const [bodyAr, setBodyAr] = useState('')
   const [bodyFr, setBodyFr] = useState('')
-  const [uploadedFiles, setUploadedFiles] = useState<{ id: number; name: string }[]>([])
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: EntityIdParam; name: string }[]>([])
   const [uploading, setUploading] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [uploadPercent, setUploadPercent] = useState(0)
@@ -305,9 +372,12 @@ export function WaliInstructionCreatePage({ token }: Props) {
 
   const pagedUsers = paginateSlice(filteredUsers, userPage, DEFAULT_PAGE_SIZE)
 
-  function toggleUser(userId: number, enabled: boolean) {
+  function toggleUser(userId: EntityIdParam, enabled: boolean) {
+    const key = String(userId)
     setSelected((prev) =>
-      enabled ? [...new Set([...prev, userId])] : prev.filter((id) => id !== userId),
+      enabled
+        ? [...new Set([...prev.map(String), key])]
+        : prev.filter((id) => String(id) !== key),
     )
   }
 
@@ -336,7 +406,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
           })
           perFileProgressRef.current[fileIndex] = 100
           setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
-          return { id: Number(res.file.id), name: res.file.original_name }
+          return { id: res.file.id, name: res.file.original_name }
         }),
         3,
       )
@@ -378,7 +448,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
       })
       await invalidate({ instructions: true, hubCounts: true })
       snack.show(t('save'), 'success')
-      navigate('/wali/instructions')
+      navigate('/governor/instructions')
     } catch {
       snack.show(t('errorGeneric'), 'error')
     } finally {
@@ -390,7 +460,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('createInstruction')}</h1>
-        <BackButton fallbackTo="/wali/instructions" />
+        <BackButton fallbackTo="/governor/instructions" />
       </div>
       <div className="card formStack">
         <label className="formField">
@@ -459,8 +529,8 @@ export function WaliInstructionCreatePage({ token }: Props) {
                 <label key={u.id} className="checkboxLabel">
                   <input
                     type="checkbox"
-                    checked={selected.includes(Number(u.id))}
-                    onChange={(e) => toggleUser(Number(u.id), e.target.checked)}
+                    checked={selected.some((id) => String(id) === String(u.id))}
+                    onChange={(e) => toggleUser(String(u.id), e.target.checked)}
                   />
                   {u.name || u.username}
                 </label>
@@ -480,7 +550,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
 }
 
 export function WaliInstructionDetailPage(_props: Props) {
-  return <InstructionDetailRedirect listPath="/wali/instructions" />
+  return <InstructionDetailRedirect listPath="/governor/instructions" />
 }
 
 export function OfficeInstructionsPage({ token }: Props) {
@@ -514,7 +584,7 @@ export function OfficeInstructionsPage({ token }: Props) {
             <p className="muted small">{t('unread')}: {counts.unread_instructions}</p>
           ) : null}
         </div>
-        <BackButton fallbackTo="/office" />
+        <BackButton fallbackTo="/cabinet" />
       </div>
       <p className="muted small instructionsListHint">{t('instructionsListHintOffice')}</p>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
@@ -526,7 +596,7 @@ export function OfficeInstructionsPage({ token }: Props) {
               <button
                 type="button"
                 className="instructionListItem"
-                onClick={() => setOpenId(Number(row.id))}
+                onClick={() => setOpenId(row.id)}
               >
                 <span className="instructionListTitleRow">
                   <span className="instructionListTitle">{instructionTitle(row, i18n.language)}</span>
@@ -565,7 +635,7 @@ export function OfficeInstructionsPage({ token }: Props) {
 }
 
 export function OfficeInstructionDetailPage(_props: Props) {
-  return <InstructionDetailRedirect listPath="/office/instructions" />
+  return <InstructionDetailRedirect listPath="/cabinet/instructions" />
 }
 
 export function ChefInstructionsPage({ token }: Props) {
@@ -582,7 +652,7 @@ export function ChefInstructionsPage({ token }: Props) {
     <div className="page instructionsPage">
       <div className="pageHeader row">
         <h1>{t('navWaliInstructions')}</h1>
-        <BackButton fallbackTo="/chef" />
+        <BackButton fallbackTo="/chief" />
       </div>
       <p className="muted small instructionsListHint">{t('instructionsListHintChef')}</p>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
@@ -594,7 +664,7 @@ export function ChefInstructionsPage({ token }: Props) {
               <button
                 type="button"
                 className="instructionListItem"
-                onClick={() => setOpenId(Number(row.id))}
+                onClick={() => setOpenId(row.id)}
               >
                 <span className="instructionListTitle">{instructionTitle(row, i18n.language)}</span>
                 <span className="instructionListMeta muted small">
@@ -626,5 +696,5 @@ export function ChefInstructionsPage({ token }: Props) {
 }
 
 export function ChefInstructionDetailPage(_props: Props) {
-  return <InstructionDetailRedirect listPath="/chef/instructions" />
+  return <InstructionDetailRedirect listPath="/chief/instructions" />
 }

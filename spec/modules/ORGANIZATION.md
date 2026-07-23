@@ -64,7 +64,7 @@
 
 #### Users
 
-- Admin creates accounts with role (including رئيس الديوان), initial password (8 digits, **CSPRNG** via `crypto.randomInt`), optional access template.
+- Admin creates accounts with role (including رئيس الديوان), initial password (8 digits, **CSPRNG** via `crypto.randomInt`), and **assigns the matching default access role template** on create (see `ACCESS_PROFILES.md`); do not leave new users without a template.
 - Block/unblock, reset password; cannot block own account; cannot edit/block/reset a **super-admin** unless you are that same user (self still cannot block/reset self).
 - **Soft-delete (super-admin only):** `DELETE /admin/users/:id` — see Super-admin section. Confirm dialog in UI.
 - **Reset password (users list):** shown only for **other** users (never on the logged-in admin’s own row; never on super-admin when actor is not super). Must open a **confirm dialog** before calling `POST /admin/users/:id/reset-password` — never reset on a single click. Confirm copy should name the target user (username / display name). On confirm → new random 8-digit code + credentials PDF modal (same as create).

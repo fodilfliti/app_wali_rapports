@@ -14,6 +14,11 @@ const {
   guideVideoCreateSchema,
   guideVideoPatchSchema
 } = require("../../validation/schemas/adminCrud");
+const {
+  findByPublicId,
+  resolveNumericId,
+  publicId,
+} = require("../access/idResolver");
 
 const AUDIENCES = ["general", "ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"];
 const PUBLIC_AUDIENCES = ["general", "OFFICE_USER", "CHEF_CABINET", "WALI"];
@@ -30,7 +35,7 @@ function parseBool(value, fallback = false) {
 function serializeGuideVideo(row) {
   const g = row.toJSON ? row.toJSON() : row;
   return {
-    id: g.id,
+    id: publicId(g),
     title_ar: g.title_ar,
     title_fr: g.title_fr,
     description_ar: g.description_ar,
@@ -118,10 +123,10 @@ async function resolveVideoFileId({ fileInput, uploadedFileId, actor, req, start
       startedAt,
     });
     await assertVideoFile(fileRow);
-    return fileRow.id;
+    return resolveNumericId(UploadedFile, fileRow.id);
   }
   if (uploadedFileId) {
-    const row = await UploadedFile.findByPk(Number(uploadedFileId));
+    const row = await findByPublicId(UploadedFile, uploadedFileId);
     if (!row || row.uploaded_by_user_id !== actor.id) {
       const err = new Error("File not found");
       err.status = 400;
@@ -142,7 +147,7 @@ function normalizeGuideVideoBody(body) {
     out.sort_order = Number(out.sort_order);
   }
   if (out.uploaded_file_id !== undefined && out.uploaded_file_id !== "") {
-    out.uploaded_file_id = Number(out.uploaded_file_id);
+    out.uploaded_file_id = String(out.uploaded_file_id);
   }
   return out;
 }
@@ -182,11 +187,11 @@ async function createGuideVideo({ fileInput, body }, actor, req) {
   });
 
   await audit(actor.id, "GUIDE_VIDEO_CREATE", { guide_video_id: row.id }, { req });
-  return getGuideVideoById(row.id, "ADMIN");
+  return getGuideVideoById(row.uuid || row.id, "ADMIN");
 }
 
 async function getGuideVideoById(id, viewerRole) {
-  const row = await GuideVideo.findByPk(id, {
+  const row = await findByPublicId(GuideVideo, id, {
     include: [{ model: UploadedFile, as: "file" }]
   });
   if (!row) {
@@ -205,7 +210,7 @@ async function getGuideVideoById(id, viewerRole) {
 async function patchGuideVideo(id, { fileInput, body }, actor, req) {
   const { requireSuperAdmin } = require("../organization/organizationService");
   requireSuperAdmin(actor);
-  const row = await GuideVideo.findByPk(id);
+  const row = await findByPublicId(GuideVideo, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -259,22 +264,23 @@ async function patchGuideVideo(id, { fileInput, body }, actor, req) {
   await row.save();
 
   await audit(actor.id, "GUIDE_VIDEO_UPDATE", { guide_video_id: row.id }, { req });
-  return getGuideVideoById(row.id, "ADMIN");
+  return getGuideVideoById(row.uuid || row.id, "ADMIN");
 }
 
 async function deleteGuideVideo(id, actor, req) {
   const { requireSuperAdmin } = require("../organization/organizationService");
   requireSuperAdmin(actor);
-  const row = await GuideVideo.findByPk(id);
+  const row = await findByPublicId(GuideVideo, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
   const fileId = row.uploaded_file_id;
+  const numericId = row.id;
   await row.destroy();
   if (fileId) await deleteUploadedFileById(fileId);
-  await audit(actor.id, "GUIDE_VIDEO_DELETE", { guide_video_id: Number(id) }, { req });
+  await audit(actor.id, "GUIDE_VIDEO_DELETE", { guide_video_id: numericId }, { req });
   return { ok: true };
 }
 

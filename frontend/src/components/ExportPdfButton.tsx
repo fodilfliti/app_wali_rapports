@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import type { RapportExportOpts } from '../api'
 import { useSnackbar } from '../snackbar/SnackbarContext'
+import { canExportExcel, type ContentKind } from '../utils/rapportNavigation'
 import { BusyButton } from './BusyButton'
 import { RapportExportPreviewModal } from './RapportExportPreviewModal'
 import { ExcelExportOptionsModal } from './ExcelExportOptionsModal'
 
 type Props = {
   token: string
-  rapportId: number
+  rapportId: EntityIdParam
   wali?: boolean
   chef?: boolean
   showHidden?: boolean
   /** When set, export that version snapshot (archive view). */
-  versionId?: number
+  versionId?: EntityIdParam
+  /** Kind gate for Excel — required for export menu accuracy. */
+  contentKind?: string | null
+  communeContentKind?: string | null
   /** Save draft before preview so export matches the editor */
   onPreparePreview?: () => Promise<void>
   /** Match sibling list actions (`btn-sm`). Default: standard `.btn`. */
@@ -28,6 +33,8 @@ export function RapportExportButtons({
   chef = false,
   showHidden = false,
   versionId,
+  contentKind,
+  communeContentKind,
   onPreparePreview,
   size,
 }: Props) {
@@ -43,6 +50,12 @@ export function RapportExportButtons({
   const [busy, setBusy] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const triggerClass = `btn btn-secondary exportMenuBtn${size === 'sm' ? ' btn-sm' : ''}`
+  const showExcel =
+    !!contentKind &&
+    canExportExcel({
+      content_kind: contentKind as ContentKind,
+      commune_content_kind: communeContentKind,
+    })
 
   const opts = { locale: i18n.language, wali, chef, showHidden, versionId, ...excelOpts }
 
@@ -146,9 +159,11 @@ export function RapportExportButtons({
             <button type="button" className="exportMenuItem btnDocx" onClick={exportDocx}>
               {t('exportDocx')}
             </button>
-            <button type="button" className="exportMenuItem btnExcel" onClick={exportExcel}>
-              {t('exportExcel')}
-            </button>
+            {showExcel ? (
+              <button type="button" className="exportMenuItem btnExcel" onClick={exportExcel}>
+                {t('exportExcel')}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

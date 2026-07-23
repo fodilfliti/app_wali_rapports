@@ -13,11 +13,31 @@ const {
   WebPushSubscription,
   WaliBroadcastRecipient,
   WaliInstructionRecipient,
+  AccessRoleTemplate,
   sequelize,
 } = require("../../db");
 const { audit } = require("../../services/audit");
 const { generateCredentialsPdf } = require("../../services/credentialsPdfService");
 const { revokeAllForUser } = require("../auth/refreshTokenService");
+const { findByPublicId, isUuid, withPublicIds, withPublicId, resolveNumericId } = require("../access/idResolver");
+const { assertCan, forbidden: policyForbidden } = require("../access/assertCan");
+
+const DEFAULT_TEMPLATE_SLUG_BY_ROLE = {
+  ADMIN: "ADMIN_FULL",
+  OFFICE_USER: "OFFICE_STANDARD",
+  CHEF_CABINET: "CHEF_STANDARD",
+  WALI: "WALI_STANDARD",
+};
+
+async function defaultAccessTemplateIdForRole(role) {
+  const slug = DEFAULT_TEMPLATE_SLUG_BY_ROLE[role];
+  if (!slug) return null;
+  const tpl = await AccessRoleTemplate.findOne({
+    where: { slug, is_active: true },
+    attributes: ["id"],
+  });
+  return tpl?.id ?? null;
+}
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -93,7 +113,7 @@ async function listDairas(query) {
     offset,
     limit
   });
-  return { dairas: rows, total: count, page, pageSize };
+  return { dairas: withPublicIds(rows), total: count, page, pageSize };
 }
 
 async function createDaira(data, actor, req) {
@@ -103,11 +123,11 @@ async function createDaira(data, actor, req) {
     code: data.code
   });
   await audit(actor.id, "DAIRA_CREATE", { daira_id: row.id, code: row.code }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function updateDaira(id, data, actor, req) {
-  const row = await Daira.findByPk(id);
+  const row = await findByPublicId(Daira, id);
   if (!row) notFound();
   await row.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
@@ -115,11 +135,11 @@ async function updateDaira(id, data, actor, req) {
     ...(data.code != null ? { code: data.code } : {})
   });
   await audit(actor.id, "DAIRA_UPDATE", { daira_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function hideDaira(id, actor, req) {
-  const row = await Daira.findByPk(id);
+  const row = await findByPublicId(Daira, id);
   if (!row) notFound();
   if (row.hidden_at) alreadyHidden();
   const now = new Date();
@@ -134,11 +154,11 @@ async function hideDaira(id, actor, req) {
     { daira_id: row.id, communes_cascaded: cascadeCount },
     { req },
   );
-  return row;
+  return withPublicId(row);
 }
 
 async function restoreDaira(id, actor, req) {
-  const row = await Daira.findByPk(id);
+  const row = await findByPublicId(Daira, id);
   if (!row) notFound();
   if (!row.hidden_at) notHidden();
   await row.update({ hidden_at: null });
@@ -152,7 +172,7 @@ async function restoreDaira(id, actor, req) {
     { daira_id: row.id, communes_cascaded: cascadeCount },
     { req },
   );
-  return row;
+  return withPublicId(row);
 }
 
 async function nextDirectionCode() {
@@ -174,7 +194,7 @@ async function listDirections(query) {
     offset,
     limit
   });
-  return { directions: rows, total: count, page, pageSize };
+  return { directions: withPublicIds(rows), total: count, page, pageSize };
 }
 
 async function createDirection(data, actor, req) {
@@ -185,11 +205,11 @@ async function createDirection(data, actor, req) {
     code
   });
   await audit(actor.id, "DIRECTION_CREATE", { direction_id: row.id, code: row.code }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function updateDirection(id, data, actor, req) {
-  const row = await Direction.findByPk(id);
+  const row = await findByPublicId(Direction, id);
   if (!row) notFound();
   await row.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
@@ -197,81 +217,106 @@ async function updateDirection(id, data, actor, req) {
     ...(data.code != null ? { code: data.code } : {})
   });
   await audit(actor.id, "DIRECTION_UPDATE", { direction_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function hideDirection(id, actor, req) {
-  const row = await Direction.findByPk(id);
+  const row = await findByPublicId(Direction, id);
   if (!row) notFound();
   if (row.hidden_at) alreadyHidden();
   await row.update({ hidden_at: new Date() });
   await audit(actor.id, "DIRECTION_HIDE", { direction_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function restoreDirection(id, actor, req) {
-  const row = await Direction.findByPk(id);
+  const row = await findByPublicId(Direction, id);
   if (!row) notFound();
   if (!row.hidden_at) notHidden();
   await row.update({ hidden_at: null });
   await audit(actor.id, "DIRECTION_RESTORE", { direction_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function listMunicipalities(query) {
   const { page, pageSize, offset, limit } = parsePagination(query);
   const where = applyHiddenScope(refSearchWhere(query.q), query);
-  if (query.daira_id) where.daira_id = query.daira_id;
+  if (query.daira_id) {
+    const dairaNumericId = await resolveNumericId(Daira, query.daira_id);
+    if (!dairaNumericId) {
+      return { municipalities: [], total: 0, page, pageSize };
+    }
+    where.daira_id = dairaNumericId;
+  }
   const { rows, count } = await Municipality.findAndCountAll({
     where,
     order: [["code", "ASC"]],
     offset,
     limit,
-    include: [{ association: "daira", attributes: ["id", "code", "name_ar", "name_fr"] }]
+    include: [{ association: "daira", attributes: ["id", "uuid", "code", "name_ar", "name_fr"] }]
   });
-  return { municipalities: rows, total: count, page, pageSize };
+  return {
+    municipalities: rows.map((r) => {
+      const plain = withPublicId(r);
+      if (plain.daira) {
+        plain.daira = withPublicId(plain.daira);
+        plain.daira_id = plain.daira.id;
+      }
+      return plain;
+    }),
+    total: count,
+    page,
+    pageSize,
+  };
 }
 
 async function createMunicipality(data, actor, req) {
+  const dairaNumericId = await resolveNumericId(Daira, data.daira_id);
+  if (!dairaNumericId) notFound();
   const muni = await Municipality.create({
     name_ar: data.name_ar,
     name_fr: data.name_fr,
     code: data.code,
-    daira_id: data.daira_id
+    daira_id: dairaNumericId
   });
   await audit(actor.id, "MUNICIPALITY_CREATE", { municipality_id: muni.id, code: muni.code }, { req });
-  return muni;
+  return withPublicId(muni);
 }
 
 async function updateMunicipality(id, data, actor, req) {
-  const muni = await Municipality.findByPk(id);
+  const muni = await findByPublicId(Municipality, id);
   if (!muni) notFound();
+  let nextDairaId;
+  if (data.daira_id != null) {
+    nextDairaId = await resolveNumericId(Daira, data.daira_id);
+    if (!nextDairaId) notFound();
+  }
   await muni.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
     ...(data.code != null ? { code: data.code } : {}),
-    ...(data.daira_id != null ? { daira_id: data.daira_id } : {})
+    ...(data.daira_id != null ? { daira_id: nextDairaId } : {})
   });
   await audit(actor.id, "MUNICIPALITY_UPDATE", { municipality_id: muni.id }, { req });
-  return muni;
+  return withPublicId(muni);
 }
 
 async function hideMunicipality(id, actor, req) {
-  const muni = await Municipality.findByPk(id);
+  const muni = await findByPublicId(Municipality, id);
   if (!muni) notFound();
   if (muni.hidden_at) alreadyHidden();
   await muni.update({ hidden_at: new Date() });
   await audit(actor.id, "MUNICIPALITY_HIDE", { municipality_id: muni.id }, { req });
-  return muni;
+  return withPublicId(muni);
 }
 
 async function restoreMunicipality(id, actor, req) {
-  const muni = await Municipality.findByPk(id);
+  const muni = await findByPublicId(Municipality, id);
   if (!muni) notFound();
   if (!muni.hidden_at) notHidden();
   await muni.update({ hidden_at: null });
   await audit(actor.id, "MUNICIPALITY_RESTORE", { municipality_id: muni.id }, { req });
-  return muni;
+  return withPublicId(muni);
 }
 
 function userSearchWhere(q, role) {
@@ -292,9 +337,18 @@ async function listUsers(query) {
     order: [["id", "ASC"]],
     offset,
     limit,
-    include: [{ association: "department", attributes: ["id", "name_ar", "name_fr"] }]
+    include: [{ association: "department", attributes: ["id", "uuid", "name_ar", "name_fr"] }]
   });
-  return { users: rows, total: count, page, pageSize };
+  return {
+    users: rows.map((u) => {
+      const plain = withPublicId(u);
+      if (plain.department) plain.department = withPublicId(plain.department);
+      return plain;
+    }),
+    total: count,
+    page,
+    pageSize,
+  };
 }
 
 function randomPassword8() {
@@ -304,12 +358,21 @@ function randomPassword8() {
 }
 
 async function createUser(data, actor, req) {
+  try {
+    assertCan(actor, "organization.users.manage");
+  } catch {
+    if (actor.role !== "ADMIN") throw policyForbidden();
+  }
   const existing = await User.findOne({ where: { username: data.username } });
   if (existing) {
     const err = new Error("errorUsernameExists");
     err.status = 409;
     throw err;
   }
+  const access_role_template_id =
+    data.access_role_template_id != null
+      ? data.access_role_template_id
+      : await defaultAccessTemplateIdForRole(data.role);
   const initialPassword = randomPassword8();
   const user = await User.create({
     username: data.username,
@@ -317,6 +380,7 @@ async function createUser(data, actor, req) {
     role: data.role,
     department_id: data.department_id ?? null,
     job_title: data.job_title ?? null,
+    access_role_template_id,
     password_hash: await bcrypt.hash(initialPassword, 10),
     is_blocked: false
   });
@@ -330,7 +394,12 @@ async function createUser(data, actor, req) {
   await audit(
     actor.id,
     "USER_CREATE",
-    { user_id: user.id, role: user.role, pdf_url: pdf.file_url },
+    {
+      user_id: user.id,
+      role: user.role,
+      access_role_template_id,
+      pdf_url: pdf.file_url,
+    },
     { req }
   );
   return {
@@ -341,7 +410,7 @@ async function createUser(data, actor, req) {
 }
 
 async function updateUser(id, data, actor, req) {
-  const user = await User.findByPk(id);
+  const user = await findByPublicId(User, id);
   if (!user || user.deleted_at) {
     const err = new Error("Not found");
     err.status = 404;
@@ -358,7 +427,7 @@ async function updateUser(id, data, actor, req) {
 }
 
 async function toggleBlockUser(id, actor, req) {
-  const user = await User.findByPk(id);
+  const user = await findByPublicId(User, id);
   if (!user || user.deleted_at) {
     const err = new Error("Not found");
     err.status = 404;
@@ -379,7 +448,9 @@ async function toggleBlockUser(id, actor, req) {
 }
 
 async function resetUserPassword(id, actor, req) {
-  const user = await User.scope("withPassword").findByPk(id);
+  const user = await User.scope("withPassword").findOne({
+    where: isUuid(String(id)) ? { uuid: id } : { id: Number(id) },
+  });
   if (!user || user.deleted_at) {
     const err = new Error("Not found");
     err.status = 404;
@@ -415,7 +486,7 @@ async function resetUserPassword(id, actor, req) {
  */
 async function softDeleteUser(id, actor, req) {
   requireSuperAdmin(actor);
-  const user = await User.findByPk(id);
+  const user = await findByPublicId(User, id);
   if (!user || user.deleted_at) {
     const err = new Error("Not found");
     err.status = 404;

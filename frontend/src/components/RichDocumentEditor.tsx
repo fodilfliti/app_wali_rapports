@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { contentLocale } from '../config/features'
 import type { EmbeddedTable } from '../types/embeddedTable'
 import { pruneEmbeddedTables } from '../types/embeddedTable'
-import { fileUrl } from '../utils/media'
+import { signFileUrl } from '../api'
 import { getRichHtml, richHtmlIsEmpty } from '../utils/richDocument'
 import {
-  prepareRichHtmlForDisplay,
   prepareRichHtmlForSave,
+  usePreparedRichHtml,
 } from '../utils/richHtmlSecurity'
 import { embeddedTablesEqual, resolveEmbeddedTables } from '../utils/embeddedTableSchema'
 import { RichTextEditor } from './richText/RichTextEditor'
@@ -30,11 +31,11 @@ type Props = {
   onEmbeddedTablesChange?: (tables: EmbeddedTable[]) => void
   editable?: boolean
   token: string
-  rapportId?: number
+  rapportId?: EntityIdParam
   /** Create/persist draft before upload when rapportId is missing (title required). */
-  ensureRapportId?: () => Promise<number>
+  ensureRapportId?: () => Promise<EntityIdParam>
   onUploadError?: (err: unknown) => void
-  serviceId?: number
+  serviceId?: EntityIdParam
 }
 
 function SyncLinkedSchemaTables({
@@ -44,7 +45,7 @@ function SyncLinkedSchemaTables({
   onResolved,
 }: {
   token: string
-  serviceId?: number
+  serviceId?: EntityIdParam
   initial: EmbeddedTable[]
   onResolved?: (tables: EmbeddedTable[]) => void
 }) {
@@ -112,7 +113,7 @@ function RichDocumentEditorInner({
 }: Props) {
   const { t, i18n } = useTranslation()
   const locale = contentLocale(i18n.language)
-  const html = prepareRichHtmlForDisplay(getRichHtml(data, locale), token)
+  const html = usePreparedRichHtml(getRichHtml(data, locale))
   const { tables, upsertTable, updateTable, removeTable, editingId, setEditingId } = useSchemaTables()
   const [pickOpen, setPickOpen] = useState(false)
   const [insertTableId, setInsertTableId] = useState<string | null>(null)
@@ -142,6 +143,9 @@ function RichDocumentEditorInner({
 
   function handleHtmlChange(next: string) {
     const cleaned = prepareRichHtmlForSave(next)
+    const prevHtml = getRichHtml(data, locale)
+    // Don't wipe stored content with empty HTML from TipTap mount race.
+    if (richHtmlIsEmpty(cleaned) && !richHtmlIsEmpty(prevHtml)) return
     onChange(locale, cleaned)
     const pruned = pruneEmbeddedTables(cleaned, Object.values(tablesRef.current))
     if (pruned.length !== Object.values(tablesRef.current).length) {
@@ -230,8 +234,8 @@ function RichDocumentEditorInner({
             signal: opts?.signal,
             timeoutMs: opts?.timeoutMs ?? (isVideo ? 15 * 60 * 1000 : 5 * 60 * 1000),
           })
-          // Display URL may include access_token; save path strips it via prepareRichHtmlForSave.
-          return { id: res.file.id, url: fileUrl(token, res.file) }
+          // Display URL uses short-lived signed dl token; save path strips it via prepareRichHtmlForSave.
+          return { id: res.file.id, url: await signFileUrl(res.file.url_path) }
         }}
       />
     </div>
@@ -251,7 +255,7 @@ export function RichDocumentView({
 }) {
   // Match editor storage locale (AR-only when FR value inputs are off) + bilingual fallback in getRichHtml.
   const contentLang = contentLocale(locale)
-  const html = prepareRichHtmlForDisplay(getRichHtml(data, contentLang), token)
+  const html = usePreparedRichHtml(getRichHtml(data, contentLang))
   const tables = data?.embedded_tables || []
   const tableMap = Object.fromEntries(tables.map((t) => [t.id, t]))
   const ids = extractSchemaTableIds(html)

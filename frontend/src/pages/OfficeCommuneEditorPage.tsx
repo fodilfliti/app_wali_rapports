@@ -20,6 +20,7 @@ import { OfficeRapportDeleteControls } from "../components/RapportDeleteControls
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import type { EmbeddedTable } from "../types/embeddedTable";
 import { mergeRichHtmlIntoData } from "../utils/richDocument";
+import { buildCommuneDefaultRichHtmlAr } from "../utils/documentDefaults";
 import { markOfficeRapportOpened } from "../utils/officeRapportList";
 import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
 import type { MediaFile, MediaRow } from "../utils/media";
@@ -27,6 +28,8 @@ import { MediaRowsEditor, MediaRowsView } from "../components/MediaBlocks";
 import { countFinishedRows, type TableRowFilterMode } from "../utils/tableRowMeta";
 import { reorderRowsArray } from "../utils/tableRowReorder";
 import type { TableMeta } from "../utils/tableLayout";
+import type { EntityIdParam } from "../api";
+import { officeListeHubPath } from "@wali/routes";
 
 type Props = { token: string };
 
@@ -40,16 +43,12 @@ type CommuneContent = {
 };
 
 export function OfficeCommuneEditorPage({ token }: Props) {
-  const { serviceId, municipalityCode } = useParams();
+  const { serviceId, entityKey } = useParams();
   const [searchParams] = useSearchParams();
-  const rapportTypeId = searchParams.get("rapport_type_id")
-    ? Number(searchParams.get("rapport_type_id"))
-    : undefined;
-  const rapportIdParam = searchParams.get("rapport_id")
-    ? Number(searchParams.get("rapport_id"))
-    : undefined;
-  const sid = Number(serviceId);
-  const code = municipalityCode || "";
+  const rapportTypeId = searchParams.get("rapport_type_id") || undefined;
+  const rapportIdParam = searchParams.get("rapport_id") || undefined;
+  const sid = serviceId || undefined;
+  const code = entityKey ? decodeURIComponent(entityKey) : "";
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
@@ -68,24 +67,24 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   const [rowFilterMode, setRowFilterMode] = useState<TableRowFilterMode>("active");
   const [tableMeta, setTableMeta] = useState<TableMeta>({});
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
-  const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
+  const [mediaFiles, setMediaFiles] = useState<Record<string, MediaFile>>({});
   const [returningToDraft, setReturningToDraft] = useState(false);
   const [startingNewVersion, setStartingNewVersion] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancellingDelete, setCancellingDelete] = useState(false);
-  const createdIdRef = useRef<number | null>(
-    Number.isFinite(rapportIdParam) ? (rapportIdParam as number) : null,
-  );
+  const createdIdRef = useRef<string | null>(rapportIdParam ? String(rapportIdParam) : null);
 
-  const listPath = `/office/services/${sid}/communes${
-    rapportTypeId || rapportIdParam
-      ? `?${new URLSearchParams({
-          ...(rapportTypeId ? { rapport_type_id: String(rapportTypeId) } : {}),
-          ...(rapportIdParam ? { rapport_id: String(rapportIdParam) } : {}),
-        }).toString()}`
-      : ""
-  }`;
-  const rapportId = workspace?.rapport?.id as number | undefined;
+  const listPath = sid
+    ? `${officeListeHubPath(sid)}${
+        rapportTypeId || rapportIdParam
+          ? `?${new URLSearchParams({
+              ...(rapportTypeId ? { rapport_type_id: String(rapportTypeId) } : {}),
+              ...(rapportIdParam ? { rapport_id: String(rapportIdParam) } : {}),
+            }).toString()}`
+          : ""
+      }`
+    : "/cabinet/services";
+  const rapportId = workspace?.rapport?.id as EntityIdParam | undefined;
 
   const load = useCallback(async () => {
     if (!sid || !code) return;
@@ -117,7 +116,11 @@ export function OfficeCommuneEditorPage({ token }: Props) {
 
       if (!ws.rapport?.id) {
         setVersions([]);
-        setContent({ rich_html_ar: "", rich_html_fr: "" });
+        const nameAr = entity?.name_ar || "";
+        setContent({
+          rich_html_ar: buildCommuneDefaultRichHtmlAr(nameAr),
+          rich_html_fr: "",
+        });
         setEmbeddedTables([]);
         setCalendarEvents([]);
         setMediaRows([]);
@@ -183,7 +186,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
     load();
   }, [load]);
 
-  async function ensureCommuneRapportId(): Promise<number> {
+  async function ensureCommuneRapportId(): Promise<EntityIdParam> {
     if (workspace?.rapport?.id) return workspace.rapport.id;
     if (createdIdRef.current) return createdIdRef.current;
     if (!workspace?.rapportType?.id) {
@@ -201,14 +204,14 @@ export function OfficeCommuneEditorPage({ token }: Props) {
       data_json.included_entity_keys = workspace.included_entity_keys;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: Number(sid),
-      rapport_type_id: Number(workspace.rapportType.id),
+      service_id: sid as EntityIdParam,
+      rapport_type_id: workspace.rapportType.id,
       title: trimmed,
       data_json,
     });
-    createdIdRef.current = rapport.id as number;
+    createdIdRef.current = String(rapport.id);
     setWorkspace((prev: any) => (prev ? { ...prev, rapport } : prev));
-    return rapport.id as number;
+    return rapport.id;
   }
 
   async function save() {
@@ -331,29 +334,13 @@ export function OfficeCommuneEditorPage({ token }: Props) {
   }
 
   async function deleteCurrentRapport() {
-    if (!rapportId) return;
+    if (!rapportId || !code) return;
     setDeleting(true);
     try {
-      const result = await api.officeDeleteRapport(token, rapportId);
+      await api.clearCommuneEntityData(token, rapportId, code);
       await notifyHubCountsRefresh();
-      if (result.mode === "requested") {
-        snack.show(t("deleteRapportRequestSent"), "success");
-        load();
-      } else if (result.mode === "discard_draft_version") {
-        snack.show(t("deleteRapportDiscardVersionDone"), "success");
-        load();
-      } else if (result.mode === "reset_fresh_v1") {
-        snack.show(t("deleteRapportResetV1Done"), "success");
-        load();
-      } else {
-        snack.show(t("deleteRapportDone"), "success");
-        navigate(
-          rapportTypeId
-            ? `/office/services/${sid}/rapports/${rapportTypeId}`
-            : `/office/services/${sid}`,
-          { replace: true },
-        );
-      }
+      snack.show(t("deleteRapportResetV1Done"), "success");
+      navigate(listPath, { replace: true });
     } catch {
       snack.show(t("errorGeneric"), "error");
     } finally {
@@ -430,7 +417,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
         <div className="communeError card">
           <p>{t(loadError, { defaultValue: t("errorGeneric") })}</p>
           {loadError === "tableSchemaNotConfigured" ? (
-            <Link className="btn btn-primary" to={`/office/services/${sid}/config`}>
+            <Link className="btn btn-primary" to={`/cabinet/services/${sid}/config`}>
               {t("goToServiceConfig")}
             </Link>
           ) : null}
@@ -442,6 +429,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace?.rapport}
             versioningMode={workspace?.rapportType?.versioning_mode}
+            contentKind={workspace?.rapportType?.content_kind}
             editable={isEditable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}

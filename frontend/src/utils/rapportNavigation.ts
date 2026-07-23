@@ -1,7 +1,18 @@
+import type { EntityIdParam } from '../api'
 import type { HubIconName } from '../components/HubIcons'
+import {
+  canStartNewVersion,
+  canShowVersionArchive,
+  type ContentKind,
+} from '@wali/access-policy'
+import {
+  officeListeBulkPath,
+  officeListeEntityPath,
+  officeListeHubPath,
+} from '@wali/routes'
 
 export type RapportTypeNav = {
-  id: number
+  id: EntityIdParam
   name_ar?: string
   name_fr?: string
   content_kind: string
@@ -36,35 +47,35 @@ export function contentKindHubIcon(contentKind: string): HubIconName {
   return rapportTypeHubIcon({ content_kind: contentKind })
 }
 
-export function officeContentKindPath(serviceId: number, contentKind: string) {
-  return `/office/services/${serviceId}/kinds/${contentKind}`
+export function officeContentKindPath(serviceId: EntityIdParam, contentKind: string) {
+  return `/cabinet/services/${serviceId}/kinds/${contentKind}`
 }
 
-export function waliContentKindPath(userId: number, serviceId: number, contentKind: string) {
-  return `/wali/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
+export function waliContentKindPath(userId: EntityIdParam, serviceId: EntityIdParam, contentKind: string) {
+  return `/governor/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
 }
 
 export function reviewerContentKindPath(
   mode: import('./reviewerMode').ReviewerMode,
-  userId: number,
-  serviceId: number,
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
   contentKind: string,
 ) {
-  const base = mode === 'chef' ? '/chef' : '/wali'
+  const base = mode === 'chef' ? '/chief' : '/governor'
   return `${base}/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
 }
 
-export function waliRapportTypeListPath(userId: number, serviceId: number, rt: RapportTypeNav) {
-  return `/wali/office-users/${userId}/services/${serviceId}/rapports/${rt.id}`
+export function waliRapportTypeListPath(userId: EntityIdParam, serviceId: EntityIdParam, rt: RapportTypeNav) {
+  return `/governor/office-users/${userId}/services/${serviceId}/rapports/${rt.id}`
 }
 
 export function reviewerRapportTypeListPath(
   mode: import('./reviewerMode').ReviewerMode,
-  userId: number,
-  serviceId: number,
-  rapportTypeId: number,
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
+  rapportTypeId: EntityIdParam,
 ) {
-  const base = mode === 'chef' ? '/chef' : '/wali'
+  const base = mode === 'chef' ? '/chief' : '/governor'
   return `${base}/office-users/${userId}/services/${serviceId}/rapports/${rapportTypeId}`
 }
 
@@ -114,19 +125,19 @@ export function rapportTypeHubKindClass(
   return `hubTile--kind-${rt.content_kind}`
 }
 
-export function officeServiceHubPath(serviceId: number) {
-  return `/office/services/${serviceId}`
+export function officeServiceHubPath(serviceId: EntityIdParam) {
+  return `/cabinet/services/${serviceId}`
 }
 
-export function officeRapportTypeListPath(serviceId: number, rapportTypeId: number) {
-  return `/office/services/${serviceId}/rapports/${rapportTypeId}`
+export function officeRapportTypeListPath(serviceId: EntityIdParam, rapportTypeId: EntityIdParam) {
+  return `/cabinet/services/${serviceId}/rapports/${rapportTypeId}`
 }
 
 export function officeNewDocumentPath(
-  serviceId: number,
+  serviceId: EntityIdParam,
   opts: {
-    rapportTypeId: number
-    templateId?: number | null
+    rapportTypeId: EntityIdParam
+    templateId?: EntityIdParam | null
     skipDefault?: boolean
   },
 ) {
@@ -135,34 +146,34 @@ export function officeNewDocumentPath(
   })
   if (opts.templateId != null) q.set('template_id', String(opts.templateId))
   if (opts.skipDefault) q.set('skip_default', '1')
-  return `/office/services/${serviceId}/documents/new?${q.toString()}`
+  return `/cabinet/services/${serviceId}/documents/new?${q.toString()}`
 }
 
-export function officeRapportTypePath(serviceId: number, rt: RapportTypeNav) {
+export function officeRapportTypePath(serviceId: EntityIdParam, rt: RapportTypeNav) {
   return officeRapportTypeListPath(serviceId, rt.id)
 }
 
 export function officeRapportTypeWorkspacePath(
-  serviceId: number,
+  serviceId: EntityIdParam,
   rt: RapportTypeNav,
-  rapportId?: number,
+  rapportId?: EntityIdParam,
 ) {
   const q = new URLSearchParams({ rapport_type_id: String(rt.id) })
   if (rapportId) q.set('rapport_id', String(rapportId))
   const qs = q.toString()
   switch (rt.content_kind) {
     case 'table_grid':
-      return `/office/services/${serviceId}/table?${qs}`
+      return `/cabinet/services/${serviceId}/table?${qs}`
     case 'commune_list':
-      return `/office/services/${serviceId}/communes?${qs}`
+      return `${officeListeHubPath(String(serviceId))}?${qs}`
     case 'fiche_lecture':
       return rapportId
-        ? `/office/rapports/${rapportId}/document`
-        : `/office/services/${serviceId}/fiches?${qs}`
+        ? `/cabinet/rapports/${rapportId}/document`
+        : `/cabinet/services/${serviceId}/fiches?${qs}`
     case 'document_compose':
       return rapportId
-        ? `/office/rapports/${rapportId}/document`
-        : `/office/services/${serviceId}/documents?${qs}`
+        ? `/cabinet/rapports/${rapportId}/document`
+        : `/cabinet/services/${serviceId}/documents?${qs}`
     default:
       return officeRapportTypeListPath(serviceId, rt.id)
   }
@@ -181,13 +192,31 @@ export function canOfficeReturnToDraft(status: string) {
   )
 }
 
-/** Versioned + acknowledged — office may fork a new draft from the latest snapshot. */
+/**
+ * Versioned + acknowledged — office may fork a new draft.
+ * Requires `content_kind` so fiche_lecture never gets table-style new-version.
+ */
 export function canOfficeStartNewVersion(
   status?: string | null,
   versioningMode?: string | null,
+  contentKind?: string | null,
 ) {
-  return status === 'acknowledged' && versioningMode === 'versioned'
+  if (!contentKind) return false
+  return canStartNewVersion({
+    status,
+    versioning_mode: versioningMode,
+    content_kind: contentKind as ContentKind,
+  })
 }
+
+export {
+  canShowVersionArchive,
+  canExportExcel,
+  canShowWaliResponseExportBlock,
+  canOfficeEditRapportKind,
+  canAction,
+} from '@wali/access-policy'
+export type { ContentKind, ActionKey } from '@wali/access-policy'
 
 export function officeDeleteMode(rapport: {
   can_instant_delete?: boolean
@@ -222,17 +251,22 @@ export function isAwaitingReviewerResponse(status: string) {
 }
 
 /** Archived version UI for versioned types once at least one snapshot was submitted.
- * Fiche lecture / document composé are standalone files — never show version history. */
+ * Never for fiche_lecture; document_compose only when versioning_mode=versioned. */
 export function supportsRapportVersionArchive(
   rapportType?: { versioning_mode?: string; content_kind?: string } | null,
   versions: { submitted_at?: string | null }[] = [],
 ) {
   const kind = rapportType?.content_kind
-  if (kind === 'fiche_lecture' || kind === 'document_compose') return false
-  return (
-    rapportType?.versioning_mode === 'versioned' &&
-    versions.some((v) => v.submitted_at)
-  )
+  if (!kind) return false
+  if (
+    !canShowVersionArchive({
+      content_kind: kind as ContentKind,
+      versioning_mode: rapportType?.versioning_mode,
+    })
+  ) {
+    return false
+  }
+  return versions.some((v) => v.submitted_at)
 }
 
 export function latestSubmittedVersion<
@@ -249,17 +283,19 @@ export function canFinishRapport(status: string) {
 }
 
 export function officeRapportWorkspacePath(r: {
-  id: number
-  service_id?: number
-  rapport_type_id?: number
-  rapportType?: { content_kind?: string }
+  id: EntityIdParam
+  service_id?: EntityIdParam
+  rapport_type_id?: EntityIdParam
+  service?: { id?: EntityIdParam }
+  rapportType?: { id?: EntityIdParam; content_kind?: string }
 }) {
   const kind = r.rapportType?.content_kind
-  const sid = r.service_id
-  const typeId = r.rapport_type_id
+  // Prefer nested public ids (UUID) over raw FK fields that may still be BIGINT.
+  const sid = r.service?.id ?? r.service_id
+  const typeId = r.rapportType?.id ?? r.rapport_type_id
 
   if (kind === 'fiche_lecture' || kind === 'document_compose') {
-    return `/office/rapports/${r.id}/document`
+    return `/cabinet/rapports/${r.id}/document`
   }
 
   if (!sid) return null
@@ -269,8 +305,8 @@ export function officeRapportWorkspacePath(r: {
   q.set('rapport_id', String(r.id))
   const qs = q.toString()
 
-  if (kind === 'table_grid') return `/office/services/${sid}/table?${qs}`
-  if (kind === 'commune_list') return `/office/services/${sid}/communes?${qs}`
+  if (kind === 'table_grid') return `/cabinet/services/${sid}/table?${qs}`
+  if (kind === 'commune_list') return `${officeListeHubPath(String(sid))}?${qs}`
 
   return null
 }
@@ -280,28 +316,28 @@ export function isDirectWorkspaceKind(contentKind: string) {
 }
 
 export function officeEntityEditorPath(
-  serviceId: number,
+  serviceId: EntityIdParam,
   entityKeyOrCode: string,
-  opts?: { rapportTypeId?: number; rapportId?: number },
+  opts?: { rapportTypeId?: EntityIdParam; rapportId?: EntityIdParam },
 ) {
   const q = new URLSearchParams()
   if (opts?.rapportTypeId) q.set('rapport_type_id', String(opts.rapportTypeId))
   if (opts?.rapportId) q.set('rapport_id', String(opts.rapportId))
   const qs = q.toString()
-  return `/office/services/${serviceId}/communes/${encodeURIComponent(entityKeyOrCode)}${qs ? `?${qs}` : ''}`
+  return `${officeListeEntityPath(String(serviceId), entityKeyOrCode)}${qs ? `?${qs}` : ''}`
 }
 
 export const officeCommuneEditorPath = officeEntityEditorPath
 
 export function officeCommuneBulkPath(
-  serviceId: number,
-  opts?: { rapportTypeId?: number; rapportId?: number },
+  serviceId: EntityIdParam,
+  opts?: { rapportTypeId?: EntityIdParam; rapportId?: EntityIdParam },
 ) {
   const q = new URLSearchParams()
   if (opts?.rapportTypeId) q.set('rapport_type_id', String(opts.rapportTypeId))
   if (opts?.rapportId) q.set('rapport_id', String(opts.rapportId))
   const qs = q.toString()
-  return `/office/services/${serviceId}/communes/bulk${qs ? `?${qs}` : ''}`
+  return `${officeListeBulkPath(String(serviceId))}${qs ? `?${qs}` : ''}`
 }
 
 /** Flatten grouped contentKinds when rapportTypes is missing (older API). */

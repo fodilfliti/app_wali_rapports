@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "User",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       username: { type: DataTypes.STRING(120), allowNull: false, unique: true },
       name: { type: DataTypes.STRING(255), allowNull: true },
       password_hash: { type: DataTypes.STRING(255), allowNull: false },

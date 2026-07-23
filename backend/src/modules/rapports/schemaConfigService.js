@@ -16,6 +16,19 @@ const {
   remapDraftRapportsForSchemaChange,
 } = require("./schemaRowRemapService");
 const { hasBilingualText } = require("../../validation/bilingual");
+const { findByPublicId, resolveNumericId, withPublicId } = require("../access/idResolver");
+
+async function loadServiceWithTypes(serviceId) {
+  const service = await findByPublicId(Service, serviceId, {
+    include: [{ model: RapportType, as: "rapportTypes" }],
+  });
+  if (!service) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  return service;
+}
 
 const COLUMN_TYPES = new Set([
   "text",
@@ -109,7 +122,10 @@ async function listTableSchemas(query = {}) {
   const offset = (page - 1) * limit;
 
   if (query.service_id) {
-    const serviceId = Number(query.service_id);
+    const serviceId = await resolveNumericId(Service, query.service_id);
+    if (!serviceId) {
+      return { schemas: [], total: 0, page, pageSize: limit };
+    }
     const includeShared =
       query.include_shared === "1" || query.include_shared === "true";
     if (includeShared) {
@@ -153,14 +169,21 @@ async function listTableSchemas(query = {}) {
       {
         model: Service,
         as: "service",
-        attributes: ["id", "slug", "name_ar", "name_fr"],
+        attributes: ["id", "uuid", "slug", "name_ar", "name_fr"],
         required: false,
       },
     ],
   });
 
   return {
-    schemas: rows,
+    schemas: rows.map((row) => {
+      const plain = withPublicId(row);
+      if (plain.service) {
+        plain.service = withPublicId(plain.service);
+        plain.service_id = plain.service.id;
+      }
+      return plain;
+    }),
     total: count,
     page,
     totalPages: Math.max(1, Math.ceil(count / limit)),
@@ -176,8 +199,17 @@ async function createTableSchema(data, actor, req) {
       RapportTableSchema.findOne({ where: { slug: s } }),
     );
   }
+  let serviceId = null;
+  if (data.service_id) {
+    serviceId = await resolveNumericId(Service, data.service_id);
+    if (!serviceId) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
+  }
   const row = await RapportTableSchema.create({
-    service_id: data.service_id || null,
+    service_id: serviceId,
     slug,
     name_ar: data.name_ar,
     name_fr: data.name_fr,
@@ -191,11 +223,11 @@ async function createTableSchema(data, actor, req) {
     { schema_id: row.id, slug: row.slug },
     { req },
   );
-  return row;
+  return withPublicId(row);
 }
 
 async function updateTableSchema(id, data, actor, req) {
-  const row = await RapportTableSchema.findByPk(id);
+  const row = await findByPublicId(RapportTableSchema, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -206,17 +238,30 @@ async function updateTableSchema(id, data, actor, req) {
   if (data.columns) {
     await remapDraftRapportsForSchemaChange(row.slug, oldColumns, data.columns);
   }
+  let nextServiceId;
+  if (data.service_id !== undefined) {
+    if (data.service_id == null || data.service_id === "") {
+      nextServiceId = null;
+    } else {
+      nextServiceId = await resolveNumericId(Service, data.service_id);
+      if (!nextServiceId) {
+        const err = new Error("Not found");
+        err.status = 404;
+        throw err;
+      }
+    }
+  }
   await row.update({
     ...(data.name_ar != null ? { name_ar: data.name_ar } : {}),
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
-    ...(data.service_id !== undefined ? { service_id: data.service_id } : {}),
+    ...(data.service_id !== undefined ? { service_id: nextServiceId } : {}),
     ...(data.columns ? { columns_json: data.columns } : {}),
     ...(data.layout_json !== undefined
       ? { layout_json: data.layout_json }
       : {}),
   });
   await audit(actor.id, "TABLE_SCHEMA_UPDATE", { schema_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function countTypesReferencingSchemaSlug(slug, { excludeTypeId } = {}) {
@@ -232,7 +277,7 @@ async function countTypesReferencingSchemaSlug(slug, { excludeTypeId } = {}) {
 }
 
 async function deleteTableSchema(id, actor, req, options = {}) {
-  const row = await RapportTableSchema.findByPk(id);
+  const row = await findByPublicId(RapportTableSchema, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -252,7 +297,7 @@ async function deleteTableSchema(id, actor, req, options = {}) {
     }
   }
   await row.destroy();
-  await audit(actor.id, "TABLE_SCHEMA_DELETE", { schema_id: id }, { req });
+  await audit(actor.id, "TABLE_SCHEMA_DELETE", { schema_id: row.id }, { req });
 }
 
 async function detachDocumentTemplatesFromType(typeId) {
@@ -281,7 +326,7 @@ async function detachDocumentTemplatesFromType(typeId) {
 }
 
 async function deleteRapportTypeIfUnused(id, actor, req) {
-  const row = await RapportType.findByPk(id);
+  const row = await findByPublicId(RapportType, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -348,39 +393,28 @@ async function rapportTypeIdsWithRapports(typeIds) {
 }
 
 async function listRapportTypes(serviceId) {
-  const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
-  });
-  if (!service) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  const service = await loadServiceWithTypes(serviceId);
   const types = service.rapportTypes || [];
   const usedIds = await rapportTypeIdsWithRapports(
     types.map((t) => Number(t.id)),
   );
   const rapportTypes = types.map((t) => {
-    const json = t.toJSON ? t.toJSON() : { ...t };
+    const json = withPublicId(t);
     return {
       ...json,
       can_delete:
-        json.content_kind !== "fiche_lecture" && !usedIds.has(Number(json.id)),
+        json.content_kind !== "fiche_lecture" && !usedIds.has(Number(t.id)),
     };
   });
-  return { service, rapportTypes };
+  return { service: withPublicId(service), rapportTypes };
 }
 
 async function createRapportType(serviceId, data, actor, req) {
-  const service = await Service.findByPk(serviceId);
-  if (!service) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  const service = await loadServiceWithTypes(serviceId);
+  const numericServiceId = service.id;
   if (data.content_kind === "fiche_lecture") {
     const existing = await RapportType.findOne({
-      where: { service_id: serviceId, content_kind: "fiche_lecture" },
+      where: { service_id: numericServiceId, content_kind: "fiche_lecture" },
     });
     if (existing) {
       const err = new Error("ficheLectureAlreadyExists");
@@ -404,13 +438,13 @@ async function createRapportType(serviceId, data, actor, req) {
     slug = await ensureUniqueSlug(
       base,
       async (s) =>
-        RapportType.findOne({ where: { slug: s, service_id: serviceId } }),
+        RapportType.findOne({ where: { slug: s, service_id: numericServiceId } }),
       "_",
     );
   }
 
   const row = await RapportType.create({
-    service_id: serviceId,
+    service_id: numericServiceId,
     slug,
     name_ar: data.name_ar,
     name_fr: data.name_fr,
@@ -431,14 +465,14 @@ async function createRapportType(serviceId, data, actor, req) {
   await audit(
     actor.id,
     "RAPPORT_TYPE_CREATE",
-    { rapport_type_id: row.id, service_id: serviceId },
+    { rapport_type_id: row.id, service_id: numericServiceId },
     { req },
   );
-  return row;
+  return withPublicId(row);
 }
 
 async function updateRapportType(id, data, actor, req) {
-  const row = await RapportType.findByPk(id);
+  const row = await findByPublicId(RapportType, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -473,11 +507,11 @@ async function updateRapportType(id, data, actor, req) {
     { rapport_type_id: row.id },
     { req },
   );
-  return row;
+  return withPublicId(row);
 }
 
 async function hideRapportType(id, actor, req) {
-  const row = await RapportType.findByPk(id);
+  const row = await findByPublicId(RapportType, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -501,11 +535,11 @@ async function hideRapportType(id, actor, req) {
     { rapport_type_id: row.id, service_id: row.service_id },
     { req },
   );
-  return row;
+  return withPublicId(row);
 }
 
 async function restoreRapportType(id, actor, req) {
-  const row = await RapportType.findByPk(id);
+  const row = await findByPublicId(RapportType, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -524,7 +558,7 @@ async function restoreRapportType(id, actor, req) {
     { rapport_type_id: row.id, service_id: row.service_id },
     { req },
   );
-  return row;
+  return withPublicId(row);
 }
 
 module.exports = {

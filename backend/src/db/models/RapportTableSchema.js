@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "RapportTableSchema",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       service_id: { type: DataTypes.BIGINT, allowNull: true },
       slug: { type: DataTypes.STRING(80), allowNull: false, unique: true },
       name_ar: { type: DataTypes.STRING(200), allowNull: false },

@@ -87,7 +87,7 @@ chefRouter.get(
           req.params.serviceId,
           req.user,
           {
-            waliForOfficeUserId: Number(req.params.userId),
+            waliForOfficeUserId: req.params.userId,
             forChef: true,
           },
         ),
@@ -280,7 +280,7 @@ chefRouter.get(
     try {
       await rapportService.assertVisibleToChef(req.params.id);
       const showHidden = req.query.showHidden === "1";
-      const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+      const versionId = req.query.versionId ? req.query.versionId : null;
       res.json(
         await workspaceService.getRapportView(
           req.params.id,
@@ -348,7 +348,7 @@ chefRouter.get(
       await rapportService.assertVisibleToChef(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
-      const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+      const versionId = req.query.versionId || null;
       const { buffer, filename } = await generateRapportPdf(req.params.id, {
         locale,
         showHidden,

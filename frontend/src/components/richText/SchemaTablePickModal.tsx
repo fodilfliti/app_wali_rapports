@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../../api'
 import * as api from '../../api'
 import type { EmbeddedTable } from '../../types/embeddedTable'
 import { cloneImportedTableSnapshot, emptyRowsForColumns } from '../../types/embeddedTable'
@@ -11,8 +12,8 @@ import { formatImportRapportLabel, SchemaTableImportPreview } from './SchemaTabl
 
 type Props = {
   token: string
-  serviceId: number
-  otherServiceIds?: number[]
+  serviceId: EntityIdParam
+  otherServiceIds?: EntityIdParam[]
   onConfirm: (table: EmbeddedTable, opts?: { openEdit?: boolean }) => void
   onClose: () => void
 }
@@ -20,7 +21,7 @@ type Props = {
 type Mode = 'schema' | 'create' | 'import'
 
 type SchemaRow = {
-  id?: number
+  id?: EntityIdParam
   slug: string
   name_ar: string
   name_fr: string
@@ -53,7 +54,10 @@ export function SchemaTablePickModal({ token, serviceId, otherServiceIds = [], o
   const [error, setError] = useState<string | null>(null)
   const [schemaPreviewTab, setSchemaPreviewTab] = useState<'data' | 'schema'>('data')
 
-  const serviceOptions = [serviceId, ...otherServiceIds.filter((id) => id !== serviceId)]
+  const serviceOptions = [
+    serviceId,
+    ...otherServiceIds.filter((id) => String(id) !== String(serviceId)),
+  ]
 
   const selectedSchema = useMemo(
     () => schemas.find((s) => s.slug === selectedSchemaSlug) || null,
@@ -129,7 +133,7 @@ export function SchemaTablePickModal({ token, serviceId, otherServiceIds = [], o
     setLoading(true)
     setError(null)
     try {
-      const { snapshot } = await api.getRapportTableSnapshot(token, Number(selectedRapportId))
+      const { snapshot } = await api.getRapportTableSnapshot(token, selectedRapportId)
       const table = cloneImportedTableSnapshot(snapshot)
       onConfirm(table, { openEdit: true })
     } catch {
@@ -284,7 +288,10 @@ export function SchemaTablePickModal({ token, serviceId, otherServiceIds = [], o
             {serviceOptions.length > 1 ? (
               <label>
                 {t('selectService')}
-                <select value={importServiceId} onChange={(e) => setImportServiceId(Number(e.target.value))}>
+                <select
+                  value={String(importServiceId)}
+                  onChange={(e) => setImportServiceId(e.target.value)}
+                >
                   {serviceOptions.map((id) => (
                     <option key={id} value={id}>
                       {t('service')} #{id}

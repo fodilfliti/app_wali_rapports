@@ -88,7 +88,7 @@ type Props = {
   /** Legacy bare-code commune map (dual-read). */
   communes?: Record<string, CommuneEntry>
   schema?: { columns?: Column[]; layout_json?: LayoutJson | null } | null
-  files?: Record<number, MediaFile>
+  files?: Record<string, MediaFile>
   communeContentKind?: 'table' | 'complex' | string | null
   targetKinds?: unknown
   /** Optional title for the combined table view */

@@ -6,6 +6,7 @@ const {
   RapportVersion,
   Municipality,
   RapportTableSchema,
+  User,
 } = require("../../db");
 const rapportService = require("./rapportService");
 const hubCountsService = require("./hubCountsService");
@@ -14,6 +15,13 @@ const {
   assertRapportAccess,
   resolveAccessLevel,
 } = require("./serviceAccessService");
+const {
+  findByPublicId,
+  resolveNumericId,
+  entityRefsEqual,
+  isUuid,
+  publicId,
+} = require("../access/idResolver");
 const {
   loadSchemaBySlug,
   buildDefaultTableRows,
@@ -34,7 +42,7 @@ const calendarEventService = require("./calendarEventService");
 const rapportViewService = require("./rapportViewService");
 const schemaConfigService = require("./schemaConfigService");
 
-const { buildCommuneDocumentDefaultBlocks } = require("./documentDefaults");
+const { buildCommuneDocumentDefaultBlocks, buildCommuneDocumentDefaultDataJson, buildDocumentDefaultDataJson, buildFicheDefaultDataJson } = require("./documentDefaults");
 
 const DOCUMENT_KINDS = new Set(["document_compose", "fiche_lecture"]);
 
@@ -111,7 +119,9 @@ function normalizeMediaRows(rows) {
   const ids = [];
   for (const row of rows || []) {
     for (const it of row.items || []) {
-      const id = Number(it.file_id);
+      if (it.file_id == null || it.file_id === "") continue;
+      // Keep UUID or legacy numeric string — never Number()-coerce UUIDs (NaN).
+      const id = String(it.file_id).trim();
       if (id) ids.push(id);
     }
   }
@@ -144,10 +154,68 @@ async function attachMediaAndCalendar(view, rapportId, actor) {
   return { ...view, files, calendarEvents };
 }
 
+async function loadServiceWithTypes(serviceId) {
+  const service = await findByPublicId(Service, serviceId, {
+    include: [{ model: RapportType, as: "rapportTypes" }],
+  });
+  if (!service) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  return service;
+}
+
+async function resolveOfficeUserNumericId(officeUserId) {
+  if (officeUserId == null || officeUserId === "") return null;
+  return resolveNumericId(User, officeUserId);
+}
+
+/**
+ * Match a type row (Sequelize or publicized JSON) to a public UUID or legacy BIGINT.
+ * After withPublicId, `type.id` is UUID — still compare via uuid / numeric resolve.
+ */
+async function rapportTypeIdMatches(type, rapportTypeId) {
+  if (rapportTypeId == null || rapportTypeId === "") return true;
+  if (!type) return false;
+  const requested = String(rapportTypeId);
+  const typeUuid =
+    type.uuid != null
+      ? String(type.uuid)
+      : isUuid(String(type.id))
+        ? String(type.id)
+        : null;
+  const typeIdStr = type.id != null ? String(type.id) : null;
+
+  if (isUuid(requested)) {
+    return requested === typeUuid || requested === typeIdStr;
+  }
+
+  const n = Number(requested);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  if (typeIdStr && !isUuid(typeIdStr) && Number(typeIdStr) === n) return true;
+
+  const typeNumeric =
+    typeIdStr && !isUuid(typeIdStr)
+      ? Number(typeIdStr)
+      : await resolveNumericId(RapportType, typeUuid || typeIdStr);
+  return typeNumeric != null && Number(typeNumeric) === n;
+}
+
+async function findRapportTypeByRef(types, rapportTypeId) {
+  if (!types?.length) return null;
+  for (const t of types) {
+    if (await rapportTypeIdMatches(t, rapportTypeId)) return t;
+  }
+  return null;
+}
+
 async function findFallbackServiceSchema(serviceId) {
   if (!serviceId) return null;
+  const numericServiceId = await resolveNumericId(Service, serviceId);
+  if (!numericServiceId) return null;
   const local = await RapportTableSchema.findOne({
-    where: { service_id: serviceId },
+    where: { service_id: numericServiceId },
     order: [["id", "ASC"]],
   });
   if (local) return local;
@@ -215,13 +283,13 @@ const CONTENT_KIND_ORDER = [
   "commune_list",
 ];
 
-function enrichContentKinds(groups, typeById) {
+function enrichContentKinds(groups, typeByNumericId) {
   const out = {};
   for (const [kind, types] of Object.entries(groups)) {
     const enriched = (types || [])
       .map(
         (t) =>
-          typeById[Number(t.id)] || {
+          typeByNumericId[Number(t.id)] || {
             ...(t.toJSON ? t.toJSON() : t),
             action_count: 0,
           },
@@ -250,14 +318,22 @@ function buildContentKindSummaries(contentKinds) {
 
 async function getServiceContentHub(serviceId, user, options = {}) {
   let accessLevel = "view";
+  const officeUserNumericId = options.waliForOfficeUserId
+    ? await resolveOfficeUserNumericId(options.waliForOfficeUserId)
+    : null;
   if (options.waliForOfficeUserId) {
     if (!["WALI", "CHEF_CABINET", "ADMIN"].includes(user?.role)) {
       const err = new Error("Forbidden");
       err.status = 403;
       throw err;
     }
+    if (!officeUserNumericId) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
     accessLevel = await resolveAccessLevel(
-      { id: Number(options.waliForOfficeUserId), role: "OFFICE_USER" },
+      { id: officeUserNumericId, role: "OFFICE_USER" },
       serviceId,
     );
     if (accessLevel === "none") {
@@ -268,14 +344,7 @@ async function getServiceContentHub(serviceId, user, options = {}) {
   } else {
     accessLevel = await assertServiceAccess(user, serviceId, "view");
   }
-  const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
-  });
-  if (!service) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  const service = await loadServiceWithTypes(serviceId);
   if (service.is_folder) {
     const err = new Error("serviceIsFolder");
     err.status = 400;
@@ -283,24 +352,20 @@ async function getServiceContentHub(serviceId, user, options = {}) {
   }
 
   let byType = {};
-  if (options.waliForOfficeUserId) {
+  if (officeUserNumericId) {
     const forChef =
       options.forChef === true || user?.role === "CHEF_CABINET";
     const counts = forChef
-      ? await hubCountsService.getChefServicePendingCounts(
-          Number(options.waliForOfficeUserId),
-        )
-      : await hubCountsService.getWaliServicePendingCounts(
-          Number(options.waliForOfficeUserId),
-        );
+      ? await hubCountsService.getChefServicePendingCounts(officeUserNumericId)
+      : await hubCountsService.getWaliServicePendingCounts(officeUserNumericId);
     byType = counts.byType;
   } else {
     const counts = await hubCountsService.getOfficeServiceActionCounts(user.id);
     byType = counts.byType;
   }
 
-  const sid = Number(serviceId);
-  const isWaliView = Boolean(options.waliForOfficeUserId);
+  const sid = Number(service.id);
+  const isWaliView = Boolean(officeUserNumericId);
   const includeHiddenTypes = Boolean(options.includeHiddenTypes);
   const hiddenTypesOnly = Boolean(options.hiddenTypesOnly);
 
@@ -319,34 +384,43 @@ async function getServiceContentHub(serviceId, user, options = {}) {
     );
   }
 
-  const rapportTypes = visibleTypes.map((t) => ({
-    id: t.id,
-    slug: t.slug,
-    name_ar: t.name_ar,
-    name_fr: t.name_fr,
-    content_kind: t.content_kind,
-    commune_content_kind: t.commune_content_kind || null,
-    versioning_mode: t.versioning_mode,
-    hidden_at: t.hidden_at,
-    action_count: Number(byType[`${sid}:${Number(t.id)}`]) || 0,
-  }));
+  const rapportTypes = visibleTypes.map((t) => {
+    const numericTypeId = Number(t.id);
+    return {
+      id: publicId(t),
+      slug: t.slug,
+      name_ar: t.name_ar,
+      name_fr: t.name_fr,
+      content_kind: t.content_kind,
+      commune_content_kind: t.commune_content_kind || null,
+      versioning_mode: t.versioning_mode,
+      hidden_at: t.hidden_at,
+      action_count: Number(byType[`${sid}:${numericTypeId}`]) || 0,
+      _numericId: numericTypeId,
+    };
+  });
   const usedTypeIds = await schemaConfigService.rapportTypeIdsWithRapports(
-    rapportTypes.map((t) => Number(t.id)),
+    visibleTypes.map((t) => Number(t.id)),
   );
   for (const t of rapportTypes) {
     t.can_delete =
-      t.content_kind !== "fiche_lecture" && !usedTypeIds.has(Number(t.id));
+      t.content_kind !== "fiche_lecture" && !usedTypeIds.has(t._numericId);
   }
-  const typeById = Object.fromEntries(
-    rapportTypes.map((t) => [Number(t.id), t]),
+  const typeByNumericId = Object.fromEntries(
+    rapportTypes.map((t) => [t._numericId, t]),
   );
   const rawKinds = groupContentKinds(visibleTypes);
-  const contentKinds = enrichContentKinds(rawKinds, typeById);
+  const contentKinds = enrichContentKinds(rawKinds, typeByNumericId);
   const contentKindSummaries = buildContentKindSummaries(contentKinds);
+
+  for (const t of rapportTypes) delete t._numericId;
+  for (const types of Object.values(contentKinds)) {
+    for (const t of types) delete t._numericId;
+  }
 
   return {
     service: {
-      id: service.id,
+      id: publicId(service),
       slug: service.slug,
       name_ar: service.name_ar,
       name_fr: service.name_fr,
@@ -366,14 +440,7 @@ async function getServiceWorkspace(
   rapportId = null,
 ) {
   const accessLevel = await assertServiceAccess(actor, serviceId, "view");
-  const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
-  });
-  if (!service) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  const service = await loadServiceWithTypes(serviceId);
 
   let rapportType;
   let rapport;
@@ -381,7 +448,7 @@ async function getServiceWorkspace(
   if (rapportId) {
     await assertRapportAccess(actor, rapportId, "view");
     rapport = await rapportService.getRapportDetail(rapportId);
-    if (Number(rapport.service_id) !== Number(serviceId)) {
+    if (!(await entityRefsEqual(Service, rapport.service_id, service.id))) {
       const err = new Error("Not found");
       err.status = 404;
       throw err;
@@ -392,18 +459,22 @@ async function getServiceWorkspace(
       err.status = 400;
       throw err;
     }
-    if (rapportTypeId && Number(rapportType.id) !== Number(rapportTypeId)) {
+    if (
+      rapportTypeId &&
+      !(await rapportTypeIdMatches(rapportType, rapportTypeId))
+    ) {
       const err = new Error("Rapport type mismatch");
       err.status = 400;
       throw err;
     }
   } else {
     if (rapportTypeId) {
-      rapportType = service.rapportTypes?.find(
-        (t) =>
-          Number(t.id) === Number(rapportTypeId) &&
-          t.content_kind === "table_grid",
+      const match = await findRapportTypeByRef(
+        service.rapportTypes,
+        rapportTypeId,
       );
+      rapportType =
+        match && match.content_kind === "table_grid" ? match : null;
     } else {
       rapportType = service.rapportTypes?.find(
         (t) => t.content_kind === "table_grid",
@@ -416,7 +487,7 @@ async function getServiceWorkspace(
     }
 
     const meta = rapportType.schema_json || {};
-    const schema = await resolveTableSchema(rapportType, serviceId);
+    const schema = await resolveTableSchema(rapportType, service.id);
     const columns = schema.columns_json || [];
     const layoutJson = schema.layout_json || {};
     const tableMeta = buildDefaultTableMeta(layoutJson, columns);
@@ -447,13 +518,13 @@ async function getServiceWorkspace(
         accessLevel === "manage" ? await buildDefaultTableRows(columns) : [];
       return {
         service: {
-          id: service.id,
+          id: publicId(service),
           slug: service.slug,
           name_ar: service.name_ar,
           name_fr: service.name_fr,
         },
         rapportType: {
-          id: rapportType.id,
+          id: publicId(rapportType),
           name_ar: rapportType.name_ar,
           name_fr: rapportType.name_fr,
           content_kind: rapportType.content_kind,
@@ -486,7 +557,7 @@ async function getServiceWorkspace(
     rapport = await rapportService.getRapportDetail(rapport.id);
   }
 
-  const schema = await resolveTableSchema(rapportType, serviceId);
+    const schema = await resolveTableSchema(rapportType, service.id);
   const columns = schema.columns_json || [];
   const layoutJson = schema.layout_json || {};
 
@@ -524,13 +595,13 @@ async function getServiceWorkspace(
 
   return {
     service: {
-      id: service.id,
+      id: publicId(service),
       slug: service.slug,
       name_ar: service.name_ar,
       name_fr: service.name_fr,
     },
     rapportType: {
-      id: rapportType.id,
+      id: publicId(rapportType),
       name_ar: rapportType.name_ar,
       name_fr: rapportType.name_fr,
       content_kind: rapportType.content_kind,
@@ -658,19 +729,13 @@ async function getDocumentList(
     100,
     Math.max(1, parseInt(query.pageSize, 10) || 20),
   );
-  const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
-  });
-  if (!service) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  const service = await loadServiceWithTypes(serviceId);
 
   let docTypes;
   if (rapportTypeId) {
-    const match = service.rapportTypes?.find(
-      (t) => Number(t.id) === Number(rapportTypeId),
+    const match = await findRapportTypeByRef(
+      service.rapportTypes,
+      rapportTypeId,
     );
     docTypes = match && DOCUMENT_KINDS.has(match.content_kind) ? [match] : [];
   } else {
@@ -701,7 +766,7 @@ async function getDocumentList(
   }
 
   const rapportWhere = {
-    service_id: serviceId,
+    service_id: service.id,
     rapport_type_id: { [Op.in]: typeIds },
   };
   if (hiddenOnly) {
@@ -739,11 +804,10 @@ async function getDocumentList(
 
 async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
   await assertServiceAccess(actor, serviceId, "manage");
-  const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
-  });
-  const rapportType = service?.rapportTypes?.find(
-    (t) => Number(t.id) === Number(rapportTypeId),
+  const service = await loadServiceWithTypes(serviceId);
+  const rapportType = await findRapportTypeByRef(
+    service.rapportTypes,
+    rapportTypeId,
   );
   if (!rapportType || !DOCUMENT_KINDS.has(rapportType.content_kind)) {
     const err = new Error("Invalid document type");
@@ -764,33 +828,30 @@ async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
     dataJson = opts.data_json;
   } else if (opts.template_id) {
     dataJson = await documentTemplateService.resolveInitialDataJson(
-      serviceId,
+      service.id,
       rapportType,
       opts.template_id,
     );
   } else if (!opts.skip_default) {
     dataJson = await documentTemplateService.resolveInitialDataJson(
-      serviceId,
+      service.id,
       rapportType,
       null,
     );
   } else {
-    const defaultBlocks = rapportType.schema_json?.default_blocks || [
-      {
-        type: "heading",
-        align: "center",
-        bold: true,
-        text_ar: rapportType.name_ar,
-        text_fr: rapportType.name_fr,
-      },
-      { type: "paragraph", text_ar: "", text_fr: "" },
-    ];
-    dataJson = { blocks: defaultBlocks };
+    // skip_default = no user template; still seed official wilaya letterhead.
+    dataJson =
+      rapportType.content_kind === "fiche_lecture"
+        ? buildFicheDefaultDataJson()
+        : buildDocumentDefaultDataJson({
+            titleAr: rapportType.name_ar,
+            titleFr: rapportType.name_fr,
+          });
   }
 
   return rapportService.createRapport(
     {
-      service_id: serviceId,
+      service_id: service.id,
       rapport_type_id: rapportType.id,
       title,
       reference_date: opts.reference_date || localeDate,
@@ -809,11 +870,10 @@ async function previewDocumentCreate(
   opts = {},
 ) {
   await assertServiceAccess(actor, serviceId, "manage");
-  const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
-  });
-  const rapportType = service?.rapportTypes?.find(
-    (t) => Number(t.id) === Number(rapportTypeId),
+  const service = await loadServiceWithTypes(serviceId);
+  const rapportType = await findRapportTypeByRef(
+    service.rapportTypes,
+    rapportTypeId,
   );
   if (!rapportType || !DOCUMENT_KINDS.has(rapportType.content_kind)) {
     const err = new Error("Invalid document type");
@@ -826,10 +886,17 @@ async function previewDocumentCreate(
   const documentTemplateService = require("./documentTemplateService");
   let data_json;
   if (opts.skip_default) {
-    data_json = { rich_html_ar: "<p></p>", rich_html_fr: "<p></p>" };
+    // No user template — keep official letterhead (fiche / fichier-style docs).
+    data_json =
+      rapportType.content_kind === "fiche_lecture"
+        ? buildFicheDefaultDataJson()
+        : buildDocumentDefaultDataJson({
+            titleAr: rapportType.name_ar,
+            titleFr: rapportType.name_fr,
+          });
   } else {
     data_json = await documentTemplateService.resolveInitialDataJson(
-      serviceId,
+      service.id,
       rapportType,
       opts.template_id || null,
     );
@@ -837,13 +904,13 @@ async function previewDocumentCreate(
 
   return {
     service: {
-      id: service.id,
+      id: publicId(service),
       slug: service.slug,
       name_ar: service.name_ar,
       name_fr: service.name_fr,
     },
     rapportType: {
-      id: rapportType.id,
+      id: publicId(rapportType),
       name_ar: rapportType.name_ar,
       name_fr: rapportType.name_fr,
       content_kind: rapportType.content_kind,
@@ -987,14 +1054,7 @@ async function getCommuneListWorkspace(
   rapportId = null,
 ) {
   const accessLevel = await assertServiceAccess(actor, serviceId, "view");
-  const service = await Service.findByPk(serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
-  });
-  if (!service) {
-    const err = new Error("Not found");
-    err.status = 404;
-    throw err;
-  }
+  const service = await loadServiceWithTypes(serviceId);
 
   let rapportType;
   let rapport;
@@ -1002,7 +1062,7 @@ async function getCommuneListWorkspace(
   if (rapportId) {
     await assertRapportAccess(actor, rapportId, "view");
     rapport = await rapportService.getRapportDetail(rapportId);
-    if (Number(rapport.service_id) !== Number(serviceId)) {
+    if (!(await entityRefsEqual(Service, rapport.service_id, service.id))) {
       const err = new Error("Not found");
       err.status = 404;
       throw err;
@@ -1013,18 +1073,22 @@ async function getCommuneListWorkspace(
       err.status = 400;
       throw err;
     }
-    if (rapportTypeId && Number(rapportType.id) !== Number(rapportTypeId)) {
+    if (
+      rapportTypeId &&
+      !(await rapportTypeIdMatches(rapportType, rapportTypeId))
+    ) {
       const err = new Error("Rapport type mismatch");
       err.status = 400;
       throw err;
     }
   } else {
     if (rapportTypeId) {
-      rapportType = service.rapportTypes?.find(
-        (t) =>
-          Number(t.id) === Number(rapportTypeId) &&
-          t.content_kind === "commune_list",
+      const match = await findRapportTypeByRef(
+        service.rapportTypes,
+        rapportTypeId,
       );
+      rapportType =
+        match && match.content_kind === "commune_list" ? match : null;
     } else {
       rapportType = service.rapportTypes?.find(
         (t) => t.content_kind === "commune_list",
@@ -1064,7 +1128,7 @@ async function getCommuneListWorkspace(
     }
   }
 
-  const schema = await resolveTableSchemaOptional(rapportType, serviceId);
+  const schema = await resolveTableSchemaOptional(rapportType, service.id);
   const columns = schema?.columns_json || [];
   const {
     normalizeTargetKinds,
@@ -1185,13 +1249,13 @@ async function getCommuneListWorkspace(
 
   return {
     service: {
-      id: service.id,
+      id: publicId(service),
       slug: service.slug,
       name_ar: service.name_ar,
       name_fr: service.name_fr,
     },
     rapportType: {
-      id: rapportType.id,
+      id: publicId(rapportType),
       name_ar: rapportType.name_ar,
       name_fr: rapportType.name_fr,
       content_kind: rapportType.content_kind,
@@ -1492,10 +1556,17 @@ async function getCommuneRows(rapportId, municipalityCode, actor) {
   };
 
   let blocks = communeEntry.blocks;
-  if (!blocks?.length) blocks = buildDefaultCommuneBlocks(fakeMuni);
+  let rich_html_ar = communeEntry.rich_html_ar || "";
+  let rich_html_fr = communeEntry.rich_html_fr || "";
+  if (!htmlHasContent(rich_html_ar) && !htmlHasContent(rich_html_fr)) {
+    const defaults = buildCommuneDocumentDefaultDataJson(fakeMuni);
+    rich_html_ar = defaults.rich_html_ar;
+    rich_html_fr = defaults.rich_html_fr;
+    if (!blocks?.length) blocks = defaults.blocks;
+  } else if (!blocks?.length) {
+    blocks = buildDefaultCommuneBlocks(fakeMuni);
+  }
 
-  const rich_html_ar = communeEntry.rich_html_ar || "";
-  const rich_html_fr = communeEntry.rich_html_fr || "";
   const embedded_tables = communeEntry.embedded_tables || [];
   const calendar_events = communeEntry.calendar_events || [];
   const media_rows = normalizeMediaRows(communeEntry.media_rows);
@@ -1628,6 +1699,59 @@ async function saveCommuneData(
     actor,
     req,
   );
+}
+
+/** Clear one commune/entity payload only — does not delete the list rapport. */
+async function clearCommuneEntityData(rapportId, municipalityCode, actor, req) {
+  await assertRapportAccess(actor, rapportId, "manage");
+  const rapport = await rapportService.getRapportDetail(rapportId);
+  if (rapport.rapportType?.content_kind !== "commune_list") {
+    const err = new Error("Not a commune list rapport");
+    err.status = 400;
+    throw err;
+  }
+  if (!["draft", "changes_requested"].includes(rapport.status)) {
+    const err = new Error("Cannot edit");
+    err.status = 409;
+    throw err;
+  }
+  const ref = await resolveEntityRef(municipalityCode);
+  const { ensureEntitiesMap, isEntityIncluded } = require("./entityKeys");
+  const { audit } = require("../../services/audit");
+  const dataJson = ensureEntitiesMap(rapport.currentVersion?.data_json || {});
+  if (!isEntityIncluded(dataJson, ref.entity_key)) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  const entities = { ...(dataJson.entities || {}) };
+  const communes = { ...(dataJson.communes || {}) };
+  entities[ref.entity_key] = {};
+  if (ref.kind === "commune") {
+    communes[ref.code] = {};
+  }
+  await rapportService.updateRapportDraft(
+    rapportId,
+    {
+      data_json: {
+        ...dataJson,
+        entities,
+        communes,
+      },
+    },
+    actor,
+    req,
+  );
+  await audit(
+    actor.id,
+    "RAPPORT_ENTITY_CLEAR",
+    {
+      rapport_id: rapport.id,
+      entity_key: ref.entity_key,
+    },
+    { req },
+  );
+  return rapportService.getRapportDetail(rapportId);
 }
 
 async function getWaliCommuneView(rapportId, versionId = null, markReview = true) {
@@ -1921,6 +2045,7 @@ module.exports = {
   saveBulkCommuneData,
   getCommuneRows,
   saveCommuneData,
+  clearCommuneEntityData,
   saveIncludedEntities,
   getRapportView,
 };

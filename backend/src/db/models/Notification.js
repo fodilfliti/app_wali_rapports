@@ -5,8 +5,11 @@ module.exports = (sequelize) =>
     "Notification",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       user_id: { type: DataTypes.BIGINT, allowNull: false },
+      user_uuid: { type: DataTypes.UUID, allowNull: true },
       rapport_id: { type: DataTypes.BIGINT, allowNull: true },
+      rapport_uuid: { type: DataTypes.UUID, allowNull: true },
       broadcast_id: { type: DataTypes.BIGINT, allowNull: true },
       instruction_id: { type: DataTypes.BIGINT, allowNull: true },
       wali_response_id: { type: DataTypes.BIGINT, allowNull: true },

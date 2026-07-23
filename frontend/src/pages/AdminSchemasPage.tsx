@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import * as api from '../api'
-
+import type { EntityIdParam } from '../api'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
 
@@ -78,13 +78,13 @@ export function AdminSchemasPage({ token }: Props) {
 
   const [services, setServices] = useState<any[]>([])
 
-  const [selectedServiceId, setSelectedServiceId] = useState<number | ''>('')
+  const [selectedServiceId, setSelectedServiceId] = useState<string>('')
 
   const [rapportTypes, setRapportTypes] = useState<any[]>([])
 
   const [schemaModal, setSchemaModal] = useState(false)
 
-  const [editingSchemaId, setEditingSchemaId] = useState<number | null>(null)
+  const [editingSchemaId, setEditingSchemaId] = useState<EntityIdParam | null>(null)
 
   const [editingIsSystem, setEditingIsSystem] = useState(false)
 
@@ -124,7 +124,7 @@ export function AdminSchemasPage({ token }: Props) {
     }
     try {
       const res = await api.listTableSchemas(token, {
-        serviceId: Number(selectedServiceId),
+        serviceId: selectedServiceId,
         q: schemaSearch.trim() || undefined,
         page: schemaPage,
         limit: SCHEMA_PAGE_SIZE,
@@ -169,7 +169,7 @@ export function AdminSchemasPage({ token }: Props) {
 
     try {
 
-      const res = await api.listServiceRapportTypes(token, Number(selectedServiceId))
+      const res = await api.listServiceRapportTypes(token, selectedServiceId)
 
       setRapportTypes(res.rapportTypes)
 
@@ -240,7 +240,7 @@ export function AdminSchemasPage({ token }: Props) {
 
     const loaded = loadSchemaEditorState(schema)
 
-    setEditingSchemaId(Number(schema.id))
+    setEditingSchemaId(schema.id)
 
     setEditingIsSystem(Boolean(schema.is_system))
 
@@ -315,7 +315,7 @@ export function AdminSchemasPage({ token }: Props) {
 
     const body = {
       ...buildSchemaSaveBody(schemaForm, draftColumns, draftHeaderGroups),
-      ...(editingSchemaId ? {} : { service_id: Number(selectedServiceId) }),
+      ...(editingSchemaId ? {} : { service_id: selectedServiceId }),
     }
 
     setSaving(true)
@@ -396,7 +396,7 @@ export function AdminSchemasPage({ token }: Props) {
 
       const names = bilingualPairForSave(typeForm.name_ar, typeForm.name_fr)
 
-      await api.createRapportType(token, Number(selectedServiceId), {
+      await api.createRapportType(token, selectedServiceId, {
 
         name_ar: names.ar,
 
@@ -466,7 +466,7 @@ export function AdminSchemasPage({ token }: Props) {
           <select
             value={selectedServiceId}
             onChange={(e) => {
-              setSelectedServiceId(e.target.value ? Number(e.target.value) : '')
+              setSelectedServiceId(e.target.value)
               setSchemaPage(1)
               setTypePage(1)
             }}
@@ -563,7 +563,7 @@ export function AdminSchemasPage({ token }: Props) {
                           <td>{localizedName(s, i18n.language)}</td>
                           <td>{(s.columns_json || []).length}</td>
                           <td>
-                            {s.service_id === Number(selectedServiceId) ? (
+                            {String(s.service_id) === String(selectedServiceId) ? (
                               t('schemasScopeService')
                             ) : s.is_system ? (
                               t('schemasScopeSystem')
@@ -763,14 +763,14 @@ export function AdminSchemasPage({ token }: Props) {
                   {schemas
                     .filter(
                       (s) =>
-                        s.service_id === Number(selectedServiceId) ||
+                        String(s.service_id) === String(selectedServiceId) ||
                         s.is_system ||
                         rapportTypes.some((rt) => rt.schema_json?.table_schema_slug === s.slug),
                     )
                     .map((s) => (
                       <option key={s.id} value={s.slug}>
                         {localizedName(s, i18n.language)}
-                        {s.service_id === Number(selectedServiceId) ? '' : ` (${t('schemasScopeLinked')})`}
+                        {String(s.service_id) === String(selectedServiceId) ? '' : ` (${t('schemasScopeLinked')})`}
                       </option>
                     ))}
                 </select>

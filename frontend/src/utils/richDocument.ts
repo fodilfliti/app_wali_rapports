@@ -41,9 +41,12 @@ export function blocksToHtml(blocks: any[] | undefined, locale: string): string 
     if (!text && block.type !== 'heading') continue
     const align = block.align === 'center' ? ' style="text-align: center"' : ''
     if (block.type === 'heading') {
-      parts.push(`<h2${align}>${text || '&nbsp;'}</h2>`)
+      const level = block.level === 3 || block.level === 1 ? block.level : 2
+      parts.push(`<h${level}${align}>${text || '&nbsp;'}</h${level}>`)
     } else {
-      parts.push(`<p${align}>${text || '&nbsp;'}</p>`)
+      // Official letterhead uses bold centered paragraphs (body size).
+      const inner = block.bold ? `<strong>${text || '&nbsp;'}</strong>` : text || '&nbsp;'
+      parts.push(`<p${align}>${inner}</p>`)
     }
   }
   return parts.length ? parts.join('') : '<p></p>'

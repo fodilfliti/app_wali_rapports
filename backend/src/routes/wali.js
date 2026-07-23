@@ -90,7 +90,7 @@ waliRouter.get(
           req.params.serviceId,
           req.user,
           {
-            waliForOfficeUserId: Number(req.params.userId),
+            waliForOfficeUserId: req.params.userId,
           },
         ),
       );
@@ -113,7 +113,7 @@ waliRouter.get(
       await rapportService.assertVisibleToWali(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const versionId = req.query.versionId
-        ? Number(req.query.versionId)
+        ? req.query.versionId
         : null;
       res.json(
         await workspaceService.getRapportView(
@@ -249,7 +249,7 @@ waliRouter.get(
       await rapportService.assertVisibleToWali(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
-      const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+      const versionId = req.query.versionId || null;
       const { buffer, filename } = await generateRapportPdf(req.params.id, {
         locale,
         showHidden,
@@ -279,7 +279,7 @@ waliRouter.get(
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
       const rowFilter = req.query.rowFilter;
-      const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+      const versionId = req.query.versionId || null;
       const { buffer, filename } = await generateRapportExcel(req.params.id, {
         locale,
         showHidden,
@@ -312,7 +312,7 @@ waliRouter.get(
       await rapportService.assertVisibleToWali(req.params.id);
       const showHidden = req.query.showHidden === "1";
       const locale = req.query.locale === "fr" ? "fr" : "ar";
-      const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+      const versionId = req.query.versionId || null;
       const { buffer, filename } = await generateRapportDocx(req.params.id, {
         locale,
         showHidden,
@@ -494,6 +494,20 @@ waliRouter.get(
         instruction: await instructionService.getInstruction(req.params.id, { asWali: true }),
       });
     } catch (e) {
+      next(e);
+    }
+  },
+);
+
+waliRouter.delete(
+  "/instructions/:id",
+  requirePermission("rapports.inbox.respond", "manage"),
+  async (req, res, next) => {
+    try {
+      res.json(await instructionService.deleteInstruction(req.params.id, req.user, req));
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },

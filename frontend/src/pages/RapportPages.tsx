@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { RapportListScopeFilter } from '../components/RapportListScopeFilter'
@@ -78,7 +79,7 @@ function isDocumentKind(r: any) {
 
 function openOfficeRapport(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   queryClient: ReturnType<typeof useQueryClient>,
   listKey: ReturnType<typeof queryKeys.rapports>,
 ) {
@@ -301,7 +302,7 @@ function RapportListFilterToolbar({
 
 /** Build list URL params preserving status_group + sort (+ optional service_id / finished). */
 function buildRapportListParams(opts: {
-  serviceId?: number
+  serviceId?: EntityIdParam
   statusGroup?: RapportStatusGroup
   sort?: RapportListSort
   finished?: boolean
@@ -321,7 +322,7 @@ export function OfficeRapportsListPage({ token }: Props) {
   const queryClient = useQueryClient()
   const invalidate = useInvalidateAppQueries()
   const [searchParams, setSearchParams] = useSearchParams()
-  const serviceId = searchParams.get('service_id') ? Number(searchParams.get('service_id')) : undefined
+  const serviceId = searchParams.get('service_id') || undefined
   const discussionView = searchParams.get('view') === 'discussion'
   const finishedView =
     searchParams.get('hidden') === '1' || searchParams.get('view') === 'finished'
@@ -333,12 +334,12 @@ export function OfficeRapportsListPage({ token }: Props) {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [submittingId, setSubmittingId] = useState<number | null>(null)
-  const [returningId, setReturningId] = useState<number | null>(null)
-  const [startingNewVersionId, setStartingNewVersionId] = useState<number | null>(null)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [cancellingDeleteId, setCancellingDeleteId] = useState<number | null>(null)
-  const [importFor, setImportFor] = useState<{ rapportId: number; serviceId: number; typeId: number } | null>(
+  const [submittingId, setSubmittingId] = useState<EntityIdParam | null>(null)
+  const [returningId, setReturningId] = useState<EntityIdParam | null>(null)
+  const [startingNewVersionId, setStartingNewVersionId] = useState<EntityIdParam | null>(null)
+  const [deletingId, setDeletingId] = useState<EntityIdParam | null>(null)
+  const [cancellingDeleteId, setCancellingDeleteId] = useState<EntityIdParam | null>(null)
+  const [importFor, setImportFor] = useState<{ rapportId: EntityIdParam; serviceId: EntityIdParam; typeId: EntityIdParam } | null>(
     null,
   )
   const { counts } = useOfficeHubCounts(token)
@@ -835,6 +836,7 @@ export function OfficeRapportsListPage({ token }: Props) {
                       canOfficeStartNewVersion(
                         r.status,
                         r.rapportType?.versioning_mode,
+                        r.rapportType?.content_kind,
                       ) ? (
                         <StartNewVersionConfirm onConfirm={() => startNewVersion(r.id, r)}>
                           {(openConfirm) => (
@@ -897,8 +899,8 @@ export function OfficeRapportsListPage({ token }: Props) {
 
 export function OfficeServiceRapportListPage({ token }: Props) {
   const { serviceId, rapportTypeId } = useParams()
-  const sid = Number(serviceId)
-  const typeId = Number(rapportTypeId)
+  const sid = serviceId ?? ''
+  const typeId = rapportTypeId ?? ''
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
   const navigate = useNavigate()
@@ -906,18 +908,18 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
   const [createPickOpen, setCreatePickOpen] = useState(false)
-  const [importFor, setImportFor] = useState<{ rapportId: number; typeId: number } | null>(null)
+  const [importFor, setImportFor] = useState<{ rapportId: EntityIdParam; typeId: EntityIdParam } | null>(null)
   const [showHidden, setShowHidden] = useState(false)
-  const [submittingId, setSubmittingId] = useState<number | null>(null)
-  const [returningId, setReturningId] = useState<number | null>(null)
-  const [startingNewVersionId, setStartingNewVersionId] = useState<number | null>(null)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [cancellingDeleteId, setCancellingDeleteId] = useState<number | null>(null)
+  const [submittingId, setSubmittingId] = useState<EntityIdParam | null>(null)
+  const [returningId, setReturningId] = useState<EntityIdParam | null>(null)
+  const [startingNewVersionId, setStartingNewVersionId] = useState<EntityIdParam | null>(null)
+  const [deletingId, setDeletingId] = useState<EntityIdParam | null>(null)
+  const [cancellingDeleteId, setCancellingDeleteId] = useState<EntityIdParam | null>(null)
 
   const hubQuery = useOfficeServiceHubQuery(token, sid)
   const hub = hubQuery.data
   const rapportType =
-    hub?.rapportTypes?.find((x: RapportTypeNav) => Number(x.id) === typeId) || null
+    hub?.rapportTypes?.find((x: RapportTypeNav) => String(x.id) === String(typeId)) || null
 
   const listParams = {
     service_id: sid,
@@ -975,18 +977,18 @@ export function OfficeServiceRapportListPage({ token }: Props) {
     }
   }
 
-  async function hideTypeFromPage(hideTypeId: number) {
+  async function hideTypeFromPage(hideTypeId: EntityIdParam) {
     try {
       await api.hideRapportType(token, hideTypeId)
       await invalidate({ hubCounts: 'office', serviceTrees: true, serviceHub: { scope: 'office', serviceId: sid } })
       snack.show(t('hideRapportTypeDone'), 'success')
-      navigate(`/office/services/${sid}`)
+      navigate(`/cabinet/services/${sid}`)
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
   }
 
-  async function restoreTypeFromPage(restoreTypeId: number) {
+  async function restoreTypeFromPage(restoreTypeId: EntityIdParam) {
     try {
       await api.restoreRapportType(token, restoreTypeId)
       await invalidate({
@@ -1104,7 +1106,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
     }
   }
 
-  async function createDoc(templateId: number | null, skipDefault = false) {
+  async function createDoc(templateId: EntityIdParam | null, skipDefault = false) {
     if (!rapportType) return
     navigate(
       officeNewDocumentPath(sid, {
@@ -1153,7 +1155,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
             type="button"
             className="btn btn-primary"
             onClick={() =>
-              ENABLE_DOCUMENT_TEMPLATES ? setCreatePickOpen(true) : createDoc(null, true)
+              ENABLE_DOCUMENT_TEMPLATES ? setCreatePickOpen(true) : createDoc(null, false)
             }
           >
             {t('createRapport')}
@@ -1175,7 +1177,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
             />
           </div>
         ) : null}
-        <BackButton to={`/office/services/${sid}`} fallbackTo={`/office/services/${sid}`} />
+        <BackButton to={`/cabinet/services/${sid}`} fallbackTo={`/cabinet/services/${sid}`} />
       </div>
 
       {canEdit && rapportType ? (
@@ -1305,6 +1307,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                   canOfficeStartNewVersion(
                     r.status,
                     r.rapportType?.versioning_mode || rapportType?.versioning_mode,
+                    r.rapportType?.content_kind || rapportType?.content_kind,
                   ) ? (
                     <StartNewVersionConfirm onConfirm={() => startNewVersion(r.id, r)}>
                       {(openConfirm) => (
@@ -1365,7 +1368,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
   const discussionAll = discussionView && discussionTab === 'all'
   const statusGroup = parseStatusGroupParam(searchParams.get('status_group'))
   const listSort = parseListSortParam(searchParams.get('sort'))
-  const base = reviewer === 'chef' ? '/chef' : '/wali'
+  const base = reviewer === 'chef' ? '/chief' : '/governor'
   const listQs = new URLSearchParams(
     buildRapportListParams({ statusGroup, sort: listSort }),
   ).toString()
@@ -1380,8 +1383,8 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [respondId, setRespondId] = useState<number | null>(null)
-  const [deleteDecideId, setDeleteDecideId] = useState<number | null>(null)
+  const [respondId, setRespondId] = useState<EntityIdParam | null>(null)
+  const [deleteDecideId, setDeleteDecideId] = useState<EntityIdParam | null>(null)
   const waliCounts = useWaliHubCounts(reviewer === 'wali' ? token : '')
   const chefCounts = useChefHubCounts(reviewer === 'chef' ? token : '')
   const unreadDiscussion =
@@ -1732,7 +1735,7 @@ export function WaliRapportsInboxPage({ token, reviewer = 'wali' }: Props & { re
                                   t('chefDeleteRestoredPreviousDone'),
                                   'success',
                                 )
-                                navigate(`/chef/rapports/${r.id}/view`)
+                                navigate(`/chief/rapports/${r.id}/view`)
                               } else {
                                 snack.show(t('chefDeleteFullyDone'), 'success')
                               }
@@ -1907,7 +1910,13 @@ export function AdminRapportsListPage({ token }: Props) {
                     <Link className="btn btn-secondary btn-sm" to={`/admin/rapports/${r.id}/view`}>
                       {t('details')}
                     </Link>
-                    <RapportExportButtons token={token} rapportId={r.id} size="sm" />
+                    <RapportExportButtons
+                      token={token}
+                      rapportId={r.id}
+                      contentKind={r.rapportType?.content_kind}
+                      communeContentKind={r.rapportType?.commune_content_kind}
+                      size="sm"
+                    />
                     <button
                       type="button"
                       className="btn btn-danger btn-sm"

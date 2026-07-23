@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { EntityIdParam } from "../api";
 import * as api from "../api";
 import { BackButton } from "../components/BackButton";
 import type { RapportVersionRow } from "../components/RapportVersionsList";
@@ -23,7 +24,7 @@ function formatVersionDate(iso: string | null | undefined, locale: string) {
 }
 
 type ArchivePanelProps = {
-  rapportId: number;
+  rapportId: EntityIdParam;
   rapportTitle?: string;
   rapportStatus?: string;
   versions: RapportVersionRow[];
@@ -48,7 +49,7 @@ export function RapportVersionsArchivePanel({
   const editableRapport =
     rapportStatus === "draft" || rapportStatus === "changes_requested";
 
-  const viewPath = (versionId: number) =>
+  const viewPath = (versionId: EntityIdParam) =>
     versionDetailPath(rapportId, versionId, wali, chef);
 
   const sorted = [...versions].sort(
@@ -119,7 +120,7 @@ function RapportVersionsArchiveListPage({
   token: string;
   wali: boolean;
   chef?: boolean;
-  rid: number;
+  rid: EntityIdParam;
 }) {
   const { t } = useTranslation();
   const snack = useSnackbar();
@@ -203,7 +204,7 @@ export function RapportVersionsArchivePage({
   chef?: boolean;
 }) {
   const { rapportId, versionId } = useParams();
-  const rid = Number(rapportId);
+  const rid = rapportId ?? "";
 
   if (versionId) {
     return <RapportVersionDetail token={token} wali={wali} chef={chef} />;
@@ -220,7 +221,7 @@ export function ArchiveVersionsLink({
   chef = false,
   className = "btn btn-secondary",
 }: {
-  rapportId: number;
+  rapportId: EntityIdParam;
   wali?: boolean;
   chef?: boolean;
   className?: string;
@@ -240,7 +241,7 @@ export function WaliArchiveVersionsLink({
   rapportId,
   className = "btn btn-secondary",
 }: {
-  rapportId: number;
+  rapportId: EntityIdParam;
   className?: string;
 }) {
   return (
@@ -256,7 +257,7 @@ export function ChefArchiveVersionsLink({
   rapportId,
   className = "btn btn-secondary",
 }: {
-  rapportId: number;
+  rapportId: EntityIdParam;
   className?: string;
 }) {
   return (

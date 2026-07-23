@@ -1,5 +1,6 @@
 const { z } = require("zod");
 const { V } = require("../errorKeys");
+const { publicEntityIdSchema } = require("../publicEntityId");
 const {
   bilingualNameShape,
   refineBilingualNames,
@@ -18,7 +19,7 @@ const municipalityCreateSchema = refineBilingualNames(
       .min(1, V.municipalityCodeRequired)
       .max(32, V.maxLength)
       .regex(/^\d+$/, V.municipalityCodeDigitsOnly),
-    daira_id: z.number().int().positive({ message: V.dairaRequired })
+    daira_id: publicEntityIdSchema
   })
 );
 
@@ -33,7 +34,7 @@ const municipalityPatchSchema = z
       .max(32, V.maxLength)
       .regex(/^\d+$/, V.municipalityCodeDigitsOnly)
       .optional(),
-    daira_id: z.number().int().positive().optional()
+    daira_id: publicEntityIdSchema.optional()
   })
   .superRefine((data, ctx) => {
     if (data.name_ar !== undefined || data.name_fr !== undefined) {
@@ -85,19 +86,19 @@ const userCreateSchema = z.object({
   role: z.enum(["ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"], {
     errorMap: () => ({ message: V.userRoleInvalid })
   }),
-  department_id: z.number().int().positive().nullable().optional(),
+  department_id: publicEntityIdSchema.nullable().optional(),
   job_title: z.string().trim().max(120, V.maxLength).nullable().optional()
 });
 
 const userPatchSchema = z.object({
   name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength).optional(),
-  department_id: z.number().int().positive().nullable().optional(),
+  department_id: publicEntityIdSchema.nullable().optional(),
   job_title: z.string().trim().max(120, V.maxLength).nullable().optional()
 });
 
 const rapportCreateSchema = z.object({
-  service_id: z.coerce.number().int().positive(),
-  rapport_type_id: z.coerce.number().int().positive(),
+  service_id: publicEntityIdSchema,
+  rapport_type_id: publicEntityIdSchema,
   title: z.string().trim().min(1, V.rapportTitleRequired).max(500, V.maxLength),
   reference_date: z.string().nullable().optional(),
   data_json: z.record(z.unknown()).optional()
@@ -128,7 +129,7 @@ const waliRespondSchema = z
 
 const rapportCommentSchema = z.object({
   body_text: z.string().trim().min(1, V.required).max(5000, V.maxLength),
-  versionId: z.coerce.number().int().positive().optional(),
+  versionId: publicEntityIdSchema.optional(),
 });
 
 /** null = reset to all entities of the rapport type's target kinds */
@@ -149,7 +150,7 @@ const guideVideoCreateSchema = refineBilingualPair(
     audience: guideAudienceEnum,
     is_new: z.boolean().optional().default(false),
     sort_order: z.coerce.number().int().min(0).max(99999).optional().default(0),
-    uploaded_file_id: z.coerce.number().int().positive().optional()
+    uploaded_file_id: publicEntityIdSchema.optional()
   }),
   "title_ar",
   "title_fr"
@@ -164,7 +165,7 @@ const guideVideoPatchSchema = z
     audience: guideAudienceEnum.optional(),
     is_new: z.boolean().optional(),
     sort_order: z.coerce.number().int().min(0).max(99999).optional(),
-    uploaded_file_id: z.coerce.number().int().positive().optional()
+    uploaded_file_id: publicEntityIdSchema.optional()
   })
   .superRefine((data, ctx) => {
     if (data.title_ar !== undefined || data.title_fr !== undefined) {

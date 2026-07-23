@@ -1,8 +1,9 @@
 import type { Column, LayoutJson, TableMeta } from '../utils/tableLayout'
+import type { EntityIdParam } from '../api'
 
 export type EmbeddedTable = {
   id: string
-  schema_id?: number
+  schema_id?: EntityIdParam
   schema_slug: string
   schema_name_ar?: string
   schema_name_fr?: string

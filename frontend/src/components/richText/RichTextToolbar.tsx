@@ -11,6 +11,24 @@ type Props = {
   onInsertSchemaTable?: () => void
   /** Disables only image/video pick while a media upload is in flight. */
   mediaBusy?: boolean
+  /** Content locale — drives default align highlight (ar → right). */
+  locale?: string
+}
+
+type AlignDir = 'left' | 'center' | 'right'
+
+/** Effective line alignment for toolbar highlight (explicit, spread slot, or locale default). */
+export function getEffectiveTextAlign(editor: Editor, locale: string = 'ar'): AlignDir {
+  if (editor.isActive({ textAlign: 'left' })) return 'left'
+  if (editor.isActive({ textAlign: 'center' })) return 'center'
+  if (editor.isActive({ textAlign: 'right' })) return 'right'
+
+  const slot = editor.getAttributes('spreadCell').slot as string | undefined
+  if (slot === 'middle') return 'center'
+  if (slot === 'start') return locale === 'ar' ? 'right' : 'left'
+  if (slot === 'end') return locale === 'ar' ? 'left' : 'right'
+
+  return locale === 'ar' ? 'right' : 'left'
 }
 
 function ToolbarBtn({
@@ -31,6 +49,7 @@ function ToolbarBtn({
       type="button"
       className={`tiptapToolbarBtn${active ? ' active' : ''}`}
       title={title}
+      aria-pressed={active ? true : undefined}
       onClick={onClick}
       disabled={disabled}
     >
@@ -46,6 +65,7 @@ export function RichTextToolbar({
   onPickVideos,
   onInsertSchemaTable,
   mediaBusy = false,
+  locale = 'ar',
 }: Props) {
   const { t } = useTranslation()
   const [, setSelectionTick] = useState(0)
@@ -61,7 +81,12 @@ export function RichTextToolbar({
   }, [editor])
 
   const canRemoveBlock =
-    editor.isActive('image') || editor.isActive('video') || editor.isActive('schemaTable')
+    editor.isActive('image') ||
+    editor.isActive('video') ||
+    editor.isActive('schemaTable') ||
+    editor.isActive('spreadRow')
+
+  const align = getEffectiveTextAlign(editor, locale)
 
   return (
     <div className="tiptapToolbar" role="toolbar" aria-busy={mediaBusy || undefined}>
@@ -130,7 +155,7 @@ export function RichTextToolbar({
       <span className="tiptapToolbarSep" />
       <ToolbarBtn
         title={t('richTextAlignLeft')}
-        active={editor.isActive({ textAlign: 'left' })}
+        active={align === 'left'}
         onClick={() => editor.chain().focus().setTextAlign('left').run()}
       >
         <span className="tiptapAlignIcon tiptapAlignIcon-left" aria-hidden>
@@ -139,7 +164,7 @@ export function RichTextToolbar({
       </ToolbarBtn>
       <ToolbarBtn
         title={t('richTextAlignCenter')}
-        active={editor.isActive({ textAlign: 'center' })}
+        active={align === 'center'}
         onClick={() => editor.chain().focus().setTextAlign('center').run()}
       >
         <span className="tiptapAlignIcon tiptapAlignIcon-center" aria-hidden>
@@ -148,11 +173,32 @@ export function RichTextToolbar({
       </ToolbarBtn>
       <ToolbarBtn
         title={t('richTextAlignRight')}
-        active={editor.isActive({ textAlign: 'right' })}
+        active={align === 'right'}
         onClick={() => editor.chain().focus().setTextAlign('right').run()}
       >
         <span className="tiptapAlignIcon tiptapAlignIcon-right" aria-hidden>
           ≡
+        </span>
+      </ToolbarBtn>
+      <ToolbarBtn
+        title={t('richTextSpread2')}
+        active={editor.isActive('spreadRow') && editor.getAttributes('spreadRow').cols === 2}
+        onClick={() => editor.chain().focus().toggleSpreadRow(2).run()}
+      >
+        <span className="tiptapSpreadIcon" aria-hidden>
+          <i />
+          <i />
+        </span>
+      </ToolbarBtn>
+      <ToolbarBtn
+        title={t('richTextSpread3')}
+        active={editor.isActive('spreadRow') && editor.getAttributes('spreadRow').cols === 3}
+        onClick={() => editor.chain().focus().toggleSpreadRow(3).run()}
+      >
+        <span className="tiptapSpreadIcon" aria-hidden>
+          <i />
+          <i />
+          <i />
         </span>
       </ToolbarBtn>
       <span className="tiptapToolbarSep" />
@@ -185,7 +231,16 @@ export function RichTextToolbar({
         </ToolbarBtn>
       ) : null}
       {canRemoveBlock ? (
-        <ToolbarBtn title={t('richTextRemoveBlock')} onClick={() => editor.chain().focus().deleteSelection().run()}>
+        <ToolbarBtn
+          title={t('richTextRemoveBlock')}
+          onClick={() => {
+            if (editor.isActive('spreadRow')) {
+              editor.chain().focus().deleteNode('spreadRow').run()
+              return
+            }
+            editor.chain().focus().deleteSelection().run()
+          }}
+        >
           🗑
         </ToolbarBtn>
       ) : null}

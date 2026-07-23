@@ -3,6 +3,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
 } from "react-router-dom";
@@ -16,6 +17,15 @@ import {
   refreshSession,
   setAccessToken,
 } from "./auth/session";
+import {
+  hubHome,
+  hubKeyFromRole,
+  HUB_SEGMENTS,
+  LEGACY_HUB_ALIASES,
+  LEGACY_LISTE_PATH_SEGMENT,
+  LISTE_PATH_SEGMENT,
+} from "@wali/routes";
+import { AuthProvider } from "./auth/AuthProvider";
 import { queryClient } from "./query/queryClient";
 import "./theme/tokens.css";
 import "./App.css";
@@ -94,76 +104,120 @@ import { GuideVideosPage } from "./pages/GuideVideosPage";
 import { ENABLE_GUIDE_VIDEOS } from "./config/features";
 
 function hubPath(role: api.UserRole | undefined) {
+  if (!role) return "/";
   if (role === "ADMIN") return "/";
-  if (role === "WALI") return "/wali";
-  if (role === "CHEF_CABINET") return "/chef";
-  if (role === "OFFICE_USER") return "/office";
-  return "/";
+  const key = hubKeyFromRole(role);
+  return key ? hubHome(key) : "/";
+}
+
+/** Redirect legacy hub prefixes (/office, /wali, /chef) to English segments. */
+function LegacyHubRedirect() {
+  const location = useLocation();
+  const pathname = location.pathname;
+
+  for (const [legacySeg, hubKey] of Object.entries(LEGACY_HUB_ALIASES)) {
+    const legacyPrefix = `/${legacySeg}`;
+    if (pathname === legacyPrefix || pathname.startsWith(`${legacyPrefix}/`)) {
+      const modernSeg = HUB_SEGMENTS[hubKey];
+      const rest = pathname.slice(legacyPrefix.length);
+      return (
+        <Navigate
+          to={{
+            pathname: `/${modernSeg}${rest}`,
+            search: location.search,
+            hash: location.hash,
+          }}
+          replace
+        />
+      );
+    }
+  }
+
+  return <Navigate to="/" replace />;
+}
+
+/** Redirect legacy liste segment (`…/communes`) → `…/entities`. */
+function LegacyListeRedirect() {
+  const location = useLocation();
+  const legacy = `/${LEGACY_LISTE_PATH_SEGMENT}`;
+  const modern = `/${LISTE_PATH_SEGMENT}`;
+  const pathname = location.pathname.includes(`${legacy}/`)
+    ? location.pathname.split(legacy).join(modern)
+    : location.pathname.endsWith(legacy)
+      ? `${location.pathname.slice(0, -legacy.length)}${modern}`
+      : location.pathname;
+  return (
+    <Navigate
+      to={{
+        pathname,
+        search: location.search,
+        hash: location.hash,
+      }}
+      replace
+    />
+  );
+}
+
+function isEntityIdParam(v: string | undefined): v is string {
+  return !!v && v.length > 0;
 }
 
 function OfficeKindRedirect() {
   const { serviceId } = useParams();
-  const sid = Number(serviceId);
-  if (!sid) return <Navigate to="/office/services" replace />;
-  return <Navigate to={`/office/services/${sid}`} replace />;
+  if (!isEntityIdParam(serviceId)) return <Navigate to="/cabinet/services" replace />;
+  return <Navigate to={`/cabinet/services/${serviceId}`} replace />;
 }
 
 function ChefUserServicesRoute({ token }: { token: string }) {
   const { userId } = useParams();
-  const id = Number(userId);
-  if (!id) return <Navigate to="/chef/office-users" replace />;
-  return <WaliUserServicesPage token={token} userId={id} reviewer="chef" />;
+  if (!isEntityIdParam(userId)) return <Navigate to="/chief/office-users" replace />;
+  return <WaliUserServicesPage token={token} userId={userId} reviewer="chef" />;
 }
 
 function ChefServiceRapportTypesRoute({ token }: { token: string }) {
   const { userId } = useParams();
-  const id = Number(userId);
-  if (!id) return <Navigate to="/chef/office-users" replace />;
-  return <WaliServiceRapportTypesPage token={token} userId={id} reviewer="chef" />;
+  if (!isEntityIdParam(userId)) return <Navigate to="/chief/office-users" replace />;
+  return <WaliServiceRapportTypesPage token={token} userId={userId} reviewer="chef" />;
 }
 
 function ChefServiceKindRapportTypesRoute({ token: _token }: { token: string }) {
   const { userId, serviceId } = useParams();
-  const id = Number(userId);
-  const sid = Number(serviceId);
-  if (!id || !sid) return <Navigate to="/chef/office-users" replace />;
-  return <Navigate to={`/chef/office-users/${id}/services/${sid}`} replace />;
+  if (!isEntityIdParam(userId) || !isEntityIdParam(serviceId)) {
+    return <Navigate to="/chief/office-users" replace />;
+  }
+  return <Navigate to={`/chief/office-users/${userId}/services/${serviceId}`} replace />;
 }
 
 function ChefServiceRapportListRoute({ token }: { token: string }) {
   const { userId } = useParams();
-  const id = Number(userId);
-  if (!id) return <Navigate to="/chef/office-users" replace />;
-  return <WaliServiceRapportListPage token={token} userId={id} reviewer="chef" />;
+  if (!isEntityIdParam(userId)) return <Navigate to="/chief/office-users" replace />;
+  return <WaliServiceRapportListPage token={token} userId={userId} reviewer="chef" />;
 }
 
 function WaliUserServicesRoute({ token }: { token: string }) {
   const { userId } = useParams();
-  const id = Number(userId);
-  if (!id) return <Navigate to="/wali/office-users" replace />;
-  return <WaliUserServicesPage token={token} userId={id} />;
+  if (!isEntityIdParam(userId)) return <Navigate to="/governor/office-users" replace />;
+  return <WaliUserServicesPage token={token} userId={userId} />;
 }
 
 function WaliServiceRapportTypesRoute({ token }: { token: string }) {
   const { userId } = useParams();
-  const id = Number(userId);
-  if (!id) return <Navigate to="/wali/office-users" replace />;
-  return <WaliServiceRapportTypesPage token={token} userId={id} />;
+  if (!isEntityIdParam(userId)) return <Navigate to="/governor/office-users" replace />;
+  return <WaliServiceRapportTypesPage token={token} userId={userId} />;
 }
 
 function WaliServiceKindRapportTypesRoute({ token: _token }: { token: string }) {
   const { userId, serviceId } = useParams();
-  const id = Number(userId);
-  const sid = Number(serviceId);
-  if (!id || !sid) return <Navigate to="/wali/office-users" replace />;
-  return <Navigate to={`/wali/office-users/${id}/services/${sid}`} replace />;
+  if (!isEntityIdParam(userId) || !isEntityIdParam(serviceId)) {
+    return <Navigate to="/governor/office-users" replace />;
+  }
+  return <Navigate to={`/governor/office-users/${userId}/services/${serviceId}`} replace />;
 }
 
 function WaliServiceRapportListRoute({ token }: { token: string }) {
   const { userId } = useParams();
-  const id = Number(userId);
-  if (!id) return <Navigate to="/wali/office-users" replace />;
-  return <WaliServiceRapportListPage token={token} userId={id} />;
+  if (!isEntityIdParam(userId)) return <Navigate to="/governor/office-users" replace />;
+  return <WaliServiceRapportListPage token={token} userId={userId} />;
 }
 
 function AppShell() {
@@ -268,11 +322,12 @@ function AppShell() {
             // Prefer explicit discussion push; hub soft-sync covers missing fields / no-push.
             if (
               data.rapport_id != null &&
-              Number(data.rapport_id) > 0 &&
+              data.rapport_id !== '' &&
+              String(data.rapport_id) !== '0' &&
               (data.message_key == null ||
                 data.message_key === "rapportComment")
             ) {
-              notifyDiscussionRefresh(Number(data.rapport_id));
+              notifyDiscussionRefresh(data.rapport_id);
             }
           },
         );
@@ -323,17 +378,20 @@ function AppShell() {
 
   if (!token || !me) {
     return (
-      <div className="app guest">
-        <GuestLoginPage
-          onSuccess={onLoginSuccess}
-          lang={lang}
-          onToggleLang={toggleLang}
-        />
-      </div>
+      <AuthProvider me={null} token={null} setMe={setMe}>
+        <div className="app guest">
+          <GuestLoginPage
+            onSuccess={onLoginSuccess}
+            lang={lang}
+            onToggleLang={toggleLang}
+          />
+        </div>
+      </AuthProvider>
     );
   }
 
   return (
+    <AuthProvider me={me} token={token} setMe={setMe}>
     <div className={`app ${isRtl ? "rtl" : "ltr"}`}>
       <header className="topbar">
         <div
@@ -443,169 +501,181 @@ function AppShell() {
           ) : null}
           {me.role === "OFFICE_USER" || me.role === "ADMIN" ? (
             <>
-              <Route path="/office" element={<OfficeHubPage token={token} />} />
+              <Route path="/cabinet" element={<OfficeHubPage token={token} />} />
               <Route
-                path="/office/rapports"
+                path="/cabinet/rapports"
                 element={<OfficeRapportsListPage token={token} />}
               />
               <Route
-                path="/office/services/folder/:folderId"
+                path="/cabinet/services/folder/:folderId"
                 element={<OfficeServicesPage token={token} />}
               />
               <Route
-                path="/office/services"
+                path="/cabinet/services"
                 element={<OfficeServicesPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId"
+                path="/cabinet/services/:serviceId"
                 element={<OfficeServiceContentHubPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/kinds/:contentKind"
+                path="/cabinet/services/:serviceId/kinds/:contentKind"
                 element={<OfficeKindRedirect />}
               />
               <Route
-                path="/office/services/:serviceId/rapports/:rapportTypeId"
+                path="/cabinet/services/:serviceId/rapports/:rapportTypeId"
                 element={<OfficeServiceRapportListPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/table"
+                path="/cabinet/services/:serviceId/table"
                 element={<OfficeTableGridPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/documents"
+                path="/cabinet/services/:serviceId/documents"
                 element={<OfficeDocumentsPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/documents/new"
+                path="/cabinet/services/:serviceId/documents/new"
                 element={<OfficeDocumentEditorPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/fiches"
+                path="/cabinet/services/:serviceId/fiches"
                 element={<OfficeFichesPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/communes"
+                path={`/cabinet/services/:serviceId/${LISTE_PATH_SEGMENT}`}
                 element={<OfficeCommuneListPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/communes/bulk"
+                path={`/cabinet/services/:serviceId/${LISTE_PATH_SEGMENT}/bulk`}
                 element={<OfficeCommuneBulkEditorPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/communes/:municipalityCode"
+                path={`/cabinet/services/:serviceId/${LISTE_PATH_SEGMENT}/:entityKey`}
                 element={<OfficeCommuneEditorPage token={token} />}
               />
               <Route
-                path="/office/services/:serviceId/config"
+                path={`/cabinet/services/:serviceId/${LEGACY_LISTE_PATH_SEGMENT}`}
+                element={<LegacyListeRedirect />}
+              />
+              <Route
+                path={`/cabinet/services/:serviceId/${LEGACY_LISTE_PATH_SEGMENT}/bulk`}
+                element={<LegacyListeRedirect />}
+              />
+              <Route
+                path={`/cabinet/services/:serviceId/${LEGACY_LISTE_PATH_SEGMENT}/:entityKey`}
+                element={<LegacyListeRedirect />}
+              />
+              <Route
+                path="/cabinet/services/:serviceId/config"
                 element={<OfficeServiceConfigPage token={token} />}
               />
               <Route
-                path="/office/notifications"
+                path="/cabinet/notifications"
                 element={<OfficeNotificationsPage token={token} />}
               />
               <Route
-                path="/office/instructions"
+                path="/cabinet/instructions"
                 element={<OfficeInstructionsPage token={token} />}
               />
               <Route
-                path="/office/instructions/:id"
+                path="/cabinet/instructions/:id"
                 element={<OfficeInstructionDetailPage token={token} />}
               />
               <Route
-                path="/office/shared"
+                path="/cabinet/shared"
                 element={<OfficeSharedFilesPage token={token} />}
               />
               <Route
-                path="/office/shared/:id"
+                path="/cabinet/shared/:id"
                 element={<OfficeSharedFileDetailPage token={token} />}
               />
               {ENABLE_GUIDE_VIDEOS ? (
                 <Route
-                  path="/office/guide"
+                  path="/cabinet/guide"
                   element={<GuideVideosPage token={token} listRole="office" />}
                 />
               ) : null}
               <Route
-                path="/office/rapports/:rapportId/document"
+                path="/cabinet/rapports/:rapportId/document"
                 element={<OfficeDocumentEditorPage token={token} />}
               />
               <Route
-                path="/office/rapports/:rapportId/versions/:versionId?"
+                path="/cabinet/rapports/:rapportId/versions/:versionId?"
                 element={<RapportVersionsArchivePage token={token} />}
               />
             </>
           ) : null}
           {me.role === "WALI" || me.role === "ADMIN" ? (
             <>
-              <Route path="/wali" element={<WaliHubPage token={token} />} />
+              <Route path="/governor" element={<WaliHubPage token={token} />} />
               <Route
-                path="/wali/calendar"
+                path="/governor/calendar"
                 element={<WaliCalendarPage token={token} />}
               />
               <Route
-                path="/wali/shared"
+                path="/governor/shared"
                 element={<WaliBroadcastsPage token={token} />}
               />
               <Route
-                path="/wali/shared/new"
+                path="/governor/shared/new"
                 element={<WaliBroadcastCreatePage token={token} />}
               />
               <Route
-                path="/wali/shared/:id"
+                path="/governor/shared/:id"
                 element={<WaliBroadcastDetailPage token={token} />}
               />
               <Route
-                path="/wali/office-users"
+                path="/governor/office-users"
                 element={<WaliOfficeUsersPage token={token} />}
               />
               <Route
-                path="/wali/office-users/:userId/services/folder/:folderId"
+                path="/governor/office-users/:userId/services/folder/:folderId"
                 element={<WaliUserServicesRoute token={token} />}
               />
               <Route
-                path="/wali/office-users/:userId/services"
+                path="/governor/office-users/:userId/services"
                 element={<WaliUserServicesRoute token={token} />}
               />
               <Route
-                path="/wali/office-users/:userId/services/:serviceId"
+                path="/governor/office-users/:userId/services/:serviceId"
                 element={<WaliServiceRapportTypesRoute token={token} />}
               />
               <Route
-                path="/wali/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                path="/governor/office-users/:userId/services/:serviceId/kinds/:contentKind"
                 element={<WaliServiceKindRapportTypesRoute token={token} />}
               />
               <Route
-                path="/wali/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                path="/governor/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
                 element={<WaliServiceRapportListRoute token={token} />}
               />
               <Route
-                path="/wali/instructions"
+                path="/governor/instructions"
                 element={<WaliInstructionsPage token={token} />}
               />
               <Route
-                path="/wali/instructions/new"
+                path="/governor/instructions/new"
                 element={<WaliInstructionCreatePage token={token} />}
               />
               <Route
-                path="/wali/instructions/:id"
+                path="/governor/instructions/:id"
                 element={<WaliInstructionDetailPage token={token} />}
               />
               <Route
-                path="/wali/rapports"
+                path="/governor/rapports"
                 element={<WaliRapportsInboxPage token={token} />}
               />
               <Route
-                path="/wali/rapports/:rapportId/view"
+                path="/governor/rapports/:rapportId/view"
                 element={<WaliRapportViewPage token={token} />}
               />
               <Route
-                path="/wali/rapports/:rapportId/versions/:versionId?"
+                path="/governor/rapports/:rapportId/versions/:versionId?"
                 element={<RapportVersionsArchivePage token={token} wali />}
               />
               {ENABLE_GUIDE_VIDEOS ? (
                 <Route
-                  path="/wali/guide"
+                  path="/governor/guide"
                   element={<GuideVideosPage token={token} listRole="wali" />}
                 />
               ) : null}
@@ -613,75 +683,79 @@ function AppShell() {
           ) : null}
           {me.role === "CHEF_CABINET" || me.role === "ADMIN" ? (
             <>
-              <Route path="/chef" element={<ChefHubPage token={token} />} />
+              <Route path="/chief" element={<ChefHubPage token={token} />} />
               <Route
-                path="/chef/calendar"
+                path="/chief/calendar"
                 element={<WaliCalendarPage token={token} reviewer="chef" />}
               />
               <Route
-                path="/chef/instructions"
+                path="/chief/instructions"
                 element={<ChefInstructionsPage token={token} />}
               />
               <Route
-                path="/chef/instructions/:id"
+                path="/chief/instructions/:id"
                 element={<ChefInstructionDetailPage token={token} />}
               />
               <Route
-                path="/chef/shared"
+                path="/chief/shared"
                 element={<OfficeSharedFilesPage token={token} audience="chef" />}
               />
               <Route
-                path="/chef/shared/:id"
+                path="/chief/shared/:id"
                 element={<OfficeSharedFileDetailPage token={token} audience="chef" />}
               />
               {ENABLE_GUIDE_VIDEOS ? (
                 <Route
-                  path="/chef/guide"
+                  path="/chief/guide"
                   element={<GuideVideosPage token={token} listRole="chef" />}
                 />
               ) : null}
               <Route
-                path="/chef/office-users"
+                path="/chief/office-users"
                 element={<WaliOfficeUsersPage token={token} reviewer="chef" />}
               />
               <Route
-                path="/chef/office-users/:userId/services/folder/:folderId"
+                path="/chief/office-users/:userId/services/folder/:folderId"
                 element={<ChefUserServicesRoute token={token} />}
               />
               <Route
-                path="/chef/office-users/:userId/services"
+                path="/chief/office-users/:userId/services"
                 element={<ChefUserServicesRoute token={token} />}
               />
               <Route
-                path="/chef/office-users/:userId/services/:serviceId"
+                path="/chief/office-users/:userId/services/:serviceId"
                 element={<ChefServiceRapportTypesRoute token={token} />}
               />
               <Route
-                path="/chef/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                path="/chief/office-users/:userId/services/:serviceId/kinds/:contentKind"
                 element={<ChefServiceKindRapportTypesRoute token={token} />}
               />
               <Route
-                path="/chef/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                path="/chief/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
                 element={<ChefServiceRapportListRoute token={token} />}
               />
               <Route
-                path="/chef/rapports"
+                path="/chief/rapports"
                 element={<WaliRapportsInboxPage token={token} reviewer="chef" />}
               />
               <Route
-                path="/chef/rapports/:rapportId/view"
+                path="/chief/rapports/:rapportId/view"
                 element={<WaliRapportViewPage token={token} audience="chef" />}
               />
               <Route
-                path="/chef/rapports/:rapportId/versions/:versionId?"
+                path="/chief/rapports/:rapportId/versions/:versionId?"
                 element={<RapportVersionsArchivePage token={token} chef />}
               />
             </>
           ) : null}
+          <Route path="/office/*" element={<LegacyHubRedirect />} />
+          <Route path="/wali/*" element={<LegacyHubRedirect />} />
+          <Route path="/chef/*" element={<LegacyHubRedirect />} />
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </main>
     </div>
+    </AuthProvider>
   );
 }
 

@@ -1,10 +1,12 @@
+import type { EntityIdParam } from '../api'
+
 export function serviceLabel(s: { name_ar?: string; name_fr?: string }, locale: string) {
   return locale === 'fr' ? s.name_fr || s.name_ar || '' : s.name_ar || s.name_fr || ''
 }
 
-export function findServiceNode(nodes: any[], id: number): any | null {
+export function findServiceNode(nodes: any[], id: EntityIdParam): any | null {
   for (const n of nodes) {
-    if (Number(n.id) === id) return n
+    if (String(n.id) === String(id)) return n
     if (n.children?.length) {
       const hit = findServiceNode(n.children, id)
       if (hit) return hit
@@ -15,14 +17,14 @@ export function findServiceNode(nodes: any[], id: number): any | null {
 
 export function folderBackPath(
   nodes: any[],
-  folderId: number,
+  folderId: EntityIdParam,
   basePath: string,
 ): string {
   const path: any[] = []
   function walk(list: any[], trail: any[]): boolean {
     for (const n of list) {
       const next = [...trail, n]
-      if (Number(n.id) === folderId) {
+      if (String(n.id) === String(folderId)) {
         path.push(...next)
         return true
       }

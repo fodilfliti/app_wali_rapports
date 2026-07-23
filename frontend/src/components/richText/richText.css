@@ -237,7 +237,7 @@
 }
 
 .tiptapEditorWrap .tiptap img.editor-image {
-  max-width: calc(50% - 0.5rem);
+  max-width: calc(33.333% - 0.5rem);
   height: auto;
   border-radius: 8px;
   margin: 0.35rem 0.25rem;
@@ -378,8 +378,100 @@
   margin: 0.75rem 0;
 }
 
+/* Start | middle | end phrase row — same baseline, side by side */
+.tiptapEditorWrap .tiptap .editor-spread-row,
+.richDocumentView .editor-spread-row,
+.richDocumentEditor .editor-spread-row {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  box-sizing: border-box;
+}
+
+.tiptapEditorWrap .tiptap .editor-spread-cell,
+.richDocumentView .editor-spread-cell,
+.richDocumentEditor .editor-spread-cell {
+  display: table-cell;
+  vertical-align: middle;
+  width: 33.333%;
+  min-width: 0;
+  padding: 0 0.35rem;
+  box-sizing: border-box;
+}
+
+.tiptapEditorWrap .tiptap .editor-spread-row[data-spread-cols='2'] > .editor-spread-cell,
+.richDocumentView .editor-spread-row[data-spread-cols='2'] > .editor-spread-cell,
+.richDocumentEditor .editor-spread-row[data-spread-cols='2'] > .editor-spread-cell {
+  width: 50%;
+}
+
+/* Kill normal paragraph margins so both sides share one line height */
+.tiptapEditorWrap .tiptap .editor-spread-cell > p,
+.tiptapEditorWrap .tiptap .editor-spread-cell > h1,
+.tiptapEditorWrap .tiptap .editor-spread-cell > h2,
+.tiptapEditorWrap .tiptap .editor-spread-cell > h3,
+.richDocumentView .editor-spread-cell > p,
+.richDocumentView .editor-spread-cell > h1,
+.richDocumentView .editor-spread-cell > h2,
+.richDocumentView .editor-spread-cell > h3,
+.richDocumentEditor .editor-spread-cell > p,
+.richDocumentEditor .editor-spread-cell > h1,
+.richDocumentEditor .editor-spread-cell > h2,
+.richDocumentEditor .editor-spread-cell > h3 {
+  margin: 0 !important;
+  padding: 0;
+  line-height: 1.55;
+  min-height: 1.55em;
+}
+
+.tiptapEditorWrap .tiptap .editor-spread-cell[data-spread-slot='start'],
+.richDocumentView .editor-spread-cell[data-spread-slot='start'],
+.richDocumentEditor .editor-spread-cell[data-spread-slot='start'] {
+  text-align: start;
+}
+
+.tiptapEditorWrap .tiptap .editor-spread-cell[data-spread-slot='middle'],
+.richDocumentView .editor-spread-cell[data-spread-slot='middle'],
+.richDocumentEditor .editor-spread-cell[data-spread-slot='middle'] {
+  text-align: center;
+}
+
+.tiptapEditorWrap .tiptap .editor-spread-cell[data-spread-slot='end'],
+.richDocumentView .editor-spread-cell[data-spread-slot='end'],
+.richDocumentEditor .editor-spread-cell[data-spread-slot='end'] {
+  text-align: end;
+}
+
+.tiptapEditorWrap .tiptap .editor-spread-row.ProseMirror-selectednode {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Toolbar icons for 2 / 3 phrase spread — same box size */
+.tiptapSpreadIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 1.35rem;
+  height: 0.85rem;
+  gap: 2px;
+  vertical-align: middle;
+}
+
+.tiptapSpreadIcon > i {
+  display: block;
+  flex: 1 1 0;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
 .richDocumentView img {
-  max-width: calc(50% - 0.5rem);
+  max-width: calc(33.333% - 0.5rem);
   height: auto;
   border-radius: 8px;
   margin: 0.35rem 0.25rem;

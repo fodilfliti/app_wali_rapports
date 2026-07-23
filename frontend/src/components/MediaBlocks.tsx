@@ -12,35 +12,35 @@ import {
   MEDIA_MAX_VIDEO_BYTES,
   MediaUploadError,
   fileExtension,
-  fileUrl,
   flattenMediaRows,
   formatBytes,
+  lookupMediaFile,
   mediaRowsFromFileIds,
   prepareFileForUpload,
 } from '../utils/media'
+import { useSignedFileUrl } from '../hooks/useSignedFileUrl'
 import type { UploadProgress } from '../utils/uploadFile'
+import type { EntityIdParam } from '../api'
 
 type ViewProps = {
   rows: MediaRow[]
-  files: Record<number, MediaFile>
+  files: Record<string, MediaFile>
   token: string
 }
 
 function MediaAttachmentPreview({
   file,
-  token,
   className = 'mediaCell',
   onImageClick,
   onVideoClick,
 }: {
   file: MediaFile
-  token: string
   className?: string
   onImageClick?: (src: string, alt: string) => void
   onVideoClick?: (src: string, alt: string) => void
 }) {
   const { t } = useTranslation()
-  const url = fileUrl(token, file)
+  const url = useSignedFileUrl(file.url_path)
 
   if (file.media_kind === 'video') {
     return (
@@ -88,7 +88,7 @@ function MediaAttachmentPreview({
   )
 }
 
-export function MediaRowsView({ rows, files, token }: ViewProps) {
+export function MediaRowsView({ rows, files, token: _token }: ViewProps) {
   const lightbox = useImageLightbox()
   const fileIds = flattenMediaRows(rows)
   if (!fileIds.length) return null
@@ -98,13 +98,12 @@ export function MediaRowsView({ rows, files, token }: ViewProps) {
       <div className="mediaSection">
         <div className="mediaAttachmentGrid">
           {fileIds.map((id) => {
-            const file = files[id]
+            const file = lookupMediaFile(files, id)
             if (!file) return null
             return (
               <MediaAttachmentPreview
-                key={id}
+                key={String(id)}
                 file={file}
-                token={token}
                 className="mediaCell mediaFileCard"
                 onImageClick={lightbox.open}
                 onVideoClick={(src, alt) => lightbox.open(src, alt, 'video')}
@@ -134,7 +133,7 @@ type EditorProps = ViewProps & {
 export function MediaRowsEditor({
   rows,
   files,
-  token,
+  token: _token,
   editable,
   onChange,
   onUpload,
@@ -148,8 +147,8 @@ export function MediaRowsEditor({
   const [error, setError] = useState<string | null>(null)
   const fileIds = flattenMediaRows(rows)
 
-  function removeFile(fileId: number) {
-    onChange(mediaRowsFromFileIds(fileIds.filter((id) => id !== fileId)))
+  function removeFile(fileId: EntityIdParam) {
+    onChange(mediaRowsFromFileIds(fileIds.filter((id) => String(id) !== String(fileId))))
   }
 
   async function handleAdd(raw: File) {
@@ -198,13 +197,12 @@ export function MediaRowsEditor({
         ) : null}
         <div className="mediaAttachmentGrid">
           {fileIds.map((id) => {
-            const file = files[id]
+            const file = lookupMediaFile(files, id)
             if (!file) return null
             return (
-              <div key={id} className="mediaCell mediaCellEditable">
+              <div key={String(id)} className="mediaCell mediaCellEditable">
                 <MediaAttachmentPreview
                   file={file}
-                  token={token}
                   className="mediaCellPreview"
                   onImageClick={lightbox.open}
                   onVideoClick={(src, alt) => lightbox.open(src, alt, 'video')}
@@ -250,7 +248,7 @@ export function DocumentBlocksView({
   token,
 }: {
   blocks: any[]
-  files: Record<number, MediaFile>
+  files: Record<string, MediaFile>
   token: string
 }) {
   const { i18n } = useTranslation()

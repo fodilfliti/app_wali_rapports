@@ -8,11 +8,12 @@
     "dev:back": "cd backend && npm run dev",
     "restart:back": "node scripts/restart-back.js",
     "kill": "node scripts/kill-all.js",
+    "build:shared": "npm run build --prefix shared/access-policy && npm run build --prefix shared/routes",
     "migrate": "cd backend && npm run db:migrate",
     "migrate:undo": "cd backend && npm run db:migrate:undo",
     "migrate:undo:all": "cd backend && npm run db:migrate:undo:all",
     "seed": "cd backend && npm run db:seed-dev",
     "seed:test": "cd backend && npm run db:seed-test",
-    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+    "install:all": "cd backend && npm install && cd ../frontend && npm install && npm install --prefix shared/access-policy && npm install --prefix shared/routes && npm run build:shared"
   }
 }

@@ -4,6 +4,7 @@ const { RefreshToken, User, sequelize } = require("../../db");
 const { getEnv } = require("../../config/env");
 const { audit } = require("../../services/audit");
 const { enrichSessionUser } = require("../access/userProfileService");
+const { publicId } = require("../access/idResolver");
 
 const REFRESH_COOKIE_NAME = "wr_refresh";
 
@@ -55,8 +56,9 @@ function clearRefreshCookie(res) {
 
 function signAccessToken(user) {
   const env = getEnv();
+  const sub = user.uuid ? String(user.uuid) : String(user.id);
   return jwt.sign(
-    { sub: String(user.id), role: user.role, typ: "access" },
+    { sub, role: user.role, typ: "access" },
     env.jwtSecret,
     { expiresIn: env.jwtAccessExpiresIn, algorithm: "HS256" }
   );

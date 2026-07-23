@@ -43,7 +43,7 @@ function buildDigestPush(events, messageKey, kind) {
   const listAr = formatTitleList(events.map((e) => eventTitle(e, "ar")));
   const listFr = formatTitleList(events.map((e) => eventTitle(e, "fr")));
   const isToday = messageKey === "calendarToday";
-  const url = kind === "chef" ? "/chef/calendar" : "/wali/calendar";
+  const url = kind === "chef" ? "/chief/calendar" : "/governor/calendar";
 
   const title_ar = isToday
     ? n === 1

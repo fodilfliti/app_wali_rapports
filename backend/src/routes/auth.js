@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const { User } = require("../db");
+const { findByPublicId } = require("../modules/access/idResolver");
 const { audit } = require("../services/audit");
 const { enrichSessionUser } = require("../modules/access/userProfileService");
 const {
@@ -60,7 +61,7 @@ function tryAttachAccessUser(req, _res, next) {
     const payload = jwt.verify(token, getEnv().jwtSecret, { algorithms: ["HS256"] });
     if (payload?.sub && (!payload.typ || payload.typ === "access")) {
       req.auth = payload;
-      return User.findByPk(payload.sub)
+      return findByPublicId(User, payload.sub)
         .then((user) => {
           if (user) req.user = user;
           next();

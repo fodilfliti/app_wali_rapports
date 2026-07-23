@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as api from '../../api'
-import type { GuideVideoListRole } from '../../api'
+import type { EntityIdParam, GuideVideoListRole } from '../../api'
 import { CACHE } from '../../query/cachePolicy'
 import { queryKeys } from '../../query/queryKeys'
 import { isDedicatedNotificationKey } from '../../utils/notificationKeys'
@@ -36,7 +36,7 @@ export function useReviewerOfficeUsersQuery(token: string, reviewer: 'wali' | 'c
 
 export function useReviewerUserServicesQuery(
   token: string,
-  userId: number,
+  userId: EntityIdParam,
   reviewer: 'wali' | 'chef',
 ) {
   return useQuery({
@@ -45,7 +45,7 @@ export function useReviewerUserServicesQuery(
       reviewer === 'chef'
         ? api.listChefUserServices(token, userId)
         : api.listWaliUserServices(token, userId),
-    enabled: !!token && userId > 0,
+    enabled: !!token && userId != null && userId !== '',
     staleTime: CACHE.serviceTree.staleTime,
     gcTime: CACHE.serviceTree.gcTime,
     refetchOnWindowFocus: true,
@@ -56,8 +56,8 @@ export function useReviewerUserServicesQuery(
 
 export function useReviewerServiceHubQuery(
   token: string,
-  userId: number,
-  serviceId: number,
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
   reviewer: 'wali' | 'chef',
 ) {
   const scope = reviewer === 'chef' ? 'chef' : 'wali'
@@ -67,7 +67,12 @@ export function useReviewerServiceHubQuery(
       reviewer === 'chef'
         ? api.getChefServiceContentHub(token, userId, serviceId)
         : api.getWaliServiceContentHub(token, userId, serviceId),
-    enabled: !!token && userId > 0 && serviceId > 0,
+    enabled:
+      !!token &&
+      userId != null &&
+      userId !== '' &&
+      serviceId != null &&
+      serviceId !== '',
     staleTime: CACHE.serviceHub.staleTime,
     gcTime: CACHE.serviceHub.gcTime,
     refetchOnWindowFocus: true,
@@ -77,13 +82,13 @@ export function useReviewerServiceHubQuery(
 
 export function useOfficeServiceHubQuery(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   opts?: { hidden_only?: boolean },
 ) {
   return useQuery({
     queryKey: queryKeys.serviceHub('office', serviceId, opts ?? {}),
     queryFn: () => api.getServiceContentHub(token, serviceId, opts),
-    enabled: !!token && serviceId > 0,
+    enabled: !!token && serviceId != null && serviceId !== '',
     staleTime: CACHE.serviceHub.staleTime,
     gcTime: CACHE.serviceHub.gcTime,
     refetchOnWindowFocus: true,
@@ -110,8 +115,8 @@ export function useCalendarWeekQuery(
 }
 
 type OfficeRapportsParams = {
-  service_id?: number
-  rapport_type_id?: number
+  service_id?: EntityIdParam
+  rapport_type_id?: EntityIdParam
   page: number
   pageSize: number
   search?: string
@@ -140,9 +145,9 @@ type ReviewerRapportsParams = {
   search?: string
   status_group?: string
   sort?: string
-  service_id?: number
-  rapport_type_id?: number
-  office_user_id?: number
+  service_id?: EntityIdParam
+  rapport_type_id?: EntityIdParam
+  office_user_id?: EntityIdParam
   unread_discussion?: boolean
   has_discussion?: boolean
 }

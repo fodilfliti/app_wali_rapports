@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "WaliInstruction",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       title_ar: { type: DataTypes.STRING(200), allowNull: false, defaultValue: "" },
       title_fr: { type: DataTypes.STRING(200), allowNull: false, defaultValue: "" },
       body_ar: { type: DataTypes.TEXT, allowNull: true },

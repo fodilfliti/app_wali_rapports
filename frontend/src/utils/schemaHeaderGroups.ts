@@ -155,7 +155,7 @@ export function headerGroupsFromLayout(
   const payload = buildColumnsPayload(draftColumns)
   const keyToUid = new Map<string, string>()
   draftColumns.forEach((c, i) => {
-    const k = c.key?.trim() || payload[i]?.key
+    const k = (c.key?.trim() || payload[i]?.key || '').toUpperCase()
     if (k) keyToUid.set(k, c.uid)
   })
   return (layoutJson?.header_groups || []).map((g) => ({
@@ -163,7 +163,7 @@ export function headerGroupsFromLayout(
     label_ar: g.label_ar,
     label_fr: g.label_fr,
     column_uids: (g.column_keys || [])
-      .map((k) => keyToUid.get(k))
+      .map((k) => keyToUid.get(String(k || '').trim().toUpperCase()))
       .filter((uid): uid is string => Boolean(uid)),
   }))
 }

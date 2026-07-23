@@ -16,7 +16,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@wali/access-policy": ["../shared/access-policy/src/index.ts"],
+      "@wali/access-policy/*": ["../shared/access-policy/src/*"],
+      "@wali/routes": ["../shared/routes/src/index.ts"],
+      "@wali/routes/*": ["../shared/routes/src/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../shared/access-policy/src", "../shared/routes/src"]
 }

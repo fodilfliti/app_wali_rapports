@@ -8,6 +8,7 @@ const {
   writeTableToWorksheet,
   sanitizeSheetName,
 } = require("./excelTableWriter");
+const { canExportExcel } = require("../modules/access/assertCan");
 
 function extractSchemaTableIds(html) {
   const ids = [];
@@ -87,6 +88,17 @@ async function generateRapportExcel(
 
   const workbook = new ExcelJS.Workbook();
   const kind = rapport.rapportType?.content_kind;
+  const communeContentKind = rapport.rapportType?.commune_content_kind;
+  if (
+    !canExportExcel({
+      content_kind: kind,
+      commune_content_kind: communeContentKind,
+    })
+  ) {
+    const err = new Error("Export not supported for this rapport type");
+    err.status = 400;
+    throw err;
+  }
   const usedSheetNames = new Set();
 
   if (kind === "table_grid") {
@@ -141,44 +153,6 @@ async function generateRapportExcel(
       includeCommuneNames: true,
       filterOpts,
     });
-  } else if (kind === "document_compose" || kind === "fiche_lecture") {
-    const tables = embeddedTablesInRapport(dataJson);
-    if (!tables.length) {
-      const worksheet = workbook.addWorksheet(
-        sanitizeSheetName(pickText(rapport, loc, "title_ar", "title_fr"), usedSheetNames),
-      );
-      writeTitleOnlyBlock(worksheet, loc, titleMetaFrom(rapport));
-      worksheet.getCell(2, 1).value =
-        loc === "fr" ? "Aucun tableau dans ce rapport." : "لا توجد جداول في هذا التقرير.";
-    } else {
-      for (const table of tables) {
-        const sheetName = sanitizeSheetName(
-          pickText(
-            {
-              title_ar: table.schema_name_ar || table.table_meta?.title_ar,
-              title_fr: table.schema_name_fr || table.table_meta?.title_fr,
-            },
-            loc,
-            "title_ar",
-            "title_fr",
-          ) || table.schema_slug || "Table",
-          usedSheetNames,
-        );
-        const worksheet = workbook.addWorksheet(sheetName);
-        writeWorksheetTable(worksheet, {
-          rapport,
-          columns: table.columns || [],
-          layoutJson: table.layout_json || {},
-          tableMeta: table.table_meta || {},
-          rows: table.rows || [],
-          locale: loc,
-          includeLineNumbers: true,
-          includeAdminMeta: false,
-          includeCommuneNames: false,
-          filterOpts,
-        });
-      }
-    }
   } else {
     const err = new Error("Export not supported for this rapport type");
     err.status = 400;

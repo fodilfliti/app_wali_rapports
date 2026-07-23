@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "RapportDocumentTemplate",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       service_id: { type: DataTypes.BIGINT, allowNull: false },
       rapport_type_id: { type: DataTypes.BIGINT, allowNull: true },
       rapport_type_ids: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },

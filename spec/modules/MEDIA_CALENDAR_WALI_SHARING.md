@@ -4,13 +4,15 @@
 
 Extend rapports with visual media (images/videos), calendar triggers for the Wali hub, rapport view tracking, and Wali-to-office file broadcasts with comments and read receipts.
 
+Hub paths: `/cabinet`, `/chief`, `/governor` (`ROUTES.md`). Public ids: UUID (`IDENTITY_UUID.md`). File media: signed `?dl=` (`AUTH.md`).
+
 ### Media in rapports
 
 #### Document blocks (`data_json.blocks[]`)
 
 | Block type | Fields | Rules |
 | ---------- | ------ | ----- |
-| `media_row` | `items: { file_id: number }[]` | 1–2 items per row; rendered as grid (max 2 per line) |
+| `media_row` | `items: { file_id: string /* UUID */ }[]` | 1–2 items per row; rendered as grid (max 2 per line) |
 
 #### Table attachments (`data_json.tables[].media_rows[]`)
 
@@ -23,6 +25,9 @@ Same shape as document `media_row`, appended after the table grid in preview and
 - Kinds: `image`, `video`, `file` (from MIME)
 - **New complex/fiche drafts:** the attachments block is shown while editable even before the first save. The first inline image/video insert or attachment upload **auto-creates** the draft rapport (title required). If the title is missing, show an error and do not insert.
 - **Draft id for media must not wipe the editor:** assigning a persisted rapport id (create-on-upload) must **not** remount the page, re-run create-preview, or replace in-memory rich HTML / tables / media rows. Keep client editor state until an explicit save/load. Upload failure shows an error only — existing typed content stays.
+- **`file_id` values:** public UUID strings everywhere (API, `media_rows`, HTML `data-file-id`). Backend normalize/save must **not** coerce with `Number(file_id)` (drops UUIDs).
+- **Serve / open media:** signed `?dl=` (`SignedFileLink` / `useSignedFileUrl` / `usePreparedRichHtml`). API file payloads expose `url_path`; UI must not rely on a pre-signed `url` field alone.
+- **Inline images in rich HTML (edit + view):** up to **3 per row** (~⅓ width); click → lightbox. Rules for TipTap signing / empty-mount: **`spec/CORE.md`** § Rich text editor.
 - **Inline / attachment videos in UI:** shown as compact thumbnails (~¼ row width, up to 4 per line); click opens a modal player (drag/reorder does not open). Full playback is in the popup only — keeps mobile-portrait videos from dominating the rapport layout. Same behavior for **office**, **Chef**, and **Wali** live views and **version archive** pages.
 
 #### Export (PDF & Word)
@@ -31,10 +36,10 @@ Canonical rules: **`spec/CORE.md`** § Rapport export.
 
 | Endpoint | Role |
 | -------- | ---- |
-| `GET /office/rapports/:id/export.pdf?locale=ar\|fr` | Office PDF |
-| `GET /office/rapports/:id/export.docx?locale=ar\|fr` | Office Word |
-| `GET /wali/rapports/:id/export.pdf?locale=…&showHidden=0\|1` | Wali PDF |
-| `GET /wali/rapports/:id/export.docx?locale=…&showHidden=0\|1` | Wali Word |
+| `GET /cabinet/rapports/:id/export.pdf?locale=ar\|fr` | Office PDF |
+| `GET /cabinet/rapports/:id/export.docx?locale=ar\|fr` | Office Word |
+| `GET /governor/rapports/:id/export.pdf?locale=…&showHidden=0\|1` | Wali PDF |
+| `GET /governor/rapports/:id/export.docx?locale=…&showHidden=0\|1` | Wali Word |
 
 - **Filename:** `{rapport title} - {date}.pdf` / `.docx` (UTF-8 Content-Disposition).
 - **Preview:** export menu opens full-size modal — PDF iframe or Word HTML preview (`docx-preview`); office saves draft first when editing.
@@ -51,15 +56,15 @@ Table `rapport_calendar_events`
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `id` | BIGINT | Primary key |
-| `rapport_id` | BIGINT | FK to rapports |
+| `id` | UUID (public API id); internal BIGINT until drop |
+| `rapport_id` | UUID (public) / internal FK |
 | `event_date` | DATEONLY | Date shown on Wali calendar |
 | `title_ar`, `title_fr` | STRING(200) | Short label |
 | `note_ar`, `note_fr` | TEXT | Optional detail |
-| `created_by_user_id` | BIGINT | FK to users |
+| `created_by_user_id` | UUID (public) / internal FK |
 | `created_at`, `updated_at` | DATE | Timestamps |
 
-Office users manage events on draft/editable rapports. Events appear on the **Wali hub calendar** (`GET /wali/calendar`) and Chef calendar; they are **not** appended to PDF/Word export files. Help text in the calendar editor should reflect Wali calendar visibility only.
+Office users manage events on draft/editable rapports. Events appear on the **Wali hub calendar** (`GET /governor/calendar`) and Chef calendar; they are **not** appended to PDF/Word export files. Help text in the calendar editor should reflect Wali calendar visibility only.
 
 **Today / tomorrow reminders:** active Wali + Chef receive in-app + Web Push for events on today / tomorrow (`calendarToday` / `calendarTomorrow`), with optimistic once-per-day hub-counts scan and immediate fanout on save — see `DEVICE_NOTIFICATIONS.md`.
 
@@ -69,9 +74,9 @@ Table `rapport_views`
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `id` | BIGINT | Primary key |
-| `rapport_id` | BIGINT | FK to rapports |
-| `user_id` | BIGINT | FK to users (Wali) |
+| `id` | UUID (public API id); internal BIGINT until drop |
+| `rapport_id` | UUID (public) / internal FK |
+| `user_id` | UUID (public) / internal FK (Wali) |
 | `viewed_at` | DATE | Timestamp |
 
 Recorded when Wali opens a rapport. Exposed to Wali on rapport detail. Unique index on `(rapport_id, user_id)`.
@@ -80,7 +85,7 @@ Recorded when Wali opens a rapport. Exposed to Wali on rapport detail. Unique in
 
 Wali uploads a file and shares with all eligible recipients or selected users.
 
-**Recipients:** non-blocked `OFFICE_USER` **and** `CHEF_CABINET`. The recipient picker (`GET /wali/office-users-for-share`) and “all users” create both include Chef. Chef cannot create broadcasts; they receive via `/chef/broadcasts` / UI `/chef/shared`.
+**Recipients:** non-blocked `OFFICE_USER` **and** `CHEF_CABINET`. The recipient picker (`GET /governor/office-users-for-share`) and “all users” create both include Chef. Chef cannot create broadcasts; they receive via `/chief/broadcasts` / UI `/chief/shared`.
 
 Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 
@@ -88,21 +93,21 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `id` | BIGINT | Primary key |
-| `uploaded_file_id` | BIGINT | FK to `uploaded_files` |
+| `id` | UUID (public API id); internal BIGINT until drop |
+| `uploaded_file_id` | UUID (public) / internal FK to `uploaded_files` |
 | `title_ar`, `title_fr` | STRING(200) | Title |
 | `message_ar`, `message_fr` | TEXT | Description |
 | `allow_comments` | BOOLEAN | Allow comments toggle |
-| `created_by_user_id` | BIGINT | FK to users (Wali) |
+| `created_by_user_id` | UUID (public) / internal FK (Wali) |
 | `created_at` | DATE | Timestamp |
 
 #### `wali_broadcast_recipients`
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `id` | BIGINT | Primary key |
-| `broadcast_id` | BIGINT | FK to `wali_broadcasts` |
-| `user_id` | BIGINT | FK to users (recipient) |
+| `id` | UUID (public API id); internal BIGINT until drop |
+| `broadcast_id` | UUID (public) / internal FK to `wali_broadcasts` |
+| `user_id` | UUID (public) / internal FK (recipient) |
 | `read_at` | DATE | Timestamp (nullable) |
 | `created_at` | DATE | Timestamp |
 
@@ -110,9 +115,9 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `id` | BIGINT | Primary key |
-| `broadcast_id` | BIGINT | FK to `wali_broadcasts` |
-| `user_id` | BIGINT | FK to users |
+| `id` | UUID (public API id); internal BIGINT until drop |
+| `broadcast_id` | UUID (public) / internal FK to `wali_broadcasts` |
+| `user_id` | UUID (public) / internal FK |
 | `body_text` | TEXT | Comment body |
 | `created_at` | DATE | Timestamp |
 
@@ -122,16 +127,16 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 
 | Method | Path | Role |
 | ------ | ---- | ---- |
-| POST | `/office/rapports/:id/uploads` | Office upload (multipart `file`) |
-| POST | `/wali/uploads` | Wali pre-upload (multipart `file`) → `{ file }` for broadcast/instruction create with `uploaded_file_id` / `uploaded_file_ids` |
-| GET/PATCH | `/office/rapports/:id/calendar-events` | List / replace events |
-| GET | `/wali/calendar` | Events in date range |
-| GET | `/wali/rapports/:id/views` | Who viewed rapport |
-| POST | `/wali/broadcasts` | Create broadcast |
-| GET | `/wali/broadcasts` | Wali list + read stats |
-| GET | `/office/broadcasts` | Office inbox |
-| POST | `/office/broadcasts/:id/read` | Mark read |
-| GET | `/chef/broadcasts` | Chef recipient inbox |
-| GET | `/chef/broadcasts/:id` | Chef detail |
-| POST | `/chef/broadcasts/:id/read` | Chef mark read |
+| POST | `/cabinet/rapports/:id/uploads` | Office upload (multipart `file`) |
+| POST | `/governor/uploads` | Wali pre-upload (multipart `file`) → `{ file }` for broadcast/instruction create with `uploaded_file_id` / `uploaded_file_ids` |
+| GET/PATCH | `/cabinet/rapports/:id/calendar-events` | List / replace events |
+| GET | `/governor/calendar` | Events in date range |
+| GET | `/governor/rapports/:id/views` | Who viewed rapport |
+| POST | `/governor/broadcasts` | Create broadcast |
+| GET | `/governor/broadcasts` | Wali list + read stats |
+| GET | `/cabinet/broadcasts` | Office inbox |
+| POST | `/cabinet/broadcasts/:id/read` | Mark read |
+| GET | `/chief/broadcasts` | Chef recipient inbox |
+| GET | `/chief/broadcasts/:id` | Chef detail |
+| POST | `/chief/broadcasts/:id/read` | Chef mark read |
 | POST | `/*/broadcasts/:id/comments` | Add comment |

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
@@ -13,8 +14,9 @@ import { userFormSchema, userPatchFormSchema } from '../validation/schemas/forms
 import { useZodForm } from '../validation/useZodForm'
 import { useAdminUsersQuery } from '../hooks/queries/useListQueries'
 import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { SignedFileLink } from '../components/SignedFileLink'
 
-type Props = { token: string; currentUserId: number; isSuperAdmin?: boolean }
+type Props = { token: string; currentUserId: EntityIdParam; isSuperAdmin?: boolean }
 
 type UserFields = {
   username: string
@@ -167,13 +169,13 @@ export function AdminUsersPage({ token, currentUserId, isSuperAdmin = false }: P
   }
 
   function canManageRow(r: { id: number; is_super_admin?: boolean }) {
-    if (r.is_super_admin && Number(r.id) !== Number(currentUserId)) return false
+    if (r.is_super_admin && String(r.id) !== String(currentUserId)) return false
     return true
   }
 
   function canDeleteRow(r: { id: number; is_super_admin?: boolean }) {
     if (!isSuperAdmin) return false
-    if (Number(r.id) === Number(currentUserId)) return false
+    if (String(r.id) === String(currentUserId)) return false
     if (r.is_super_admin) return false
     return true
   }
@@ -235,11 +237,11 @@ export function AdminUsersPage({ token, currentUserId, isSuperAdmin = false }: P
                           type="button"
                           className={`btn btn-sm ${r.is_blocked ? 'btn-secondary' : 'btn-danger'}`}
                           onClick={() => toggleBlock(r.id)}
-                          disabled={r.id === currentUserId}
+                          disabled={String(r.id) === String(currentUserId)}
                         >
                           {r.is_blocked ? t('unblock') : t('block')}
                         </button>
-                        {r.id !== currentUserId ? (
+                        {String(r.id) !== String(currentUserId) ? (
                           <button
                             type="button"
                             className="btn btn-accent btn-sm"
@@ -409,14 +411,14 @@ export function AdminUsersPage({ token, currentUserId, isSuperAdmin = false }: P
             <h2>{t('userCreatedTitle')}</h2>
             <p className="muted">{t('codeLabel', { code: credentialsModal.code8 })}</p>
             <p className="passwordReveal">{credentialsModal.code8}</p>
-            <a
+            <SignedFileLink
               className="btn btn-primary"
-              href={api.apiFileUrl(credentialsModal.pdf_url, token)}
+              path={credentialsModal.pdf_url}
               target="_blank"
               rel="noreferrer"
             >
               {t('downloadPdf')}
-            </a>
+            </SignedFileLink>
             <div className="modalActions">
               <button type="button" className="btn btn-secondary" onClick={() => setCredentialsModal(null)}>
                 {t('close')}

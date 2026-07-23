@@ -1,5 +1,6 @@
 const { z } = require("zod");
 const { V } = require("../errorKeys");
+const { publicEntityIdSchema } = require("../publicEntityId");
 const {
   bilingualLabelShape,
   bilingualNameShape,
@@ -56,7 +57,7 @@ const tableSchemaCreateSchema = refineBilingualNames(
       .regex(/^[a-z0-9-]+$/)
       .optional(),
     ...bilingualNameShape(),
-    service_id: z.number().int().positive().nullable().optional(),
+    service_id: publicEntityIdSchema.nullable().optional(),
     columns: z.array(columnSchema).min(1),
     layout_json: layoutJsonSchema
   })
@@ -65,7 +66,7 @@ const tableSchemaCreateSchema = refineBilingualNames(
 const tableSchemaPatchSchema = z.object({
   name_ar: z.string().trim().max(200).optional(),
   name_fr: z.string().trim().max(200).optional(),
-  service_id: z.number().int().positive().nullable().optional(),
+  service_id: publicEntityIdSchema.nullable().optional(),
   columns: z.array(columnSchema).min(1).optional(),
   layout_json: layoutJsonSchema
 });
@@ -106,8 +107,8 @@ const documentTemplateCreateSchema = refineBilingualNames(
   z.object({
     slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9-]+$/).optional(),
     ...bilingualNameShape(),
-    rapport_type_id: z.number().int().positive().nullable().optional(),
-    rapport_type_ids: z.array(z.number().int().positive()).max(50).optional(),
+    rapport_type_id: publicEntityIdSchema.nullable().optional(),
+    rapport_type_ids: z.array(publicEntityIdSchema).max(50).optional(),
     content_kind: z.enum(["document_compose", "fiche_lecture"]).nullable().optional(),
     is_default: z.boolean().optional(),
     content_json: documentTemplateContentSchema.optional()
@@ -117,15 +118,15 @@ const documentTemplateCreateSchema = refineBilingualNames(
 const documentTemplatePatchSchema = z.object({
   name_ar: z.string().trim().max(200).optional(),
   name_fr: z.string().trim().max(200).optional(),
-  rapport_type_id: z.number().int().positive().nullable().optional(),
-  rapport_type_ids: z.array(z.number().int().positive()).max(50).optional(),
+  rapport_type_id: publicEntityIdSchema.nullable().optional(),
+  rapport_type_ids: z.array(publicEntityIdSchema).max(50).optional(),
   content_kind: z.enum(["document_compose", "fiche_lecture"]).nullable().optional(),
   is_default: z.boolean().optional(),
   content_json: documentTemplateContentSchema.optional()
 });
 
 const applyDocumentTemplateSchema = z.object({
-  template_id: z.number().int().positive(),
+  template_id: publicEntityIdSchema,
   mode: z.enum(["replace", "append"]).optional()
 });
 

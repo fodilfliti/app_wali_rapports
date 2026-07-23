@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { ApiError } from '../api'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
@@ -29,7 +30,7 @@ export type GuidedContentKind = 'document_compose' | 'table_grid' | 'commune_lis
 
 type Props = {
   token: string
-  serviceId: number
+  serviceId: EntityIdParam
   contentKind: GuidedContentKind
   open: boolean
   onClose: () => void

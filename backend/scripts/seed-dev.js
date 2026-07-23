@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const tlemcenDairas = require("../src/db/seed-data/tlemcen-dairas");
 const tlemcenMunicipalities = require("../src/db/seed-data/tlemcen-municipalities");
 const { sequelize, Daira, Municipality, User, AccessRoleTemplate } = require("../src/db");
+const { withUuid } = require("./lib/seedIdentity");
 
 function devAdminConfig() {
   return {
@@ -23,7 +24,9 @@ async function seedDairas() {
     return existing;
   }
   const now = new Date();
-  await Daira.bulkCreate(tlemcenDairas.map((d) => ({ ...d, created_at: now })));
+  await Daira.bulkCreate(
+    tlemcenDairas.map((d) => withUuid({ ...d, created_at: now })),
+  );
   console.log(`Inserted ${tlemcenDairas.length} Tlemcen dairas.`);
   return tlemcenDairas.length;
 }
@@ -42,13 +45,15 @@ async function seedMunicipalities() {
   const now = new Date();
   if (existing === 0) {
     await Municipality.bulkCreate(
-      tlemcenMunicipalities.map((m) => ({
-        code: m.code,
-        name_ar: m.name_ar,
-        name_fr: m.name_fr,
-        daira_id: dairaByCode[m.daira_code] || dairaByCode["1301"],
-        created_at: now
-      }))
+      tlemcenMunicipalities.map((m) =>
+        withUuid({
+          code: m.code,
+          name_ar: m.name_ar,
+          name_fr: m.name_fr,
+          daira_id: dairaByCode[m.daira_code] || dairaByCode["1301"],
+          created_at: now,
+        }),
+      ),
     );
     console.log(`Inserted ${tlemcenMunicipalities.length} Tlemcen municipalities.`);
   } else {

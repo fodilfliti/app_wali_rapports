@@ -1,10 +1,32 @@
 const { Op } = require("sequelize");
-const { Notification, User } = require("../../db");
+const { Notification, User, Rapport, WaliBroadcast, WaliInstruction } = require("../../db");
 const {
   prefTypeForMessageKey,
 } = require("../rapports/notificationKeys");
 const { getPreferencesMap, isTypeAllowed } = require("./preferenceService");
 const { sendPushToUsers } = require("./pushService");
+const { isUuid, publicId } = require("../access/idResolver");
+
+async function resolveRapportPublicId(rapportId) {
+  if (rapportId == null || rapportId === "") return null;
+  if (isUuid(String(rapportId))) return String(rapportId);
+  const row = await Rapport.findByPk(rapportId, { attributes: ["id", "uuid"] });
+  return row ? publicId(row) : String(rapportId);
+}
+
+async function resolveBroadcastPublicId(broadcastId) {
+  if (broadcastId == null || broadcastId === "") return null;
+  if (isUuid(String(broadcastId))) return String(broadcastId);
+  const row = await WaliBroadcast.findByPk(broadcastId, { attributes: ["id", "uuid"] });
+  return row ? publicId(row) : String(broadcastId);
+}
+
+async function resolveInstructionPublicId(instructionId) {
+  if (instructionId == null || instructionId === "") return null;
+  if (isUuid(String(instructionId))) return String(instructionId);
+  const row = await WaliInstruction.findByPk(instructionId, { attributes: ["id", "uuid"] });
+  return row ? publicId(row) : String(instructionId);
+}
 
 const PUSH_COPY = {
   rapportPendingChef: {
@@ -12,21 +34,21 @@ const PUSH_COPY = {
     title_fr: "Rapport en attente de révision",
     body_ar: "وصل تقرير جديد إلى رئيس الديوان.",
     body_fr: "Un nouveau rapport est arrivé chez le chef de cabinet.",
-    url: (p) => (p.rapport_id ? `/chef/rapports/${p.rapport_id}` : "/chef"),
+    url: (p) => (p.rapport_id ? `/chief/rapports/${p.rapport_id}` : "/chief"),
   },
   rapportPendingWali: {
     title_ar: "تقرير بانتظار الوالي",
     title_fr: "Rapport en attente du wali",
     body_ar: "تقرير جاهز للمراجعة بعد موافقة رئيس الديوان.",
     body_fr: "Un rapport est prêt après validation du chef de cabinet.",
-    url: (p) => (p.rapport_id ? `/wali/rapports/${p.rapport_id}` : "/wali"),
+    url: (p) => (p.rapport_id ? `/governor/rapports/${p.rapport_id}` : "/governor"),
   },
   rapportResubmittedBypass: {
     title_ar: "إعادة إرسال تقرير",
     title_fr: "Rapport renvoyé",
     body_ar: "أُعيد إرسال تقرير مباشرة إلى الوالي.",
     body_fr: "Un rapport a été renvoyé directement au wali.",
-    url: (p) => (p.rapport_id ? `/chef/rapports/${p.rapport_id}` : "/chef"),
+    url: (p) => (p.rapport_id ? `/chief/rapports/${p.rapport_id}` : "/chief"),
   },
   rapportDeleteRequested: {
     title_ar: "طلب حذف تقرير",
@@ -35,85 +57,85 @@ const PUSH_COPY = {
     body_fr: "Le bureau demande la suppression d'un rapport.",
     url: (p) =>
       p.rapport_id
-        ? `/chef/rapports/${p.rapport_id}/view`
-        : "/chef/rapports?status_group=delete_requested",
+        ? `/chief/rapports/${p.rapport_id}/view`
+        : "/chief/rapports?status_group=delete_requested",
   },
   rapportDeleteApproved: {
     title_ar: "تم حذف التقرير",
     title_fr: "Rapport supprimé",
     body_ar: "وافق رئيس الديوان على حذف التقرير.",
     body_fr: "Le chef de cabinet a approuvé la suppression.",
-    url: () => "/office/rapports",
+    url: () => "/cabinet/rapports",
   },
   rapportDeleteRejected: {
     title_ar: "رفض طلب الحذف",
     title_fr: "Suppression refusée",
     body_ar: "رفض رئيس الديوان طلب حذف التقرير.",
     body_fr: "Le chef de cabinet a refusé la demande de suppression.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/rapports"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/rapports"),
   },
   waliAccepted: {
     title_ar: "رد الوالي",
     title_fr: "Réponse du wali",
     body_ar: "تم قبول التقرير.",
     body_fr: "Le rapport a été accepté.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   waliAcceptedPending: {
     title_ar: "رد الوالي",
     title_fr: "Réponse du wali",
     body_ar: "تم القبول مع متابعة معلّقة.",
     body_fr: "Accepté avec suivi en attente.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   waliAcceptedCompleted: {
     title_ar: "رد الوالي",
     title_fr: "Réponse du wali",
     body_ar: "تم القبول والمتابعة مكتملة.",
     body_fr: "Accepté et suivi terminé.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   waliChangesRequested: {
     title_ar: "طلب تعديلات",
     title_fr: "Modifications demandées",
     body_ar: "طلب الوالي تعديلات على التقرير.",
     body_fr: "Le wali a demandé des modifications.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   waliFeedback: {
     title_ar: "ملاحظة الوالي",
     title_fr: "Note du wali",
     body_ar: "لديك ملاحظة جديدة على التقرير.",
     body_fr: "Nouvelle note sur le rapport.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   chefAccepted: {
     title_ar: "موافقة رئيس الديوان",
     title_fr: "Validation du chef de cabinet",
     body_ar: "وافق رئيس الديوان على التقرير.",
     body_fr: "Le chef de cabinet a validé le rapport.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   chefChangesRequested: {
     title_ar: "تعديلات من رئيس الديوان",
     title_fr: "Modifications du chef de cabinet",
     body_ar: "طلب رئيس الديوان تعديلات.",
     body_fr: "Le chef de cabinet a demandé des modifications.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   chefFeedback: {
     title_ar: "ملاحظة رئيس الديوان",
     title_fr: "Note du chef de cabinet",
     body_ar: "لديك ملاحظة جديدة.",
     body_fr: "Nouvelle note reçue.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/notifications"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/notifications"),
   },
   rapportComment: {
     title_ar: "مناقشة التقرير",
     title_fr: "Discussion du rapport",
     body_ar: "تعليق جديد في مناقشة التقرير.",
     body_fr: "Nouveau commentaire dans la discussion.",
-    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/office/rapports?view=discussion"),
+    url: (p) => (p.rapport_id ? officeRapportUrl(p) : "/cabinet/rapports?view=discussion"),
   },
   waliInstruction: {
     title_ar: "تعليمات الوالي",
@@ -121,40 +143,40 @@ const PUSH_COPY = {
     body_ar: "وصلك تعليم جديد.",
     body_fr: "Nouvelle instruction reçue.",
     url: (p) =>
-      p.instruction_id ? `/office/instructions/${p.instruction_id}` : "/office/instructions",
+      p.instruction_id ? `/cabinet/instructions/${p.instruction_id}` : "/cabinet/instructions",
   },
   waliBroadcast: {
     title_ar: "ملف مشترك",
     title_fr: "Fichier partagé",
     body_ar: "شارك الوالي ملفاً جديداً.",
     body_fr: "Le wali a partagé un fichier.",
-    url: (p) => (p.broadcast_id ? `/office/shared/${p.broadcast_id}` : "/office/shared"),
+    url: (p) => (p.broadcast_id ? `/cabinet/shared/${p.broadcast_id}` : "/cabinet/shared"),
   },
   waliBroadcastReminder: {
     title_ar: "تذكير بملف مشترك",
     title_fr: "Rappel fichier partagé",
     body_ar: "تذكير بملف لم يُفتح بعد.",
     body_fr: "Rappel pour un fichier non ouvert.",
-    url: (p) => (p.broadcast_id ? `/office/shared/${p.broadcast_id}` : "/office/shared"),
+    url: (p) => (p.broadcast_id ? `/cabinet/shared/${p.broadcast_id}` : "/cabinet/shared"),
   },
   calendarToday: {
     title_ar: "أحداث اليوم",
     title_fr: "Événements aujourd'hui",
     body_ar: "لديك أحداث في التقويم اليوم.",
     body_fr: "Vous avez des événements au calendrier aujourd'hui.",
-    url: () => "/wali/calendar",
+    url: () => "/governor/calendar",
   },
   calendarTomorrow: {
     title_ar: "أحداث غداً",
     title_fr: "Événements demain",
     body_ar: "لديك أحداث في التقويم غداً.",
     body_fr: "Vous avez des événements au calendrier demain.",
-    url: () => "/wali/calendar",
+    url: () => "/governor/calendar",
   },
 };
 
 function officeRapportUrl(p) {
-  return `/office/rapports/${p.rapport_id}`;
+  return `/cabinet/rapports/${p.rapport_id}`;
 }
 
 function buildPushPayload(messageKey, fields, overrides = {}) {
@@ -174,7 +196,25 @@ function buildPushPayload(messageKey, fields, overrides = {}) {
     url: overrides.url || urlFn(fields),
     tag: overrides.tag || `${messageKey}-${fields.rapport_id || fields.calendar_event_id || fields.broadcast_id || fields.instruction_id || "x"}`,
     message_key: messageKey,
-    rapport_id: fields.rapport_id != null ? Number(fields.rapport_id) : null,
+    // Prefer public UUID so FE routes / discussion refresh match API ids.
+    rapport_id:
+      fields.rapport_public_id != null
+        ? String(fields.rapport_public_id)
+        : fields.rapport_id != null
+          ? String(fields.rapport_id)
+          : null,
+    broadcast_id:
+      fields.broadcast_public_id != null
+        ? String(fields.broadcast_public_id)
+        : fields.broadcast_id != null
+          ? String(fields.broadcast_id)
+          : null,
+    instruction_id:
+      fields.instruction_public_id != null
+        ? String(fields.instruction_public_id)
+        : fields.instruction_id != null
+          ? String(fields.instruction_id)
+          : null,
   };
 }
 
@@ -270,13 +310,30 @@ async function notifyUsers(opts) {
     });
 
   if (pushUserIds.length) {
-    const payload = buildPushPayload(message_key, base, opts.push || {});
+    const [rapportPublicId, broadcastPublicId, instructionPublicId] = await Promise.all([
+      resolveRapportPublicId(base.rapport_id),
+      resolveBroadcastPublicId(base.broadcast_id),
+      resolveInstructionPublicId(base.instruction_id),
+    ]);
+    const payload = buildPushPayload(
+      message_key,
+      {
+        ...base,
+        rapport_id: rapportPublicId,
+        rapport_public_id: rapportPublicId,
+        broadcast_id: broadcastPublicId,
+        broadcast_public_id: broadcastPublicId,
+        instruction_id: instructionPublicId,
+        instruction_public_id: instructionPublicId,
+      },
+      opts.push || {},
+    );
     setImmediate(() => {
       sendPushToUsers(pushUserIds, payload, {
         message_key,
-        rapport_id: base.rapport_id,
-        broadcast_id: base.broadcast_id,
-        instruction_id: base.instruction_id,
+        rapport_id: rapportPublicId,
+        broadcast_id: broadcastPublicId,
+        instruction_id: instructionPublicId,
       }).catch(() => {});
     });
   }

@@ -4,6 +4,8 @@
 
 Non-live **comment thread** at the bottom of a rapport so **office**, **Chef cabinet**, and **Wali** can discuss content. Separate from accept / demand-change decision notes (`wali_responses`, `chef_responses`).
 
+Paths: `/cabinet`, `/chief`, `/governor` (`ROUTES.md`). `:id` / `versionId` = public UUID (`IDENTITY_UUID.md`). Gates: `can*` / `assertCan` (`ACCESS_PROFILES.md`).
+
 - Available only **after first Envoyer** (at least one version with `submitted_at`, or status in `pending_chef` | `submitted` | `under_review` | `changes_requested` | `acknowledged`).
 - Pure drafts (never submitted) → discussion disabled.
 - **Per-version threads:** comments are scoped to `rapport_version_id`. Listing defaults to the rapport’s **current** version. A **new version starts at 0** comments; older versions keep their own history.
@@ -18,7 +20,7 @@ Non-live **comment thread** at the bottom of a rapport so **office**, **Chef cab
 | `OFFICE_USER` | Yes if can open the rapport | Including while `pending_chef`; post only on current version |
 | `CHEF_CABINET` | Yes | Including while `pending_chef`; post only on current version |
 | `WALI` | Yes only if visible to Wali | Blocked for `pending_chef` / draft via `assertVisibleToWali` |
-| `ADMIN` | Yes (support) | Via chef/wali/office routes as applicable |
+| `ADMIN` | Yes (support) | Via cabinet/chief/governor hub routes as applicable |
 
 UI labels: ملحق بالديوان / Attaché de cabinet · رئيس الديوان · حساب الوالي — never raw enums.
 
@@ -49,16 +51,16 @@ Opening rapport / comments marks unread discussion notifications for that `rappo
 
 | Method | Path | Role |
 | ------ | ---- | ----- |
-| `GET` | `/office/rapports/:id/comments` | Office — query `versionId` (default = `current_version_id`) |
-| `POST` | `/office/rapports/:id/comments` | Office — always stamps current version; `409 discussionReadOnly` if body `versionId` ≠ current |
-| `GET`/`POST` | `/chef/rapports/:id/comments` | Chef (same `versionId` rules) |
-| `GET`/`POST` | `/wali/rapports/:id/comments` | Wali (+ visibility gate; same `versionId` rules) |
-| `GET` | `/wali/rapports?unread_discussion=1` | Wali discussion New |
-| `GET` | `/wali/rapports?has_discussion=1` | Wali discussion All (by latest comment) |
-| `GET` | `/chef/rapports?unread_discussion=1` | Chef discussion New |
-| `GET` | `/chef/rapports?has_discussion=1` | Chef discussion All |
-| `GET` | `/office/rapports?unread_discussion=1` | Office discussion New |
-| `GET` | `/office/rapports?has_discussion=1` | Office discussion All (by latest comment; scoped) |
+| `GET` | `/cabinet/rapports/:id/comments` | Office — query `versionId` (default = `current_version_id`) |
+| `POST` | `/cabinet/rapports/:id/comments` | Office — always stamps current version; `409 discussionReadOnly` if body `versionId` ≠ current |
+| `GET`/`POST` | `/chief/rapports/:id/comments` | Chef (same `versionId` rules) |
+| `GET`/`POST` | `/governor/rapports/:id/comments` | Wali (+ visibility gate; same `versionId` rules) |
+| `GET` | `/governor/rapports?unread_discussion=1` | Wali discussion New |
+| `GET` | `/governor/rapports?has_discussion=1` | Wali discussion All (by latest comment) |
+| `GET` | `/chief/rapports?unread_discussion=1` | Chef discussion New |
+| `GET` | `/chief/rapports?has_discussion=1` | Chef discussion All |
+| `GET` | `/cabinet/rapports?unread_discussion=1` | Office discussion New |
+| `GET` | `/cabinet/rapports?has_discussion=1` | Office discussion All (by latest comment; scoped) |
 
 Comment thread pagination: `page`, `pageSize` (default 20, max 100). Order: `created_at ASC` within page (page 1 = oldest). Discussion list rows include `last_comment_at` and `has_unread_discussion`.
 
@@ -79,9 +81,9 @@ List response extras: `discussion_available`, `can_comment` (true only when `ver
 
 | Role | URL | Notes |
 | ---- | --- | ----- |
-| Office | `/office/rapports?view=discussion` | Hub tile **المناقشة** + optional header bell; same New / All sub-tabs |
-| Chef | `/chef/rapports?view=discussion` | Hub tile + header bell |
-| Wali | `/wali/rapports?view=discussion` | Hub tile + header bell |
+| Office | `/cabinet/rapports?view=discussion` | Hub tile **المناقشة** + optional header bell; same New / All sub-tabs |
+| Chef | `/chief/rapports?view=discussion` | Hub tile + header bell |
+| Wali | `/governor/rapports?view=discussion` | Hub tile + header bell |
 
 Sub-tabs (default = New so hub/bell still land on unread):
 

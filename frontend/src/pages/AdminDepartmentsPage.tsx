@@ -10,6 +10,7 @@ import { useSnackbar } from '../snackbar/SnackbarContext'
 import { ConfirmActionModal } from '../components/ConfirmActionModal'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 import { bilingualPairForSave, hasBilingualText } from '../utils/bilingual'
+import type { EntityIdParam } from '../api'
 
 type Props = { token: string }
 
@@ -20,7 +21,7 @@ export function AdminDepartmentsPage({ token }: Props) {
   const snack = useSnackbar()
   const [departments, setDepartments] = useState<any[]>([])
   const [deptModalOpen, setDeptModalOpen] = useState(false)
-  const [editingDepartmentId, setEditingDepartmentId] = useState<number | null>(null)
+  const [editingDepartmentId, setEditingDepartmentId] = useState<EntityIdParam | null>(null)
   const [deptForm, setDeptForm] = useState(emptyDeptForm())
   const [page, setPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
@@ -46,7 +47,7 @@ export function AdminDepartmentsPage({ token }: Props) {
   }
 
   function openEditDepartment(department: any) {
-    setEditingDepartmentId(Number(department.id))
+    setEditingDepartmentId(department.id)
     setDeptForm({ name_ar: department.name_ar || '', name_fr: department.name_fr || '' })
     setDeptModalOpen(true)
   }

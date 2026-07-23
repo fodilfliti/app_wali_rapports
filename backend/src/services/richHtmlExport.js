@@ -228,6 +228,21 @@ function parseBlockElement(el, locale) {
     if (cls.includes("editor-bordered-block")) {
       return { type: "bordered", children: walkBlockContainer(el, locale) };
     }
+    if (cls.includes("editor-spread-row")) {
+      const cells = [];
+      for (const child of el.childNodes) {
+        if (child.nodeType !== 1) continue;
+        const childCls = child.getAttribute?.("class") || "";
+        if (!childCls.includes("editor-spread-cell")) continue;
+        const slot = child.getAttribute("data-spread-slot") || "start";
+        cells.push({
+          slot,
+          children: walkBlockContainer(child, locale),
+        });
+      }
+      if (cells.length >= 2) return { type: "spread", cells };
+      return walkBlockContainer(el, locale);
+    }
     return walkBlockContainer(el, locale);
   }
 
@@ -442,6 +457,47 @@ function drawRichHtmlToPdf(doc, html, locale, fontName, helpers) {
         .stroke();
       doc.restore();
       doc.y = endY + padV + EXPORT_ELEMENT_MARGIN_V_PT;
+      doc.x = MARGIN;
+      continue;
+    }
+
+    if (block.type === "spread") {
+      ensureSpace(doc, 28, fontName);
+      const cells = block.cells || [];
+      const n = Math.max(cells.length, 1);
+      const gap = 8;
+      const colW = (width - gap * (n - 1)) / n;
+      const startY = doc.y;
+      let maxY = startY;
+      for (let i = 0; i < n; i += 1) {
+        // DOM order start→end; in RTL flex first cell is on the right.
+        const visualIndex = locale === "ar" ? n - 1 - i : i;
+        const cell = cells[i] || { children: [] };
+        const slot = cell.slot || (i === 0 ? "start" : i === n - 1 ? "end" : "middle");
+        let align = "center";
+        if (slot === "start") align = locale === "ar" ? "right" : "left";
+        if (slot === "end") align = locale === "ar" ? "left" : "right";
+        const colLeft = MARGIN + visualIndex * (colW + gap);
+        doc.y = startY;
+        doc.x = colLeft;
+        const children = cell.children?.length
+          ? cell.children
+          : [{ type: "spacer" }];
+        for (const child of children) {
+          const drawn =
+            child.type === "paragraph" || child.type === "heading"
+              ? { ...child, align }
+              : child;
+          drawRichHtmlBlockToPdf(doc, drawn, locale, fontName, {
+            ...helpers,
+            width: colW,
+            MARGIN: colLeft,
+            margin: colLeft,
+          });
+        }
+        if (doc.y > maxY) maxY = doc.y;
+      }
+      doc.y = maxY + 4;
       doc.x = MARGIN;
       continue;
     }
@@ -754,6 +810,59 @@ function richHtmlToDocxChildren(html, locale, docx, helpers) {
         borderedTable,
         spacingPara(locale, { before: tableMargin })
       ];
+    }
+
+    if (block.type === "spread") {
+      const cells = block.cells || [];
+      if (cells.length < 2) return blockParagraphs(cells[0]?.children || []);
+      const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+      const ordered = locale === "ar" ? [...cells].reverse() : cells;
+      const n = ordered.length;
+      const pct = Math.floor(100 / n);
+      const spreadTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: ordered.map((cell, idx) => {
+              const slot = cell.slot || (idx === 0 ? "start" : idx === n - 1 ? "end" : "middle");
+              // After reverse for AR, visual left cell was DOM "end".
+              let align = "center";
+              if (locale === "ar") {
+                if (slot === "start") align = "right";
+                else if (slot === "end") align = "left";
+              } else {
+                if (slot === "start") align = "left";
+                else if (slot === "end") align = "right";
+              }
+              const paras = (cell.children || []).map((child) => {
+                if (child.type === "paragraph" || child.type === "heading") {
+                  return { ...child, align };
+                }
+                return child;
+              });
+              const inner = blockParagraphs(paras.length ? paras : [{ type: "spacer" }]);
+              return new TableCell({
+                width: { size: pct, type: WidthType.PERCENTAGE },
+                borders: {
+                  top: NO_BORDER,
+                  bottom: NO_BORDER,
+                  left: NO_BORDER,
+                  right: NO_BORDER,
+                },
+                children: inner.length
+                  ? inner
+                  : [
+                      new Paragraph({
+                        bidirectional: locale === "ar",
+                        children: [new TextRun({ text: "" })],
+                      }),
+                    ],
+              });
+            }),
+          }),
+        ],
+      });
+      return [spreadTable];
     }
 
     if (block.type === "hr") {

@@ -1,5 +1,6 @@
 const { Op } = require("sequelize");
 const { UserServiceGrant, Rapport, Service, User } = require("../../db");
+const { findByPublicId, resolveNumericId, withPublicId } = require("../access/idResolver");
 
 const LEVEL_RANK = { none: 0, view: 1, manage: 2 };
 
@@ -7,8 +8,14 @@ function rank(level) {
   return LEVEL_RANK[level] ?? 0;
 }
 
+async function resolveNumericServiceId(serviceId) {
+  return resolveNumericId(Service, serviceId);
+}
+
 async function getAccessMapForUser(userId) {
-  const grants = await UserServiceGrant.findAll({ where: { user_id: userId } });
+  const numericUserId = await resolveNumericId(User, userId);
+  if (!numericUserId) return {};
+  const grants = await UserServiceGrant.findAll({ where: { user_id: numericUserId } });
   return Object.fromEntries(grants.map((g) => [Number(g.service_id), g.access_level]));
 }
 
@@ -34,9 +41,10 @@ async function officeUserServiceScopeWhere(officeUserId) {
  */
 async function getOfficeUserIdsWithServiceAccess(serviceId, opts = {}) {
   const minLevel = opts.minLevel || "view";
-  if (!serviceId) return [];
+  const numericServiceId = await resolveNumericServiceId(serviceId);
+  if (!numericServiceId) return [];
   const grants = await UserServiceGrant.findAll({
-    where: { service_id: serviceId },
+    where: { service_id: numericServiceId },
     include: [
       {
         model: User,
@@ -81,8 +89,10 @@ async function resolveOfficeFeedbackRecipientIds(rapport) {
 async function resolveAccessLevel(user, serviceId) {
   if (!user || !serviceId) return "none";
   if (user.role === "ADMIN") return "manage";
+  const numericServiceId = await resolveNumericServiceId(serviceId);
+  if (!numericServiceId) return "none";
   const grant = await UserServiceGrant.findOne({
-    where: { user_id: user.id, service_id: serviceId }
+    where: { user_id: user.id, service_id: numericServiceId }
   });
   return grant?.access_level || "none";
 }
@@ -98,7 +108,7 @@ async function assertServiceAccess(user, serviceId, minLevel = "view") {
 }
 
 async function assertRapportAccess(user, rapportId, minLevel = "view") {
-  const rapport = await Rapport.findByPk(rapportId, { attributes: ["id", "service_id"] });
+  const rapport = await findByPublicId(Rapport, rapportId, { attributes: ["id", "uuid", "service_id"] });
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
@@ -128,50 +138,58 @@ function filterServiceTree(services, accessMap) {
 
 async function listGrantsForService(serviceId) {
   const { User, Department } = require("../../db");
+  const numericServiceId = await resolveNumericServiceId(serviceId);
+  if (!numericServiceId) return [];
   const grants = await UserServiceGrant.findAll({
-    where: { service_id: serviceId },
+    where: { service_id: numericServiceId },
     include: [
       {
         model: User,
         as: "user",
-        attributes: ["id", "username", "name", "job_title", "department_id", "is_blocked"],
+        attributes: ["id", "uuid", "username", "name", "job_title", "department_id", "is_blocked"],
         include: [{ model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] }]
       }
     ],
     order: [["id", "ASC"]]
   });
-  return grants;
+  return grants.map((g) => {
+    const plain = g.toJSON ? g.toJSON() : g;
+    if (plain.user) plain.user = withPublicId(plain.user);
+    if (plain.user?.id != null) plain.user_id = plain.user.id;
+    return plain;
+  });
 }
 
 async function replaceServiceGrants(serviceId, grantRows, actor, req) {
   const { User } = require("../../db");
   const { audit } = require("../../services/audit");
 
-  const service = await Service.findByPk(serviceId);
+  const service = await findByPublicId(Service, serviceId);
   if (!service) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
+  const numericServiceId = service.id;
 
   const normalized = [];
   for (const row of grantRows || []) {
-    const user = await User.findByPk(row.user_id);
+    const user = await findByPublicId(User, row.user_id);
     if (!user || user.role !== "OFFICE_USER" || user.is_blocked || user.deleted_at) continue;
     if (!["view", "manage"].includes(row.access_level)) continue;
     normalized.push({
       user_id: user.id,
-      service_id: serviceId,
+      service_id: numericServiceId,
       access_level: row.access_level
     });
   }
 
-  await UserServiceGrant.destroy({ where: { service_id: serviceId } });
+  await UserServiceGrant.destroy({ where: { service_id: numericServiceId } });
   if (normalized.length) {
     await UserServiceGrant.bulkCreate(normalized);
   }
-  await audit(actor.id, "SERVICE_GRANTS_UPDATE", { service_id: serviceId, count: normalized.length }, { req });
-  return listGrantsForService(serviceId);
+  await audit(actor.id, "SERVICE_GRANTS_UPDATE", { service_id: numericServiceId, count: normalized.length }, { req });
+  return listGrantsForService(numericServiceId);
 }
 
 module.exports = {
@@ -186,4 +204,5 @@ module.exports = {
   filterServiceTree,
   listGrantsForService,
   replaceServiceGrants,
+  resolveNumericServiceId,
 };

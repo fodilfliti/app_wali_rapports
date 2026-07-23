@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const {
   requireAuth,
   attachUser,
@@ -13,6 +14,12 @@ const {
 const rapportService = require("../modules/rapports/rapportService");
 const navigationService = require("../modules/rapports/navigationService");
 const hubCountsService = require("../modules/rapports/hubCountsService");
+const {
+  LISTE_PATH_SEGMENT,
+  LISTE_ENTITY_DATA_SEGMENT,
+  LEGACY_LISTE_PATH_SEGMENT,
+  LEGACY_LISTE_ENTITY_DATA_SEGMENT,
+} = require(path.join(__dirname, "../../../shared/routes/dist"));
 
 const officeRouter = express.Router();
 officeRouter.use(
@@ -631,25 +638,24 @@ officeRouter.patch(
   },
 );
 
-officeRouter.get(
-  "/rapports/:id/communes/:municipalityCode",
-  async (req, res, next) => {
-    try {
-      res.json(
-        await workspaceService.getCommuneRows(
-          req.params.id,
-          req.params.municipalityCode,
-          req.user,
-        ),
-      );
-    } catch (e) {
-      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
-      next(e);
-    }
-  },
-);
+async function getListeEntityRowsHandler(req, res, next) {
+  try {
+    const entityKey =
+      req.params.entityKey ?? req.params.municipalityCode;
+    res.json(
+      await workspaceService.getCommuneRows(
+        req.params.id,
+        entityKey,
+        req.user,
+      ),
+    );
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    next(e);
+  }
+}
 
-officeRouter.patch("/rapports/:id/commune-data", async (req, res, next) => {
+async function patchListeEntityDataHandler(req, res, next) {
   try {
     const rapport = await workspaceService.saveCommuneData(
       req.params.id,
@@ -663,7 +669,53 @@ officeRouter.patch("/rapports/:id/commune-data", async (req, res, next) => {
     if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
     next(e);
   }
-});
+}
+
+async function clearListeEntityHandler(req, res, next) {
+  try {
+    const entityKey =
+      req.params.entityKey ?? req.params.municipalityCode;
+    const rapport = await workspaceService.clearCommuneEntityData(
+      req.params.id,
+      entityKey,
+      req.user,
+      req,
+    );
+    res.json({ rapport, mode: "entity_cleared" });
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+    if (e.status === 404) return res.status(404).json({ error: "Not found" });
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    next(e);
+  }
+}
+
+officeRouter.get(
+  `/rapports/:id/${LISTE_PATH_SEGMENT}/:entityKey`,
+  getListeEntityRowsHandler,
+);
+officeRouter.get(
+  `/rapports/:id/${LEGACY_LISTE_PATH_SEGMENT}/:municipalityCode`,
+  getListeEntityRowsHandler,
+);
+
+officeRouter.patch(
+  `/rapports/:id/${LISTE_ENTITY_DATA_SEGMENT}`,
+  patchListeEntityDataHandler,
+);
+officeRouter.patch(
+  `/rapports/:id/${LEGACY_LISTE_ENTITY_DATA_SEGMENT}`,
+  patchListeEntityDataHandler,
+);
+
+officeRouter.post(
+  `/rapports/:id/${LISTE_PATH_SEGMENT}/:entityKey/clear`,
+  clearListeEntityHandler,
+);
+officeRouter.post(
+  `/rapports/:id/${LEGACY_LISTE_PATH_SEGMENT}/:municipalityCode/clear`,
+  clearListeEntityHandler,
+);
 
 officeRouter.patch(
   "/rapports/:id/included-entities",
@@ -969,7 +1021,7 @@ officeRouter.post(
         return res.status(400).json({ error: "File required" });
       const file = await saveUploadedFile({
         ...input,
-        rapportId: Number(req.params.id),
+        rapportId: req.params.id,
         actor: req.user,
         req,
         startedAt: req.uploadStartedAt,
@@ -1032,7 +1084,7 @@ officeRouter.get("/rapports/:id/export.pdf", async (req, res, next) => {
     await assertRapportAccess(req.user, req.params.id, "view");
     const showHidden = req.query.showHidden === "1";
     const locale = req.query.locale === "fr" ? "fr" : "ar";
-    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+    const versionId = req.query.versionId || null;
     const { buffer, filename } = await generateRapportPdf(req.params.id, {
       locale,
       showHidden,
@@ -1059,7 +1111,7 @@ officeRouter.get("/rapports/:id/export.xlsx", async (req, res, next) => {
     const showHidden = req.query.showHidden === "1";
     const locale = req.query.locale === "fr" ? "fr" : "ar";
     const rowFilter = req.query.rowFilter;
-    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+    const versionId = req.query.versionId || null;
     const { buffer, filename } = await generateRapportExcel(req.params.id, {
       locale,
       showHidden,
@@ -1089,7 +1141,7 @@ officeRouter.get("/rapports/:id/export.docx", async (req, res, next) => {
     await assertRapportAccess(req.user, req.params.id, "view");
     const showHidden = req.query.showHidden === "1";
     const locale = req.query.locale === "fr" ? "fr" : "ar";
-    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+    const versionId = req.query.versionId || null;
     const { buffer, filename } = await generateRapportDocx(req.params.id, {
       locale,
       showHidden,

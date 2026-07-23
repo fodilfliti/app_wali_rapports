@@ -6,9 +6,10 @@ const {
   Department
 } = require("../../db");
 const { PERMISSIONS, levelRank, permissionAppliesToAccount } = require("./permissionCatalog");
+const { findByPublicId } = require("./idResolver");
 
 async function loadUserWithAccess(userId) {
-  return User.findByPk(userId, {
+  return findByPublicId(User, userId, {
     include: [
       { model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] },
       {
@@ -38,6 +39,8 @@ async function resolveEffectivePermissions(userOrId) {
   const applicable = PERMISSIONS.filter((p) => permissionAppliesToAccount(p, user.role));
 
   if (!user.access_role_template_id) {
+    // Legacy accounts without a template: keep prior full-manage fallback so existing
+    // prod users are not locked out. New users get a template on createUser().
     const legacy = {};
     for (const p of applicable) legacy[p.key] = "manage";
     return legacy;

@@ -7,8 +7,10 @@ import {
   useLocation,
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { EntityIdParam } from "../api";
 import * as api from "../api";
 import { ApiError } from "../api";
+import { asEntityId } from "../utils/entityIds";
 import { DocumentTemplatePickModal } from "../components/DocumentTemplatePickModal";
 import { ENABLE_DOCUMENT_TEMPLATES } from "../config/features";
 import { BackButton } from "../components/BackButton";
@@ -103,13 +105,9 @@ type Props = { token: string };
 export function OfficeTableGridPage({ token }: Props) {
   const { serviceId } = useParams();
   const [searchParams] = useSearchParams();
-  const rapportTypeId = searchParams.get("rapport_type_id")
-    ? Number(searchParams.get("rapport_type_id"))
-    : undefined;
-  const rapportId = searchParams.get("rapport_id")
-    ? Number(searchParams.get("rapport_id"))
-    : undefined;
-  const sid = Number(serviceId);
+  const rapportTypeId = searchParams.get("rapport_type_id") || undefined;
+  const rapportIdQuery = searchParams.get("rapport_id") || undefined;
+  const sid = serviceId ?? "";
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
@@ -117,7 +115,7 @@ export function OfficeTableGridPage({ token }: Props) {
   const [workspace, setWorkspace] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
-  const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
+  const [mediaFiles, setMediaFiles] = useState<Record<string, MediaFile>>({});
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [title, setTitle] = useState("");
   const [tableMeta, setTableMeta] = useState<TableMeta>({});
@@ -140,7 +138,7 @@ export function OfficeTableGridPage({ token }: Props) {
     try {
       const ws = await api.getTableWorkspace(token, sid, {
         rapportTypeId,
-        rapportId,
+        rapportId: rapportIdQuery,
       });
       setWorkspace(ws);
       setTitle(ws.rapport?.title || ws.suggestedTitle || "");
@@ -176,7 +174,7 @@ export function OfficeTableGridPage({ token }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [token, sid, rapportTypeId, rapportId, snack, t]);
+  }, [token, sid, rapportTypeId, rapportIdQuery, snack, t]);
 
   useEffect(() => {
     load();
@@ -201,8 +199,8 @@ export function OfficeTableGridPage({ token }: Props) {
       throw err;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: Number(sid),
-      rapport_type_id: Number(workspace.rapportType.id),
+      service_id: sid,
+      rapport_type_id: workspace.rapportType.id,
       title: trimmed,
       data_json: {
         tables: [
@@ -297,7 +295,7 @@ export function OfficeTableGridPage({ token }: Props) {
       await notifyHubCountsRefresh();
       snack.show(t("finishRapportDone"), "success");
       const typeId = rapportTypeId ?? workspace.rapport.rapport_type_id;
-      navigate(typeId ? `/office/services/${sid}/rapports/${typeId}` : `/office/services/${sid}`);
+      navigate(typeId ? `/cabinet/services/${sid}/rapports/${typeId}` : `/cabinet/services/${sid}`);
     } catch {
       snack.show(t("errorGeneric"), "error");
     } finally {
@@ -355,8 +353,8 @@ export function OfficeTableGridPage({ token }: Props) {
         const typeId = rapportTypeId ?? workspace.rapport.rapport_type_id;
         navigate(
           typeId
-            ? `/office/services/${sid}/rapports/${typeId}`
-            : `/office/services/${sid}`,
+            ? `/cabinet/services/${sid}/rapports/${typeId}`
+            : `/cabinet/services/${sid}`,
           { replace: true },
         );
       }
@@ -382,18 +380,18 @@ export function OfficeTableGridPage({ token }: Props) {
     }
   }
 
-  async function hideTypeFromPage(typeId: number) {
+  async function hideTypeFromPage(typeId: EntityIdParam) {
     try {
       await api.hideRapportType(token, typeId);
       await notifyHubCountsRefresh();
       snack.show(t("hideRapportTypeDone"), "success");
-      navigate(`/office/services/${sid}`);
+      navigate(`/cabinet/services/${sid}`);
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
   }
 
-  async function restoreTypeFromPage(typeId: number) {
+  async function restoreTypeFromPage(typeId: EntityIdParam) {
     try {
       await api.restoreRapportType(token, typeId);
       await notifyHubCountsRefresh();
@@ -524,6 +522,8 @@ export function OfficeTableGridPage({ token }: Props) {
           <RapportExportButtons
             token={token}
             rapportId={workspace.rapport.id}
+            contentKind={workspace.rapportType?.content_kind}
+            communeContentKind={workspace.rapportType?.commune_content_kind}
             onPreparePreview={isEditable ? saveForPreview : undefined}
           />
         ) : null}
@@ -563,7 +563,7 @@ export function OfficeTableGridPage({ token }: Props) {
           {loadError === "tableSchemaNotConfigured" ? (
             <Link
               className="btn btn-primary"
-              to={`/office/services/${sid}/config`}
+              to={`/cabinet/services/${sid}/config`}
             >
               {t("goToServiceConfig")}
             </Link>
@@ -580,6 +580,7 @@ export function OfficeTableGridPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             versioningMode={workspace.rapportType?.versioning_mode}
+            contentKind={workspace.rapportType?.content_kind}
             editable={isEditable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}
@@ -662,7 +663,7 @@ export function OfficeTableGridPage({ token }: Props) {
           {workspace?.rapport?.id ? (
             <RapportDiscussionSection
               token={token}
-              rapportId={Number(workspace.rapport.id)}
+              rapportId={workspace.rapport.id}
               mode="office"
               enabled={isDiscussionEnabledByStatus(workspace.rapport.status)}
               versionId={workspace.rapport.current_version_id ?? null}
@@ -676,7 +677,7 @@ export function OfficeTableGridPage({ token }: Props) {
 
 export function OfficeServiceContentHubPage({ token }: Props) {
   const { serviceId } = useParams();
-  const sid = Number(serviceId);
+  const sid = serviceId ?? "";
   const { t } = useTranslation();
   const snack = useSnackbar();
   const invalidate = useInvalidateAppQueries();
@@ -698,7 +699,7 @@ export function OfficeServiceContentHubPage({ token }: Props) {
     });
   }
 
-  async function hideType(typeId: number) {
+  async function hideType(typeId: EntityIdParam) {
     try {
       await api.hideRapportType(token, typeId);
       snack.show(t("hideRapportTypeDone"), "success");
@@ -708,7 +709,7 @@ export function OfficeServiceContentHubPage({ token }: Props) {
     }
   }
 
-  async function restoreType(typeId: number) {
+  async function restoreType(typeId: EntityIdParam) {
     try {
       await api.restoreRapportType(token, typeId);
       snack.show(t("restoreRapportTypeDone"), "success");
@@ -718,7 +719,7 @@ export function OfficeServiceContentHubPage({ token }: Props) {
     }
   }
 
-  async function deleteType(typeId: number) {
+  async function deleteType(typeId: EntityIdParam) {
     try {
       await api.deleteRapportType(token, typeId);
       snack.show(t("deleteUnusedRapportTypeDone"), "success");
@@ -747,7 +748,7 @@ export function OfficeServiceContentHubPage({ token }: Props) {
         summaries={hub.contentKindSummaries || []}
         contentKinds={hub.contentKinds}
         accessLevel={hub.accessLevel}
-        backTo="/office/services"
+        backTo="/cabinet/services"
         rapportTypePath={(rt) =>
           isDirectWorkspaceKind(rt.content_kind)
             ? officeRapportTypeWorkspacePath(sid, rt)
@@ -790,7 +791,7 @@ export function OfficeServiceContentHubPage({ token }: Props) {
 
 export function OfficeServiceKindRapportTypesPage({ token }: Props) {
   const { serviceId, contentKind } = useParams();
-  const sid = Number(serviceId);
+  const sid = serviceId ?? "";
   const kind = contentKind || "";
   const { t } = useTranslation();
   const snack = useSnackbar();
@@ -811,7 +812,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
     });
   }
 
-  async function hideType(typeId: number) {
+  async function hideType(typeId: EntityIdParam) {
     try {
       await api.hideRapportType(token, typeId);
       snack.show(t("hideRapportTypeDone"), "success");
@@ -821,7 +822,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
     }
   }
 
-  async function restoreType(typeId: number) {
+  async function restoreType(typeId: EntityIdParam) {
     try {
       await api.restoreRapportType(token, typeId);
       snack.show(t("restoreRapportTypeDone"), "success");
@@ -831,7 +832,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
     }
   }
 
-  async function deleteType(typeId: number) {
+  async function deleteType(typeId: EntityIdParam) {
     try {
       await api.deleteRapportType(token, typeId);
       snack.show(t("deleteUnusedRapportTypeDone"), "success");
@@ -861,7 +862,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
       service={hub.service}
       rapportTypes={types}
       accessLevel={hub.accessLevel}
-      backTo={`/office/services/${sid}`}
+      backTo={`/cabinet/services/${sid}`}
       mode="office"
       showConfig={hub.accessLevel === "manage"}
       pageTitle={t(`contentKind_${kind}`, { defaultValue: kind })}
@@ -882,18 +883,16 @@ export function OfficeDocumentsPage({
 }: Props & { contentKind?: string }) {
   const { serviceId } = useParams();
   const [searchParams] = useSearchParams();
-  const rapportTypeId = searchParams.get("rapport_type_id")
-    ? Number(searchParams.get("rapport_type_id"))
-    : undefined;
-  const sid = Number(serviceId);
+  const rapportTypeId = searchParams.get("rapport_type_id") || undefined;
+  const sid = serviceId ?? "";
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [createPickOpen, setCreatePickOpen] = useState(false);
   const [importFor, setImportFor] = useState<{
-    rapportId: number;
-    typeId: number;
+    rapportId: EntityIdParam;
+    typeId: EntityIdParam;
   } | null>(null);
   const [listPage, setListPage] = useState(1);
   const [listTotal, setListTotal] = useState(0);
@@ -947,18 +946,18 @@ export function OfficeDocumentsPage({
     }
   }
 
-  async function hideTypeFromPage(typeId: number) {
+  async function hideTypeFromPage(typeId: EntityIdParam) {
     try {
       await api.hideRapportType(token, typeId);
       await notifyHubCountsRefresh();
       snack.show(t("hideRapportTypeDone"), "success");
-      navigate(`/office/services/${sid}`);
+      navigate(`/cabinet/services/${sid}`);
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
   }
 
-  async function restoreTypeFromPage(typeId: number) {
+  async function restoreTypeFromPage(typeId: EntityIdParam) {
     try {
       await api.restoreRapportType(token, typeId);
       await notifyHubCountsRefresh();
@@ -974,8 +973,8 @@ export function OfficeDocumentsPage({
   }, [load]);
 
   async function createDoc(
-    typeId: number,
-    templateId: number | null,
+    typeId: EntityIdParam,
+    templateId: EntityIdParam | null,
     skipDefault = false,
   ) {
     navigate(
@@ -1015,7 +1014,7 @@ export function OfficeDocumentsPage({
             />
           </div>
         ) : null}
-        <BackButton fallbackTo={`/office/services/${sid}`} />
+        <BackButton fallbackTo={`/cabinet/services/${sid}`} />
       </div>
 
       {canEdit && activeType ? (
@@ -1026,7 +1025,7 @@ export function OfficeDocumentsPage({
             onClick={() =>
               ENABLE_DOCUMENT_TEMPLATES
                 ? setCreatePickOpen(true)
-                : createDoc(activeType.id, null, true)
+                : createDoc(activeType.id, null, false)
             }
           >
             {t("createRapport")}
@@ -1103,7 +1102,7 @@ export function OfficeDocumentsPage({
                   <td>
                     <Link
                       className={`btn btn-sm ${canEdit ? 'btn-primary' : 'btn-secondary'}`}
-                      to={`/office/rapports/${r.id}/document`}
+                      to={`/cabinet/rapports/${r.id}/document`}
                     >
                       {canEdit ? t("edit") : t("details")}
                     </Link>
@@ -1160,15 +1159,11 @@ export function OfficeDocumentsPage({
 export function OfficeDocumentEditorPage({ token }: Props) {
   const { rapportId, serviceId } = useParams();
   const [searchParams] = useSearchParams();
-  const ridParam = rapportId ? Number(rapportId) : NaN;
-  const sid = serviceId ? Number(serviceId) : NaN;
-  const isNewDraft = !Number.isFinite(ridParam) && Number.isFinite(sid);
-  const newTypeId = searchParams.get("rapport_type_id")
-    ? Number(searchParams.get("rapport_type_id"))
-    : undefined;
-  const newTemplateId = searchParams.get("template_id")
-    ? Number(searchParams.get("template_id"))
-    : null;
+  const ridParam = rapportId ?? "";
+  const sid = serviceId ?? "";
+  const isNewDraft = !ridParam && !!sid;
+  const newTypeId = searchParams.get("rapport_type_id") || undefined;
+  const newTemplateId = asEntityId(searchParams.get("template_id")) ?? null;
   const newSkipDefault =
     searchParams.get("skip_default") === "1" ||
     searchParams.get("skip_default") === "true";
@@ -1177,10 +1172,10 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const snack = useSnackbar();
   const navigate = useNavigate();
   const [rapport, setRapport] = useState<any>(null);
-  const [persistedId, setPersistedId] = useState<number | null>(
-    Number.isFinite(ridParam) ? ridParam : null,
+  const [persistedId, setPersistedId] = useState<string | null>(
+    ridParam || null,
   );
-  const rid = persistedId ?? (Number.isFinite(ridParam) ? ridParam : 0);
+  const rid = persistedId ?? ridParam;
   const [title, setTitle] = useState("");
   const [docData, setDocData] = useState<{
     rich_html_ar?: string;
@@ -1205,15 +1200,14 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mediaRows, setMediaRows] = useState<MediaRow[]>([]);
-  const [mediaFiles, setMediaFiles] = useState<Record<number, MediaFile>>({});
+  const [mediaFiles, setMediaFiles] = useState<Record<string, MediaFile>>({});
   const [newDraftMeta, setNewDraftMeta] = useState<{
     service: any;
     rapportType: any;
   } | null>(null);
   const [loadingNew, setLoadingNew] = useState(isNewDraft);
-  const createdIdRef = useRef<number | null>(
-    Number.isFinite(ridParam) ? ridParam : null,
-  );
+  const [docReady, setDocReady] = useState(isNewDraft);
+  const createdIdRef = useRef<string | null>(ridParam || null);
   const newDraftPreviewKeyRef = useRef<string | null>(null);
 
   const applyDocumentJson = useCallback((dj: any) => {
@@ -1227,51 +1221,48 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     setEmbeddedTables(tables);
     setCalendarEvents(dj?.calendar_events || []);
     setMediaRows(dj?.media_rows || []);
+    setDocReady(true);
   }, []);
 
-  const loadCurrent = useCallback(() => {
+  const loadCurrent = useCallback(async () => {
     if (!rid) return;
+    setDocReady(false);
     void markOfficeRapportOpened(token, rid);
-    api
-      .getRapport(token, rid)
-      .then((r) => {
-        setRapport(r.rapport);
-        setTitle(r.rapport?.title || "");
-        setCanEdit(r.accessLevel === "manage");
-        setWaliResponses(r.rapport?.waliResponses || []);
-        setChefResponses(r.rapport?.chefResponses || []);
-        const dj =
-          r.rapport?.currentVersion?.data_json ||
-          r.rapport?.versions?.[0]?.data_json ||
-          {};
-        applyDocumentJson(dj);
-      })
-      .catch((e) => {
-        // Deleted or inaccessible — leave the broken editor URL (Back after delete).
-        if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
-          navigate("/office/services", { replace: true });
-          return;
-        }
-        snack.show(t("errorGeneric"), "error");
-      });
-    api
-      .getRapportMediaFiles(token, rid)
-      .then((r) => setMediaFiles(r.files || {}))
-      .catch(() => {});
-    api
-      .getCalendarEvents(token, rid)
-      .then((r) => setCalendarEvents(r.events || []))
-      .catch(() => {});
-    api
-      .listRapportVersions(token, rid)
-      .then((r) => setVersions(r.versions || []))
-      .catch(() => {});
+    try {
+      const [r, mediaRes, calRes, verRes] = await Promise.all([
+        api.getRapport(token, rid),
+        api.getRapportMediaFiles(token, rid).catch(() => ({ files: {} as Record<string, MediaFile> })),
+        api.getCalendarEvents(token, rid).catch(() => ({ events: [] as CalendarEvent[] })),
+        api.listRapportVersions(token, rid).catch(() => ({ versions: [] as any[] })),
+      ]);
+      setRapport(r.rapport);
+      setTitle(r.rapport?.title || "");
+      setCanEdit(r.accessLevel === "manage");
+      setWaliResponses(r.rapport?.waliResponses || []);
+      setChefResponses(r.rapport?.chefResponses || []);
+      const dj =
+        r.rapport?.currentVersion?.data_json ||
+        r.rapport?.versions?.[0]?.data_json ||
+        {};
+      applyDocumentJson(dj);
+      setMediaFiles(mediaRes.files || {});
+      setCalendarEvents(calRes.events || []);
+      setVersions(verRes.versions || []);
+    } catch (e) {
+      setDocReady(true);
+      // Deleted or inaccessible — leave the broken editor URL (Back after delete).
+      if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
+        navigate("/cabinet/services", { replace: true });
+        return;
+      }
+      snack.show(t("errorGeneric"), "error");
+    }
   }, [rid, token, snack, t, applyDocumentJson, navigate]);
 
   // New-draft preview only — must NOT depend on rid/loadCurrent. Assigning an id
   // during media upload must not remount the editor or re-apply empty preview JSON.
   useEffect(() => {
-    if (!isNewDraft || !newTypeId || !Number.isFinite(sid)) {
+    if (!isNewDraft || !newTypeId || !sid) {
       if (!isNewDraft) setLoadingNew(false);
       return;
     }
@@ -1331,10 +1322,10 @@ export function OfficeDocumentEditorPage({ token }: Props) {
 
   async function ensureDocumentId(options?: {
     navigate?: boolean;
-  }): Promise<number> {
+  }): Promise<EntityIdParam> {
     if (rid) return rid;
     if (createdIdRef.current) return createdIdRef.current;
-    if (!newTypeId || !Number.isFinite(sid)) {
+    if (!newTypeId || !sid) {
       throw new Error("errorGeneric");
     }
     const trimmed = title.trim();
@@ -1354,16 +1345,16 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       },
     });
     // Assign id only — do not reload/preview or replace local docData/tables/media.
-    createdIdRef.current = created.id as number;
+    createdIdRef.current = created.id;
     setRapport(created);
     setPersistedId(created.id);
     if (options?.navigate !== false) {
-      navigate(`/office/rapports/${created.id}/document`, { replace: true });
+      navigate(`/cabinet/rapports/${created.id}/document`, { replace: true });
     }
-    return created.id as number;
+    return created.id;
   }
 
-  async function persistDocument(): Promise<number> {
+  async function persistDocument(): Promise<EntityIdParam> {
     const id = await ensureDocumentId({ navigate: false });
     const patched = await patchRapportTitle(token, id, title);
     setTitle(patched.title);
@@ -1377,7 +1368,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
     });
     await api.saveCalendarEvents(token, id, calendarEvents);
     if (isNewDraft) {
-      navigate(`/office/rapports/${id}/document`, { replace: true });
+      navigate(`/cabinet/rapports/${id}/document`, { replace: true });
     }
     return id;
   }
@@ -1410,7 +1401,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       await api.submitRapport(token, id);
       await notifyHubCountsRefresh();
       snack.show(t("submitRapport"), "success");
-      loadCurrent();
+      await loadCurrent();
     } catch (e) {
       const msg =
         e instanceof Error && e.message === "rapportTitleRequired"
@@ -1423,7 +1414,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   }
 
   async function importTemplate(
-    templateId: number,
+    templateId: EntityIdParam,
     mode: "replace" | "append",
   ) {
     try {
@@ -1454,12 +1445,12 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       : !!(rapport && ["draft", "changes_requested"].includes(rapport.status)));
   const docBackPath =
     rapport?.service_id && rapport?.rapport_type_id
-      ? `/office/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
-      : Number.isFinite(sid) && sid > 0 && newTypeId
-        ? `/office/services/${sid}/rapports/${newTypeId}`
+      ? `/cabinet/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
+      : !!sid && newTypeId
+        ? `/cabinet/services/${sid}/rapports/${newTypeId}`
         : rapport?.service_id || newDraftMeta?.service?.id
           ? officeServiceHubPath(rapport?.service_id || newDraftMeta!.service.id)
-          : "/office/services";
+          : "/cabinet/services";
 
   const docRemarksVersionId = useMemo(
     () =>
@@ -1486,8 +1477,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       snack.show(t("finishRapportDone"), "success");
       navigate(
         rapport?.service_id && rapport?.rapport_type_id
-          ? `/office/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
-          : "/office/rapports",
+          ? `/cabinet/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
+          : "/cabinet/rapports",
         { replace: true },
       );
     } catch {
@@ -1500,12 +1491,14 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   async function returnCurrentToDraft() {
     if (!rid) return;
     setReturningToDraft(true);
+    setDocReady(false);
     try {
       await api.returnRapportToDraft(token, rid);
       await notifyHubCountsRefresh();
       snack.show(t("returnToDraftDone"), "success");
-      loadCurrent();
+      await loadCurrent();
     } catch {
+      setDocReady(true);
       snack.show(t("errorGeneric"), "error");
     } finally {
       setReturningToDraft(false);
@@ -1519,7 +1512,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       await api.startOfficeNewVersion(token, rid);
       await notifyHubCountsRefresh();
       snack.show(t("startNewVersionDone"), "success");
-      loadCurrent();
+      await loadCurrent();
     } catch {
       snack.show(t("errorGeneric"), "error");
     } finally {
@@ -1535,19 +1528,19 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       await notifyHubCountsRefresh();
       if (result.mode === "requested") {
         snack.show(t("deleteRapportRequestSent"), "success");
-        loadCurrent();
+        await loadCurrent();
       } else if (result.mode === "discard_draft_version") {
         snack.show(t("deleteRapportDiscardVersionDone"), "success");
-        loadCurrent();
+        await loadCurrent();
       } else if (result.mode === "reset_fresh_v1") {
         snack.show(t("deleteRapportResetV1Done"), "success");
-        loadCurrent();
+        await loadCurrent();
       } else {
         snack.show(t("deleteRapportDone"), "success");
         const listTarget =
           rapport?.service_id && rapport?.rapport_type_id
-            ? `/office/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
-            : "/office/rapports";
+            ? `/cabinet/services/${rapport.service_id}/rapports/${rapport.rapport_type_id}`
+            : "/cabinet/rapports";
         navigate(listTarget, { replace: true });
       }
     } catch {
@@ -1564,7 +1557,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       await api.cancelRapportDeleteRequest(token, rid);
       await notifyHubCountsRefresh();
       snack.show(t("cancelDeleteRequestDone"), "success");
-      loadCurrent();
+      await loadCurrent();
     } catch {
       snack.show(t("errorGeneric"), "error");
     } finally {
@@ -1651,6 +1644,8 @@ export function OfficeDocumentEditorPage({ token }: Props) {
           <RapportExportButtons
             token={token}
             rapportId={rid}
+            contentKind={rapport?.rapportType?.content_kind}
+            communeContentKind={rapport?.rapportType?.commune_content_kind}
             onPreparePreview={editable ? saveForPreview : undefined}
           />
         ) : null}
@@ -1660,6 +1655,7 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       <RapportOfficeStatusBanner
         rapport={rapport}
         versioningMode={rapport?.rapportType?.versioning_mode}
+        contentKind={rapport?.rapportType?.content_kind}
         editable={!!editable}
         canManage={canEdit}
         onReturnToDraft={returnCurrentToDraft}
@@ -1671,32 +1667,38 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       />
 
       {editable ? (
-        <RichDocumentEditor
-          data={{ ...docData, embedded_tables: embeddedTables }}
-          editable
-          token={token}
-          rapportId={rid || undefined}
-          ensureRapportId={() => ensureDocumentId({ navigate: false })}
-          onUploadError={(err) => {
-            const msg =
-              err instanceof Error && err.message === "rapportTitleRequired"
-                ? "rapportTitleRequired"
-                : "mediaUploadFailed";
-            snack.show(t(msg), "error");
-          }}
-          serviceId={rapport?.service_id || newDraftMeta?.service?.id}
-          onEmbeddedTablesChange={setEmbeddedTables}
-          onChange={(locale, html) =>
-            setDocData((prev) => ({
-              ...prev,
-              ...(locale === "fr"
-                ? { rich_html_fr: html }
-                : { rich_html_ar: html }),
-            }))
-          }
-        />
+        docReady ? (
+          <RichDocumentEditor
+            key={`doc-edit-${rapport?.status ?? "new"}-${rapport?.current_version_id ?? rid ?? "draft"}`}
+            data={{ ...docData, embedded_tables: embeddedTables }}
+            editable
+            token={token}
+            rapportId={rid || undefined}
+            ensureRapportId={() => ensureDocumentId({ navigate: false })}
+            onUploadError={(err) => {
+              const msg =
+                err instanceof Error && err.message === "rapportTitleRequired"
+                  ? "rapportTitleRequired"
+                  : "mediaUploadFailed";
+              snack.show(t(msg), "error");
+            }}
+            serviceId={rapport?.service_id || newDraftMeta?.service?.id}
+            onEmbeddedTablesChange={setEmbeddedTables}
+            onChange={(locale, html) =>
+              setDocData((prev) => ({
+                ...prev,
+                ...(locale === "fr"
+                  ? { rich_html_fr: html }
+                  : { rich_html_ar: html }),
+              }))
+            }
+          />
+        ) : (
+          <p className="muted">…</p>
+        )
       ) : (
         <RichDocumentView
+          key={`doc-view-${rapport?.status ?? "view"}-${rapport?.current_version_id ?? rid ?? "draft"}`}
           data={docData}
           locale={i18n.language}
           token={token}
@@ -1728,10 +1730,10 @@ export function OfficeDocumentEditorPage({ token }: Props) {
       (rapport?.rapport_type_id || newDraftMeta?.rapportType?.id) ? (
         <DocumentTemplatePickModal
           token={token}
-          serviceId={Number(rapport?.service_id || newDraftMeta?.service?.id)}
-          rapportTypeId={Number(
-            rapport?.rapport_type_id || newDraftMeta?.rapportType?.id,
-          )}
+          serviceId={rapport?.service_id || newDraftMeta?.service?.id}
+          rapportTypeId={
+            rapport?.rapport_type_id || newDraftMeta?.rapportType?.id
+          }
           open={importPickOpen}
           mode="import"
           onClose={() => setImportPickOpen(false)}
@@ -1770,7 +1772,7 @@ export function WaliRapportViewPage({
   audience = "wali",
 }: Props & { audience?: "wali" | "admin" | "chef" }) {
   const { rapportId } = useParams();
-  const rid = Number(rapportId);
+  const rid = rapportId ?? "";
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
@@ -1782,7 +1784,7 @@ export function WaliRapportViewPage({
   const isWali = audience === "wali";
   const isChef = audience === "chef";
   const isReviewer = isWali || isChef;
-  const listBack = isChef ? "/chef/rapports" : isWali ? "/wali/rapports" : "/admin/rapports";
+  const listBack = isChef ? "/chief/rapports" : isWali ? "/governor/rapports" : "/admin/rapports";
   const viewBackTarget = readBackTarget(location, listBack);
 
   const load = useCallback(async () => {
@@ -1835,7 +1837,7 @@ export function WaliRapportViewPage({
         await load();
       } else {
         snack.show(t("chefDeleteFullyDone"), "success");
-        navigate("/chef/rapports?status_group=delete_requested");
+        navigate("/chief/rapports?status_group=delete_requested");
       }
     } catch {
       snack.show(t("errorGeneric"), "error");
@@ -1876,7 +1878,8 @@ export function WaliRapportViewPage({
   const documentDataJson =
     view?.rapport?.currentVersion?.data_json ||
     (view?.rapport?.versions || []).find(
-      (v: { id?: number }) => Number(v.id) === Number(view?.rapport?.current_version_id),
+      (v: { id?: EntityIdParam }) =>
+        String(v.id) === String(view?.rapport?.current_version_id),
     )?.data_json ||
     {};
   const documentViewData = {
@@ -1931,6 +1934,8 @@ export function WaliRapportViewPage({
             wali={isWali}
             chef={isChef}
             showHidden={showHidden}
+            contentKind={view?.content_kind ?? view?.rapport?.rapportType?.content_kind}
+            communeContentKind={view?.rapport?.rapportType?.commune_content_kind}
           />
           <BackButton fallbackTo={viewBackTarget} />
         </div>

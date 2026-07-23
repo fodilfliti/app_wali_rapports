@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
+import { entityIdsEqual } from '../utils/entityIds'
 import * as api from '../api'
 import { ApiError } from '../api'
 import { TablePagination } from './TablePagination'
@@ -20,13 +22,13 @@ import type { ReviewerMode } from '../utils/reviewerMode'
 
 type Props = {
   token: string
-  rapportId: number
+  rapportId: EntityIdParam
   /** office | chef | wali */
   mode: 'office' | ReviewerMode
   /** When false, hide section / unavailable */
   enabled?: boolean
   /** Specific version thread; omit = API defaults to current */
-  versionId?: number | null
+  versionId?: EntityIdParam | null
   /** Force read-only composer (e.g. archive) even if API would allow */
   readOnly?: boolean
 }
@@ -201,7 +203,7 @@ export function RapportDiscussionSection({
   useEffect(() => {
     const onRefresh = (event: Event) => {
       const detail = (event as CustomEvent<DiscussionRefreshDetail>).detail
-      if (!detail || Number(detail.rapportId) !== Number(rapportId)) return
+      if (!detail || !entityIdsEqual(detail.rapportId, rapportId)) return
       if (!enabled || readOnly) return
       void softSync({ scroll: true, force: true })
     }

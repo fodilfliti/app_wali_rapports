@@ -15,15 +15,16 @@ Login, short-lived access JWTs, and long-lived refresh sessions so users stay si
 
 - Algorithm: **HS256** (`JWT_SECRET`, min 32 chars).
 - Payload: `{ sub, role, typ: "access" }` plus standard `exp` / `iat`.
-- Required on all protected API routes (`requireAuth` → `attachUser` → `checkBlocked` → role/permission).
-- File downloads: Bearer or `?access_token=` using the **current access** JWT (short TTL; UI rebuilds URLs when access rotates).
+- **`sub`** = user’s **public UUID** (see `spec/modules/IDENTITY_UUID.md`); dual-read may still resolve legacy digit ids during transition.
+- Required on all protected API routes (`requireAuth` → `attachUser` → `checkBlocked` → hub `requireRole` / `assertCan`).
+- **File downloads:** do **not** put the access JWT in query strings. Browser media / links use a **short-lived signed download token** (`?dl=`, separate JWT `typ: file_dl`, ~60s) issued by the API; authenticated XHR may use `Authorization: Bearer`. Frontend: `SignedFileLink` / `useSignedFileUrl`.
 - **`GET /files/*` ACL:** path resolved under `FILE_STORAGE_ROOT` with `..` rejection; serve only if the caller may access that object:
   - `bootstrap/**` — **never** served (bootstrap Excels live under `backend/private/bootstrap`, outside the web root).
   - `pdf/credentials_*` — **ADMIN only**.
   - `uploads/*` — uploader, admin, or rapport/service grant (office) / Wali-or-Chef visibility for linked rapports; guide/broadcast/instruction recipients as applicable.
   - other `pdf/` / `exports/` — admin only.
 - Dangerous types (`html`/`svg`/`js`/…) rejected on upload; non-inline types use `Content-Disposition: attachment` + `nosniff`.
-- Frontend rich HTML: sanitize (DOMPurify); **never persist** `access_token` inside document HTML (strip on save; inject current token only at display).
+- Frontend rich HTML: sanitize (DOMPurify); **never persist** access or download tokens inside document HTML (strip on save via `prepareRichHtmlForSave`). Inject signed `?dl=` only at display (`usePreparedRichHtml`) for **both** TipTap edit and read-only view. Other media (attachments, instructions, guides, inbox cards): `SignedFileLink` / `useSignedFileUrl` on `url_path` — never raw `file.url` / JWT query.
 
 #### Refresh cookie
 
@@ -68,14 +69,14 @@ Blocked users: login and refresh fail; protected routes still use `checkBlocked`
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `id` | BIGINT PK | |
-| `user_id` | BIGINT FK → `users` | Cascade delete |
+| `id` | BIGINT PK | Internal only (not a public entity id) |
+| `user_id` | BIGINT FK → `users` | Cascade delete; join via internal PK. Public user id is UUID — `IDENTITY_UUID.md` |
 | `token_hash` | STRING(64) unique | SHA-256 hex of opaque token |
 | `family_id` | UUID | Groups rotations from one login |
 | `family_expires_at` | DATE | Absolute end of session (≤ 7d from login) |
 | `expires_at` | DATE | Same as family absolute expiry for active rows |
 | `revoked_at` | DATE nullable | Set on rotate / logout / kill |
-| `replaced_by_id` | BIGINT nullable | Next token in rotation chain |
+| `replaced_by_id` | BIGINT nullable | Next token in rotation chain (internal) |
 | `user_agent` | STRING nullable | Optional audit |
 | `ip` | STRING nullable | Optional audit |
 | `created_at` | DATE | |
@@ -93,6 +94,8 @@ Blocked users: login and refresh fail; protected routes still use `checkBlocked`
 
 ### Frontend rules
 
+- **`AuthProvider` / `useAuth()`** — session, `me`, and `can(action)` live here; do **not** prop-drill `token={token}` through routes/pages.
+- Access token held in **`frontend/src/auth/session.ts`** (memory); API client reads it from there by default.
 - Persist **no** access JWT in `localStorage` / `sessionStorage`.
 - On boot: `POST /auth/refresh` with `credentials: 'include'`; if ok, hold access in memory and load UI; else guest login.
 - All API `fetch` calls use `credentials: 'include'`.
@@ -100,6 +103,8 @@ Blocked users: login and refresh fail; protected routes still use `checkBlocked`
 - Logout calls `POST /auth/logout` then clears client state.
 - **Change own code:** profile menu opens a modal that requires **current code** then **new code** (min 8); never offer a self-change path that skips current-code verification. After success, treat session as ended (force re-login).
 - **Multi-tab:** Use `navigator.locks` (`wr-auth-refresh`) so only one tab calls `/auth/refresh` at a time; use `BroadcastChannel('wr-auth')` to share the new access JWT (`{ type: 'access', token }`) and to propagate session expiry (`{ type: 'expired' }`) across tabs. Access JWT remains memory-only per tab (updated via the channel).
+- File/media links: `SignedFileLink` / `useSignedFileUrl` → `?dl=` (never `?access_token=`).
+- Hub navigation: `paths.hub.*` from `shared/routes` — `ROUTES.md`.
 
 ### CORS / deployment
 
@@ -110,4 +115,4 @@ Blocked users: login and refresh fail; protected routes still use `checkBlocked`
 
 - Admin “active sessions” UI
 - Remember-me checkbox (every login gets a 7-day refresh family)
-- HttpOnly access JWT (would break `?access_token=` file links without a separate download-token design)
+- HttpOnly access JWT in cookies (access stays Bearer + memory; file downloads use separate signed `?dl=`)

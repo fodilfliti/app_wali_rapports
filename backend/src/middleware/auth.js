@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const { User, Department } = require("../db");
 const { getEnv } = require("../config/env");
 const { resolveEffectivePermissions } = require("../modules/access/userAccessService");
+const { findByPublicId } = require("../modules/access/idResolver");
 
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
@@ -21,14 +22,18 @@ function requireAuth(req, res, next) {
 
 async function attachUser(req, res, next) {
   if (!req.auth?.sub) return res.status(401).json({ error: "Invalid token payload" });
-  const user = await User.findByPk(req.auth.sub, {
+  const user = await findByPublicId(User, req.auth.sub, {
     include: [
       { model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] }
     ]
   });
   if (!user) return res.status(401).json({ error: "User not found" });
+  const effectivePermissions = await resolveEffectivePermissions(user);
+  // Attach on user so assertCan(actor, …) sees the same map as requirePermission(req).
+  user.effectivePermissions = effectivePermissions;
+  user.effective_permissions = effectivePermissions;
   req.user = user;
-  req.effectivePermissions = await resolveEffectivePermissions(user);
+  req.effectivePermissions = effectivePermissions;
   next();
 }
 

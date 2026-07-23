@@ -1,9 +1,10 @@
 const { z } = require("zod");
 const { bilingualNameShape, refineBilingualNames } = require("../bilingual");
+const { publicEntityIdSchema } = require("../publicEntityId");
 
 const serviceCreateSchema = refineBilingualNames(
   z.object({
-    department_id: z.number().int().positive().nullable().optional(),
+    department_id: publicEntityIdSchema.nullable().optional(),
     slug: z
       .string()
       .trim()
@@ -14,7 +15,7 @@ const serviceCreateSchema = refineBilingualNames(
     ...bilingualNameShape(),
     sort_order: z.number().int().min(0).optional(),
     is_folder: z.boolean().optional(),
-    parent_service_id: z.number().int().positive().nullable().optional()
+    parent_service_id: publicEntityIdSchema.nullable().optional()
   })
 );
 
@@ -23,13 +24,13 @@ const servicePatchSchema = z.object({
   name_fr: z.string().trim().max(200).optional(),
   sort_order: z.number().int().min(0).optional(),
   is_active: z.boolean().optional(),
-  department_id: z.number().int().positive().nullable().optional()
+  department_id: publicEntityIdSchema.nullable().optional()
 });
 
 const serviceGrantsSchema = z.object({
   grants: z.array(
     z.object({
-      user_id: z.coerce.number().int().positive(),
+      user_id: publicEntityIdSchema,
       access_level: z.enum(["view", "manage"])
     })
   )

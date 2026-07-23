@@ -9,6 +9,7 @@ const {
 } = require("./notificationKeys");
 const { getPreferences } = require("../notifications/preferenceService");
 const { maybeRunDailyCalendarScan } = require("../notifications/calendarReminderService");
+const { findByPublicId, resolveNumericId } = require("../access/idResolver");
 
 const WALI_INBOX_ACTION_STATUSES = ["submitted", "under_review"];
 const CHEF_INBOX_ACTION_STATUSES = ["pending_chef"];
@@ -262,7 +263,10 @@ async function getWaliHubCounts(user) {
   if (typeof user === "object") {
     await maybeRunDailyCalendarScan(user);
   } else {
-    const row = await User.findByPk(userId);
+    const numericUserId = await resolveNumericId(User, userId);
+    const row = numericUserId
+      ? await User.findByPk(numericUserId)
+      : await findByPublicId(User, userId);
     if (row) await maybeRunDailyCalendarScan(row);
   }
   const [inbox_pending, office_users_pending, unread_discussion] = await Promise.all([
@@ -288,7 +292,10 @@ async function getChefHubCounts(user) {
   if (typeof user === "object") {
     await maybeRunDailyCalendarScan(user);
   } else {
-    const row = await User.findByPk(userId);
+    const numericUserId = await resolveNumericId(User, userId);
+    const row = numericUserId
+      ? await User.findByPk(numericUserId)
+      : await findByPublicId(User, userId);
     if (row) await maybeRunDailyCalendarScan(row);
   }
   const [

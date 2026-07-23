@@ -28,6 +28,7 @@ import {
 import { countFinishedRows, type TableRowFilterMode } from "../utils/tableRowMeta";
 import { reorderRowsArray } from "../utils/tableRowReorder";
 import type { TableMeta } from "../utils/tableLayout";
+import { officeListeHubPath } from "@wali/routes";
 
 type Props = { token: string };
 
@@ -38,13 +39,9 @@ function entityKeyOfSummary(m: { entity_key?: string; kind?: string; code: strin
 export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const { serviceId } = useParams();
   const [searchParams] = useSearchParams();
-  const rapportTypeId = searchParams.get("rapport_type_id")
-    ? Number(searchParams.get("rapport_type_id"))
-    : undefined;
-  const rapportIdParam = searchParams.get("rapport_id")
-    ? Number(searchParams.get("rapport_id"))
-    : undefined;
-  const sid = Number(serviceId);
+  const rapportTypeId = searchParams.get("rapport_type_id") || undefined;
+  const rapportIdParam = searchParams.get("rapport_id") || undefined;
+  const sid = (serviceId || "") as import("../api").EntityIdParam;
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const navigate = useNavigate();
@@ -64,14 +61,16 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   const [cancellingDelete, setCancellingDelete] = useState(false);
   const keysPresentAtLoadRef = useRef<Set<string>>(new Set());
 
-  const listPath = `/office/services/${sid}/communes${
-    rapportTypeId || rapportIdParam
-      ? `?${new URLSearchParams({
-          ...(rapportTypeId ? { rapport_type_id: String(rapportTypeId) } : {}),
-          ...(rapportIdParam ? { rapport_id: String(rapportIdParam) } : {}),
-        }).toString()}`
-      : ""
-  }`;
+  const listPath = sid
+    ? `${officeListeHubPath(String(sid))}${
+        rapportTypeId || rapportIdParam
+          ? `?${new URLSearchParams({
+              ...(rapportTypeId ? { rapport_type_id: String(rapportTypeId) } : {}),
+              ...(rapportIdParam ? { rapport_id: String(rapportIdParam) } : {}),
+            }).toString()}`
+          : ""
+      }`
+    : "/cabinet/services";
 
   const bulkEntities = useMemo(() => {
     if (!workspace) return [];
@@ -156,8 +155,8 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
       data_json.included_entity_keys = workspace.included_entity_keys;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: Number(sid),
-      rapport_type_id: Number(workspace.rapportType.id),
+      service_id: sid,
+      rapport_type_id: workspace.rapportType.id,
       title: trimmed,
       data_json,
     });
@@ -339,8 +338,8 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
         snack.show(t("deleteRapportDone"), "success");
         navigate(
           rapportTypeId
-            ? `/office/services/${sid}/rapports/${rapportTypeId}`
-            : `/office/services/${sid}`,
+            ? `/cabinet/services/${sid}/rapports/${rapportTypeId}`
+            : `/cabinet/services/${sid}`,
           { replace: true },
         );
       }
@@ -419,6 +418,7 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             versioningMode={workspace.rapportType?.versioning_mode}
+            contentKind={workspace.rapportType?.content_kind}
             editable={editable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}

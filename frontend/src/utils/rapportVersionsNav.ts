@@ -1,40 +1,41 @@
+import type { EntityIdParam } from '../api'
 import { officeRapportWorkspacePath } from './rapportNavigation'
 
 export type RapportPreviewSource = {
-  id?: number
-  service_id?: number
-  rapport_type_id?: number
+  id?: EntityIdParam
+  service_id?: EntityIdParam
+  rapport_type_id?: EntityIdParam
   rapportType?: { content_kind?: string }
 }
 
-export function versionsListPath(rapportId: number, wali: boolean, chef = false) {
-  if (chef) return `/chef/rapports/${rapportId}/versions`
+export function versionsListPath(rapportId: EntityIdParam, wali: boolean, chef = false) {
+  if (chef) return `/chief/rapports/${rapportId}/versions`
   return wali
-    ? `/wali/rapports/${rapportId}/versions`
-    : `/office/rapports/${rapportId}/versions`
+    ? `/governor/rapports/${rapportId}/versions`
+    : `/cabinet/rapports/${rapportId}/versions`
 }
 
 export function versionDetailPath(
-  rapportId: number,
-  versionId: number,
+  rapportId: EntityIdParam,
+  versionId: EntityIdParam,
   wali: boolean,
   chef = false,
 ) {
-  if (chef) return `/chef/rapports/${rapportId}/versions/${versionId}`
+  if (chef) return `/chief/rapports/${rapportId}/versions/${versionId}`
   return wali
-    ? `/wali/rapports/${rapportId}/versions/${versionId}`
-    : `/office/rapports/${rapportId}/versions/${versionId}`
+    ? `/governor/rapports/${rapportId}/versions/${versionId}`
+    : `/cabinet/rapports/${rapportId}/versions/${versionId}`
 }
 
 /** Stable read-only preview route — used for archive back navigation (avoids returnTo loops). */
 export function rapportPreviewPath(
-  rapportId: number,
+  rapportId: EntityIdParam,
   wali: boolean,
   rapport?: RapportPreviewSource | null,
   chef = false,
 ): string {
-  if (chef) return `/chef/rapports/${rapportId}/view`
-  if (wali) return `/wali/rapports/${rapportId}/view`
+  if (chef) return `/chief/rapports/${rapportId}/view`
+  if (wali) return `/governor/rapports/${rapportId}/view`
 
   if (rapport?.service_id && rapport?.rapport_type_id && rapport?.rapportType) {
     const workspace = officeRapportWorkspacePath({
@@ -46,5 +47,5 @@ export function rapportPreviewPath(
     if (workspace) return workspace
   }
 
-  return `/office/rapports/${rapportId}/document`
+  return `/cabinet/rapports/${rapportId}/document`
 }

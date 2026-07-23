@@ -9,6 +9,7 @@ const {
 const { audit } = require("../../services/audit");
 const { assertRapportAccess } = require("./serviceAccessService");
 const { notifyUsers } = require("../notifications/notifyService");
+const { findByPublicId, publicId } = require("../access/idResolver");
 
 const BODY_MAX = 5000;
 
@@ -23,14 +24,16 @@ function serializeComment(row) {
   const author = c.author || null;
   const deleted = Boolean(author?.deleted_at);
   return {
-    id: c.id,
-    rapport_id: c.rapport_id,
+    id: publicId(c),
+    rapport_id: c.rapport?.uuid ? String(c.rapport.uuid) : c.rapport_id,
     body_text: c.body_text,
     created_at: c.created_at,
-    rapport_version_id: c.rapport_version_id,
+    rapport_version_id: c.rapportVersion
+      ? publicId(c.rapportVersion)
+      : c.rapport_version_id,
     author: author
       ? {
-          id: author.id,
+          id: publicId(author),
           name: deleted ? null : author.name,
           username: deleted ? null : author.username,
           role: author.role,
@@ -52,7 +55,7 @@ async function discussionAvailable(rapport) {
 }
 
 async function loadRapportOrThrow(rapportId) {
-  const rapport = await Rapport.findByPk(rapportId);
+  const rapport = await findByPublicId(Rapport, rapportId);
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
@@ -62,6 +65,12 @@ async function loadRapportOrThrow(rapportId) {
 }
 
 async function assertCanDiscuss(rapportId, actor, { asWali = false } = {}) {
+  const { assertCan, forbidden } = require("../access/assertCan");
+  try {
+    assertCan(actor, "rapport.comment");
+  } catch {
+    if (actor.role !== "ADMIN") throw forbidden();
+  }
   if (asWali) {
     const rapportService = require("./rapportService");
     await rapportService.assertVisibleToWali(rapportId);
@@ -71,9 +80,7 @@ async function assertCanDiscuss(rapportId, actor, { asWali = false } = {}) {
     const rapportService = require("./rapportService");
     await rapportService.assertVisibleToChef(rapportId);
   } else {
-    const err = new Error("Forbidden");
-    err.status = 403;
-    throw err;
+    throw forbidden();
   }
   const rapport = await loadRapportOrThrow(rapportId);
   if (!(await discussionAvailable(rapport))) {
@@ -98,22 +105,23 @@ async function resolveListVersionId(rapport, queryVersionId) {
     }
     return currentId;
   }
-  const requested = Number(queryVersionId);
-  if (!Number.isFinite(requested) || requested <= 0) {
+  const { resolveNumericVersionId } = require("./rapportService");
+  const requested = await resolveNumericVersionId(queryVersionId);
+  if (requested == null) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
-  const version = await RapportVersion.findOne({
+  const row = await RapportVersion.findOne({
     where: { id: requested, rapport_id: rapport.id },
     attributes: ["id"],
   });
-  if (!version) {
+  if (!row) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
-  return Number(version.id);
+  return Number(row.id);
 }
 
 async function resolveRecipientIds(rapport, authorId) {
@@ -173,7 +181,7 @@ async function resolveRecipientIds(rapport, authorId) {
 
 async function listComments(rapportId, actor, query, opts = {}) {
   const rapport = await assertCanDiscuss(rapportId, actor, opts);
-  await markCommentNotificationsRead(rapportId, actor.id);
+  await markCommentNotificationsRead(rapport.id, actor.id);
 
   const versionId = await resolveListVersionId(rapport, query.versionId);
   const currentId =
@@ -184,7 +192,7 @@ async function listComments(rapportId, actor, query, opts = {}) {
 
   const { page, pageSize, offset, limit } = parsePagination(query);
   const { rows, count } = await RapportComment.findAndCountAll({
-    where: { rapport_id: rapportId, rapport_version_id: versionId },
+    where: { rapport_id: rapport.id, rapport_version_id: versionId },
     order: [["created_at", "ASC"], ["id", "ASC"]],
     offset,
     limit,
@@ -192,7 +200,7 @@ async function listComments(rapportId, actor, query, opts = {}) {
       {
         model: User,
         as: "author",
-        attributes: ["id", "name", "username", "role", "deleted_at"]
+        attributes: ["id", "uuid", "name", "username", "role", "deleted_at"]
       }
     ]
   });
@@ -204,7 +212,13 @@ async function listComments(rapportId, actor, query, opts = {}) {
     pageSize,
     discussion_available: true,
     can_comment: canComment,
-    rapport_version_id: versionId,
+    rapport_version_id: versionId
+      ? publicId(
+          (await RapportVersion.findByPk(versionId, {
+            attributes: ["id", "uuid"],
+          })) || { id: versionId },
+        )
+      : null,
   };
 }
 
@@ -232,14 +246,19 @@ async function createComment(rapportId, bodyText, actor, req, opts = {}) {
     throw err;
   }
 
-  const bodyVersion =
+  const rawBodyVersion =
     opts.versionId != null && opts.versionId !== ""
-      ? Number(opts.versionId)
+      ? opts.versionId
       : req?.validatedBody?.versionId != null
-        ? Number(req.validatedBody.versionId)
+        ? req.validatedBody.versionId
         : req?.body?.versionId != null && req.body.versionId !== ""
-          ? Number(req.body.versionId)
+          ? req.body.versionId
           : null;
+  let bodyVersion = null;
+  if (rawBodyVersion != null && rawBodyVersion !== "") {
+    const { resolveNumericVersionId } = require("./rapportService");
+    bodyVersion = await resolveNumericVersionId(rawBodyVersion);
+  }
   if (
     bodyVersion != null &&
     Number.isFinite(bodyVersion) &&
@@ -280,19 +299,20 @@ async function createComment(rapportId, bodyText, actor, req, opts = {}) {
   );
 
   const full = await RapportComment.findByPk(comment.id, {
-    include: [{ model: User, as: "author", attributes: ["id", "name", "username", "role"] }]
+    include: [{ model: User, as: "author", attributes: ["id", "uuid", "name", "username", "role"] }]
   });
   return serializeComment(full);
 }
 
 async function markCommentNotificationsRead(rapportId, userId) {
   if (!userId) return;
+  const rapport = await loadRapportOrThrow(rapportId);
   await Notification.update(
     { read_at: new Date() },
     {
       where: {
         user_id: userId,
-        rapport_id: rapportId,
+        rapport_id: rapport.id,
         message_key: "rapportComment",
         read_at: null
       }

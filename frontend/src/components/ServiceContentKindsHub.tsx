@@ -25,8 +25,10 @@ export type ContentKindSummary = {
   action_count?: number
 }
 
+import type { EntityIdParam } from '../api'
+
 type Props = {
-  service: { id: number; name_ar?: string; name_fr?: string }
+  service: { id: EntityIdParam; name_ar?: string; name_fr?: string }
   summaries: ContentKindSummary[]
   contentKinds?: Record<string, RapportTypeNav[]>
   backTo: string
@@ -37,9 +39,9 @@ type Props = {
   manageTypes?: boolean
   showHiddenTypes?: boolean
   onShowHiddenTypesChange?: (showHidden: boolean) => void
-  onHideType?: (typeId: number) => void | Promise<void>
-  onRestoreType?: (typeId: number) => void | Promise<void>
-  onDeleteType?: (typeId: number) => void | Promise<void>
+  onHideType?: (typeId: EntityIdParam) => void | Promise<void>
+  onRestoreType?: (typeId: EntityIdParam) => void | Promise<void>
+  onDeleteType?: (typeId: EntityIdParam) => void | Promise<void>
   onAddKind?: (kind: GuidedContentKind) => void
   onBrowseSchemas?: () => void
 }
@@ -106,7 +108,7 @@ export function ServiceContentKindsHub({
           </button>
         ) : null}
         {mode === 'office' && showConfig ? (
-          <Link className="btn btn-secondary" to={`/office/services/${service.id}/config`}>
+          <Link className="btn btn-secondary" to={`/cabinet/services/${service.id}/config`}>
             {t('serviceConfig')}
           </Link>
         ) : null}

@@ -78,7 +78,7 @@ export function AdminServicesPage({ token }: Props) {
         parent_service_id:
           !ENABLE_SERVICE_FOLDERS || form.is_folder || !form.parent_service_id
             ? null
-            : Number(form.parent_service_id),
+            : form.parent_service_id,
         sort_order: Number(form.sort_order) || 0,
       })
       setCreateOpen(false)
@@ -125,13 +125,13 @@ export function AdminServicesPage({ token }: Props) {
     try {
       const res = await api.listServiceGrants(token, service.id)
       const byUser = new Map(
-        (res.grants || []).map((g: any) => [Number(g.user_id), g.access_level as 'view' | 'manage']),
+        (res.grants || []).map((g: any) => [String(g.user_id), g.access_level as 'view' | 'manage']),
       )
       setGrantRows(
         officeUsers.map((u) => ({
-          user_id: Number(u.id),
-          access_level: byUser.get(Number(u.id)) || 'view',
-          enabled: byUser.has(Number(u.id)),
+          user_id: u.id,
+          access_level: byUser.get(String(u.id)) || 'view',
+          enabled: byUser.has(String(u.id)),
         })),
       )
       setGrantsOpen(true)
@@ -386,7 +386,7 @@ export function AdminServicesPage({ token }: Props) {
                 <tbody>
                   {pagedGrantRows.map((row) => {
                     const idx = grantRows.findIndex((r) => r.user_id === row.user_id)
-                    const user = officeUsers.find((u) => Number(u.id) === row.user_id)
+                    const user = officeUsers.find((u) => String(u.id) === String(row.user_id))
                     return (
                       <tr key={row.user_id}>
                         <td>{user?.name || user?.username}</td>

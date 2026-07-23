@@ -11,6 +11,7 @@ const {
   Notification,
   User,
   WaliBroadcast,
+  WaliInstruction,
   RapportView,
   RapportComment,
 } = require("../../db");
@@ -22,6 +23,112 @@ const {
 } = require("./notificationKeys");
 const { notifyUsers, notifyActiveRole } = require("../notifications/notifyService");
 const { getPreferences } = require("../notifications/preferenceService");
+const { assertCan, forbidden, canStartNewVersion } = require("../access/assertCan");
+const { resolveAccessLevel } = require("./serviceAccessService");
+const { findByPublicId, isUuid, publicId, withPublicId, withPublicIds, resolveNumericId } = require("../access/idResolver");
+
+function loadRapport(id, options) {
+  return findByPublicId(Rapport, id, options);
+}
+
+async function resolveNumericRapportId(idOrPlain) {
+  const rawId =
+    typeof idOrPlain === "object" && idOrPlain != null ? idOrPlain.id : idOrPlain;
+  if (rawId == null) return null;
+  if (isUuid(String(rawId))) {
+    const row = await loadRapport(rawId, { attributes: ["id"] });
+    return row?.id ?? null;
+  }
+  const n = Number(rawId);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function resolveNumericVersionId(versionId) {
+  if (versionId == null || versionId === "") return null;
+  if (isUuid(String(versionId))) {
+    const row = await findByPublicId(RapportVersion, versionId, {
+      attributes: ["id"],
+    });
+    return row?.id ?? null;
+  }
+  const n = Number(versionId);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function buildVersionPublicIdMap(versions, currentVersion) {
+  const map = new Map();
+  for (const v of versions || []) {
+    const raw = v?.toJSON ? v.toJSON() : v;
+    if (raw?.id != null) map.set(Number(raw.id), publicId(raw));
+  }
+  if (currentVersion) {
+    const raw = currentVersion.toJSON ? currentVersion.toJSON() : currentVersion;
+    if (raw?.id != null) map.set(Number(raw.id), publicId(raw));
+  }
+  return map;
+}
+
+function mapResponsePublicIds(resp, versionIdMap, rapportPublicId) {
+  if (!resp) return resp;
+  const raw = resp.toJSON ? resp.toJSON() : { ...resp };
+  const out = { ...raw };
+  if (rapportPublicId != null) out.rapport_id = rapportPublicId;
+  if (out.rapport_version_id != null) {
+    const mapped = versionIdMap.get(Number(out.rapport_version_id));
+    if (mapped != null) out.rapport_version_id = mapped;
+  }
+  if (out.createdByUser) out.createdByUser = withPublicId(out.createdByUser);
+  return out;
+}
+
+function applyPublicIdsToRapport(plain) {
+  if (!plain) return plain;
+  const numericCurrentVersionId = plain.current_version_id;
+  const versionIdMap = buildVersionPublicIdMap(plain.versions, plain.currentVersion);
+  const out = withPublicId(plain);
+  const rapportPublicId = out.id;
+  if (out.service) {
+    out.service = withPublicId(out.service);
+    out.service_id = out.service.id;
+  }
+  if (out.rapportType) {
+    out.rapportType = withPublicId(out.rapportType);
+    out.rapport_type_id = out.rapportType.id;
+  } else if (out.rapport_type_uuid) {
+    out.rapport_type_id = String(out.rapport_type_uuid);
+  }
+  if (plain.currentVersion) out.currentVersion = withPublicId(plain.currentVersion);
+  if (Array.isArray(plain.versions)) {
+    out.versions = plain.versions.map(withPublicId);
+  }
+  if (out.createdByUser) out.createdByUser = withPublicId(out.createdByUser);
+  if (Array.isArray(plain.waliResponses)) {
+    out.waliResponses = plain.waliResponses.map((r) =>
+      mapResponsePublicIds(r, versionIdMap, rapportPublicId),
+    );
+  }
+  if (Array.isArray(plain.chefResponses)) {
+    out.chefResponses = plain.chefResponses.map((r) =>
+      mapResponsePublicIds(r, versionIdMap, rapportPublicId),
+    );
+  }
+  if (numericCurrentVersionId != null) {
+    const mapped = versionIdMap.get(Number(numericCurrentVersionId));
+    if (mapped != null) out.current_version_id = mapped;
+  }
+  return out;
+}
+
+function rapportPolicyResource(rapport, accessLevel) {
+  const rt = rapport.rapportType;
+  return {
+    status: rapport.status,
+    accessLevel,
+    content_kind: rt?.content_kind,
+    versioning_mode: rt?.versioning_mode,
+    commune_content_kind: rt?.commune_content_kind ?? null,
+  };
+}
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -320,8 +427,20 @@ async function discussedRapportsOrdered(query, opts = {}) {
     where.status = { [Op.ne]: "draft" };
   }
   if (query.status) where.status = query.status;
-  if (query.service_id) where.service_id = query.service_id;
-  if (query.rapport_type_id) where.rapport_type_id = query.rapport_type_id;
+  if (query.service_id) {
+    const serviceNumericId = await resolveNumericId(Service, query.service_id);
+    if (serviceNumericId == null) {
+      return { ids: [], lastCommentById: new Map(), total: 0 };
+    }
+    where.service_id = serviceNumericId;
+  }
+  if (query.rapport_type_id) {
+    const typeNumericId = await resolveNumericId(RapportType, query.rapport_type_id);
+    if (typeNumericId == null) {
+      return { ids: [], lastCommentById: new Map(), total: 0 };
+    }
+    where.rapport_type_id = typeNumericId;
+  }
   if (query.search) {
     where.title = { [Op.iLike]: `%${String(query.search).trim()}%` };
   }
@@ -406,8 +525,20 @@ async function listRapports(query, opts = {}) {
   const { page, pageSize, offset, limit } = parsePagination(query);
   const where = {};
   const statusGroup = normalizeStatusGroup(query);
-  if (query.service_id) where.service_id = query.service_id;
-  if (query.rapport_type_id) where.rapport_type_id = query.rapport_type_id;
+  if (query.service_id) {
+    const serviceNumericId = await resolveNumericId(Service, query.service_id);
+    if (serviceNumericId == null) {
+      return { rapports: [], total: 0, page, pageSize };
+    }
+    where.service_id = serviceNumericId;
+  }
+  if (query.rapport_type_id) {
+    const typeNumericId = await resolveNumericId(RapportType, query.rapport_type_id);
+    if (typeNumericId == null) {
+      return { rapports: [], total: 0, page, pageSize };
+    }
+    where.rapport_type_id = typeNumericId;
+  }
   // Grantee lens: office_user_id means "services granted to this attaché", not owner-only.
   const ownerUserId = Number(
     query.owner_user_id || query.office_user_id || query.owner_office_user_id,
@@ -537,6 +668,7 @@ async function listRapports(query, opts = {}) {
     as: "rapportType",
     attributes: [
       "id",
+      "uuid",
       "slug",
       "name_ar",
       "name_fr",
@@ -552,6 +684,7 @@ async function listRapports(query, opts = {}) {
   if (importable) {
     rapportTypeInclude.attributes = [
       "id",
+      "uuid",
       "slug",
       "name_ar",
       "name_fr",
@@ -570,13 +703,13 @@ async function listRapports(query, opts = {}) {
     {
       model: Service,
       as: "service",
-      attributes: ["id", "slug", "name_ar", "name_fr"],
+      attributes: ["id", "uuid", "slug", "name_ar", "name_fr"],
     },
     rapportTypeInclude,
     {
       model: User,
       as: "createdByUser",
-      attributes: ["id", "name", "username"],
+      attributes: ["id", "uuid", "name", "username"],
     },
   ];
   if (importable) {
@@ -715,7 +848,7 @@ async function listRapports(query, opts = {}) {
   }
 
   return {
-    rapports,
+    rapports: rapports.map(applyPublicIdsToRapport),
     total: importable
       ? rapports.length
       : forcedTotal != null
@@ -877,8 +1010,8 @@ async function assertVisibleToWali(rapportOrId) {
   const rapport =
     typeof rapportOrId === "object" && rapportOrId?.status != null
       ? rapportOrId
-      : await Rapport.findByPk(rapportOrId, {
-          attributes: ["id", "status", "hidden_at"],
+      : await loadRapport(rapportOrId, {
+          attributes: ["id", "uuid", "status", "hidden_at"],
         });
   if (!rapport) {
     const err = new Error("Not found");
@@ -910,9 +1043,10 @@ async function assertVisibleToChef(rapportOrId) {
   const rapport =
     typeof rapportOrId === "object" && rapportOrId?.status != null
       ? rapportOrId
-      : await Rapport.findByPk(rapportOrId, {
+      : await loadRapport(rapportOrId, {
           attributes: [
             "id",
+            "uuid",
             "status",
             "hidden_at",
             "delete_requested_at",
@@ -943,7 +1077,7 @@ async function assertVisibleToChef(rapportOrId) {
 }
 
 async function getRapportDetail(id, versionId = null) {
-  const rapport = await Rapport.findByPk(id, {
+  const rapport = await loadRapport(id, {
     include: [
       { model: Service, as: "service" },
       { model: RapportType, as: "rapportType" },
@@ -955,7 +1089,7 @@ async function getRapportDetail(id, versionId = null) {
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
         ],
       },
       {
@@ -964,10 +1098,10 @@ async function getRapportDetail(id, versionId = null) {
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
         ],
       },
-      { model: User, as: "createdByUser", attributes: ["id", "name"] },
+      { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
     ],
   });
   if (!rapport) {
@@ -975,12 +1109,16 @@ async function getRapportDetail(id, versionId = null) {
     err.status = 404;
     throw err;
   }
+  const numericId = rapport.id;
   const plain = rapport.toJSON ? rapport.toJSON() : rapport;
 
   if (versionId) {
-    const requestedVersion = await RapportVersion.findOne({
-      where: { id: versionId, rapport_id: id },
-    });
+    const numericVersionId = await resolveNumericVersionId(versionId);
+    const requestedVersion = numericVersionId
+      ? await RapportVersion.findOne({
+          where: { id: numericVersionId, rapport_id: numericId },
+        })
+      : null;
     if (requestedVersion) {
       plain.currentVersion = requestedVersion.toJSON
         ? requestedVersion.toJSON()
@@ -996,7 +1134,7 @@ async function getRapportDetail(id, versionId = null) {
       plain.versions[0];
   }
 
-  return attachDeleteCapability(plain);
+  return applyPublicIdsToRapport(await attachDeleteCapability(plain));
 }
 
 /**
@@ -1008,24 +1146,29 @@ async function applyReviewerDisplayVersion(plain) {
   const current = plain.currentVersion;
   if (current?.submitted_at) return plain;
 
+  const numericRapportId = await resolveNumericRapportId(plain);
+  if (!numericRapportId) return plain;
+
   const latest = await RapportVersion.findOne({
     where: {
-      rapport_id: plain.id,
+      rapport_id: numericRapportId,
       submitted_at: { [Op.ne]: null },
     },
     order: [["version_number", "DESC"]],
   });
   if (!latest) return plain;
 
-  plain.currentVersion = latest.toJSON ? latest.toJSON() : latest;
-  plain.reviewer_display_version_id = Number(latest.id);
+  plain.currentVersion = withPublicId(latest.toJSON ? latest.toJSON() : latest);
+  plain.reviewer_display_version_id = publicId(latest);
   return plain;
 }
 
 async function hasChefOrWaliAction(rapportId) {
+  const numericId = await resolveNumericRapportId(rapportId);
+  if (!numericId) return false;
   const [chefCount, waliCount] = await Promise.all([
-    ChefResponse.count({ where: { rapport_id: rapportId } }),
-    WaliResponse.count({ where: { rapport_id: rapportId } }),
+    ChefResponse.count({ where: { rapport_id: numericId } }),
+    WaliResponse.count({ where: { rapport_id: numericId } }),
   ]);
   return chefCount > 0 || waliCount > 0;
 }
@@ -1133,10 +1276,12 @@ async function attachDeleteCapability(plain) {
 }
 
 async function createRapport(data, actor, req) {
-  const rapportType = await RapportType.findByPk(data.rapport_type_id);
+  const numericServiceId = await resolveNumericId(Service, data.service_id);
+  const rapportType = await findByPublicId(RapportType, data.rapport_type_id);
   if (
+    !numericServiceId ||
     !rapportType ||
-    Number(rapportType.service_id) !== Number(data.service_id)
+    Number(rapportType.service_id) !== Number(numericServiceId)
   ) {
     const err = new Error("Invalid rapport type");
     err.status = 400;
@@ -1149,7 +1294,7 @@ async function createRapport(data, actor, req) {
     if (!getIncludedEntityKeys(data_json)) {
       const prevFinished = await Rapport.findOne({
         where: {
-          service_id: data.service_id,
+          service_id: numericServiceId,
           rapport_type_id: rapportType.id,
           hidden_at: { [Op.ne]: null },
         },
@@ -1167,34 +1312,53 @@ async function createRapport(data, actor, req) {
     if (!data_json.entities) data_json = { ...data_json, entities: {} };
   }
 
+  const ownerOfficeUserId =
+    rapportType.content_kind === "fiche_lecture"
+      ? null
+      : actor.role === "OFFICE_USER"
+        ? actor.id
+        : data.owner_office_user_id || actor.id;
+
+  let ownerOfficeUserUuid = null;
+  if (ownerOfficeUserId) {
+    const owner =
+      Number(ownerOfficeUserId) === Number(actor.id)
+        ? actor
+        : await User.findByPk(ownerOfficeUserId, { attributes: ["id", "uuid"] });
+    ownerOfficeUserUuid = owner?.uuid ?? null;
+  }
+
   const rapport = await Rapport.create({
-    service_id: data.service_id,
-    rapport_type_id: data.rapport_type_id,
+    service_id: numericServiceId,
+    rapport_type_id: rapportType.id,
+    rapport_type_uuid: rapportType.uuid,
     title: data.title,
     reference_date: data.reference_date || null,
     status: "draft",
     chef_gate: "required",
     created_by_user_id: actor.id,
-    owner_office_user_id:
-      rapportType.content_kind === "fiche_lecture"
-        ? null
-        : actor.role === "OFFICE_USER"
-          ? actor.id
-          : data.owner_office_user_id || actor.id,
+    created_by_user_uuid: actor.uuid,
+    owner_office_user_id: ownerOfficeUserId,
+    owner_office_user_uuid: ownerOfficeUserUuid,
   });
   const version = await RapportVersion.create({
     rapport_id: rapport.id,
+    rapport_uuid: rapport.uuid,
     version_number: 1,
     data_json,
     created_by_user_id: actor.id,
+    created_by_user_uuid: actor.uuid,
   });
-  await rapport.update({ current_version_id: version.id });
+  await rapport.update({
+    current_version_id: version.id,
+    current_version_uuid: version.uuid,
+  });
   await audit(actor.id, "RAPPORT_CREATE", { rapport_id: rapport.id }, { req });
   return getRapportDetail(rapport.id);
 }
 
 async function updateRapportDraft(id, data, actor, req) {
-  let rapport = await Rapport.findByPk(id, {
+  let rapport = await loadRapport(id, {
     include: [
       { model: RapportVersion, as: "currentVersion" },
       { model: RapportType, as: "rapportType" },
@@ -1212,7 +1376,7 @@ async function updateRapportDraft(id, data, actor, req) {
   }
   if (rapport.currentVersion?.submitted_at) {
     await reopenDraftAfterSubmit(rapport, actor);
-    rapport = await Rapport.findByPk(id, {
+    rapport = await loadRapport(id, {
       include: [{ model: RapportVersion, as: "currentVersion" }],
     });
     if (!rapport) {
@@ -1243,16 +1407,28 @@ function cloneVersionData(dataJson) {
 }
 
 async function createNextRapportVersion(rapportId, dataJson, actorId) {
-  const last = await RapportVersion.findOne({
-    where: { rapport_id: rapportId },
-    order: [["version_number", "DESC"]],
-  });
+  const numericRapportId = await resolveNumericRapportId(rapportId);
+  if (!numericRapportId) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  const [last, rapport, actor] = await Promise.all([
+    RapportVersion.findOne({
+      where: { rapport_id: numericRapportId },
+      order: [["version_number", "DESC"]],
+    }),
+    Rapport.findByPk(numericRapportId, { attributes: ["uuid"] }),
+    User.findByPk(actorId, { attributes: ["uuid"] }),
+  ]);
   const nextNum = (last?.version_number || 0) + 1;
   return RapportVersion.create({
-    rapport_id: rapportId,
+    rapport_id: numericRapportId,
+    rapport_uuid: rapport?.uuid ?? null,
     version_number: nextNum,
     data_json: cloneVersionData(dataJson),
     created_by_user_id: actorId,
+    created_by_user_uuid: actor?.uuid ?? null,
   });
 }
 
@@ -1271,6 +1447,7 @@ async function forkDraftIfSubmitted(rapport, actor) {
   );
   await rapport.update({
     current_version_id: draft.id,
+    current_version_uuid: draft.uuid,
     updated_at: new Date(),
   });
   return draft;
@@ -1291,7 +1468,7 @@ async function reopenDraftAfterSubmit(rapport, actor) {
 }
 
 async function submitRapport(id, actor, req) {
-  const rapport = await Rapport.findByPk(id, {
+  const rapport = await loadRapport(id, {
     include: [{ model: RapportType, as: "rapportType" }],
   });
   if (!rapport) {
@@ -1468,7 +1645,7 @@ async function submitRapport(id, actor, req) {
 
 /** Office recall: undo send on the current version (no fork). Wipe current-version remarks/chat only. */
 async function returnRapportToDraft(id, actor, req) {
-  const rapport = await Rapport.findByPk(id, {
+  const rapport = await loadRapport(id, {
     include: [{ model: RapportType, as: "rapportType" }],
   });
   if (!rapport) {
@@ -1608,7 +1785,7 @@ async function returnRapportToDraft(id, actor, req) {
  * (versioned types only). Previous version stays in the archive.
  */
 async function startOfficeNewVersion(id, actor, req) {
-  const rapport = await Rapport.findByPk(id, {
+  const rapport = await loadRapport(id, {
     include: [{ model: RapportType, as: "rapportType" }],
   });
   if (!rapport) {
@@ -1617,14 +1794,21 @@ async function startOfficeNewVersion(id, actor, req) {
     throw err;
   }
 
-  if (rapport.rapportType?.versioning_mode !== "versioned") {
-    const err = new Error("Not versioned");
-    err.status = 409;
-    throw err;
-  }
-
-  if (rapport.status !== "acknowledged") {
-    const err = new Error("Cannot start new version");
+  const contentKind = rapport.rapportType?.content_kind;
+  if (
+    !canStartNewVersion({
+      content_kind: contentKind,
+      status: rapport.status,
+      versioning_mode: rapport.rapportType?.versioning_mode,
+    })
+  ) {
+    const err = new Error(
+      contentKind === "fiche_lecture"
+        ? "Cannot start new version"
+        : rapport.rapportType?.versioning_mode !== "versioned"
+          ? "Not versioned"
+          : "Cannot start new version",
+    );
     err.status = 409;
     throw err;
   }
@@ -1643,7 +1827,7 @@ async function startOfficeNewVersion(id, actor, req) {
   }
 
   const previousStatus = rapport.status;
-  const previousVersionId = Number(current.id);
+  const previousVersionId = current.id;
 
   const draft = await createNextRapportVersion(
     rapport.id,
@@ -1654,6 +1838,7 @@ async function startOfficeNewVersion(id, actor, req) {
   const now = new Date();
   await rapport.update({
     current_version_id: draft.id,
+    current_version_uuid: draft.uuid,
     status: "draft",
     chef_gate: "required",
     delete_requested_at: null,
@@ -1668,7 +1853,7 @@ async function startOfficeNewVersion(id, actor, req) {
     {
       rapport_id: rapport.id,
       previous_version_id: previousVersionId,
-      new_version_id: Number(draft.id),
+      new_version_id: draft.id,
       previous_status: previousStatus,
       version_number: draft.version_number,
     },
@@ -1678,7 +1863,7 @@ async function startOfficeNewVersion(id, actor, req) {
 }
 
 async function markUnderReview(id, actor) {
-  const rapport = await Rapport.findByPk(id);
+  const rapport = await loadRapport(id);
   if (!rapport) return null;
   if (rapport.status === "submitted") {
     await rapport.update({ status: "under_review", updated_at: new Date() });
@@ -1687,13 +1872,18 @@ async function markUnderReview(id, actor) {
 }
 
 async function waliRespond(id, data, actor, req) {
-  const rapport = await Rapport.findByPk(id, {
+  const rapport = await loadRapport(id, {
     include: [{ model: RapportType, as: "rapportType" }],
   });
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
+  }
+  try {
+    assertCan(actor, "rapport.respond", rapportPolicyResource(rapport));
+  } catch {
+    if (actor.role !== "ADMIN") throw forbidden();
   }
   if (
     !["submitted", "under_review", "changes_requested"].includes(rapport.status)
@@ -1796,13 +1986,18 @@ async function waliRespond(id, data, actor, req) {
 }
 
 async function chefRespond(id, data, actor, req) {
-  const rapport = await Rapport.findByPk(id, {
+  const rapport = await loadRapport(id, {
     include: [{ model: RapportType, as: "rapportType" }],
   });
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
+  }
+  try {
+    assertCan(actor, "rapport.respond", rapportPolicyResource(rapport));
+  } catch {
+    if (actor.role !== "ADMIN") throw forbidden();
   }
   if (rapport.status !== "pending_chef") {
     const err = new Error("Cannot respond");
@@ -1893,32 +2088,51 @@ async function chefRespond(id, data, actor, req) {
 }
 
 async function listRapportVersions(rapportId) {
+  const rapport = await loadRapport(rapportId, { attributes: ["id"] });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
   const versions = await RapportVersion.findAll({
-    where: { rapport_id: rapportId },
+    where: { rapport_id: rapport.id },
     order: [["version_number", "DESC"]],
     attributes: [
       "id",
+      "uuid",
       "version_number",
       "submitted_at",
       "created_at",
       "created_by_user_id",
     ],
   });
-  return versions;
+  return withPublicIds(versions.map((v) => (v.toJSON ? v.toJSON() : v)));
 }
 
 async function getRapportVersion(rapportId, versionId) {
+  const rapport = await loadRapport(rapportId, { attributes: ["id"] });
+  if (!rapport) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  const numericVersionId = await resolveNumericVersionId(versionId);
+  if (numericVersionId == null) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
   const version = await RapportVersion.findOne({
-    where: { id: versionId, rapport_id: rapportId },
+    where: { id: numericVersionId, rapport_id: rapport.id },
     include: [
-      { model: User, as: "createdByUser", attributes: ["id", "name"] },
+      { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
       {
         model: WaliResponse,
         as: "waliResponses",
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
         ],
       },
       {
@@ -1927,7 +2141,7 @@ async function getRapportVersion(rapportId, versionId) {
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "name"] },
+          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
         ],
       },
     ],
@@ -1938,10 +2152,24 @@ async function getRapportVersion(rapportId, versionId) {
     throw err;
   }
   await audit(null, "RAPPORT_VERSION_OPEN", {
-    rapport_id: rapportId,
+    rapport_id: rapport.id,
     version_id: versionId,
   });
-  return version;
+  const plain = version.toJSON ? version.toJSON() : version;
+  const versionIdMap = buildVersionPublicIdMap([plain], null);
+  const out = withPublicId(plain);
+  if (out.createdByUser) out.createdByUser = withPublicId(out.createdByUser);
+  if (Array.isArray(plain.waliResponses)) {
+    out.waliResponses = plain.waliResponses.map((r) =>
+      mapResponsePublicIds(r, versionIdMap, null),
+    );
+  }
+  if (Array.isArray(plain.chefResponses)) {
+    out.chefResponses = plain.chefResponses.map((r) =>
+      mapResponsePublicIds(r, versionIdMap, null),
+    );
+  }
+  return out;
 }
 
 async function listNotifications(userId, unreadOnly = false) {
@@ -1955,7 +2183,7 @@ async function listNotifications(userId, unreadOnly = false) {
     message_key: { [Op.notIn]: [...new Set(hiddenKeys)] },
   };
   if (unreadOnly) where.read_at = null;
-  return Notification.findAll({
+  const rows = await Notification.findAll({
     where,
     order: [["created_at", "DESC"]],
     limit: 50,
@@ -1963,7 +2191,7 @@ async function listNotifications(userId, unreadOnly = false) {
       {
         model: Rapport,
         as: "rapport",
-        attributes: ["id", "title", "status", "service_id"],
+        attributes: ["id", "uuid", "title", "status", "service_id"],
         required: false,
         include: [
           {
@@ -1974,7 +2202,7 @@ async function listNotifications(userId, unreadOnly = false) {
           {
             model: Service,
             as: "service",
-            attributes: ["id", "slug", "name_ar", "name_fr"],
+            attributes: ["id", "uuid", "slug", "name_ar", "name_fr"],
           },
         ],
       },
@@ -1993,10 +2221,41 @@ async function listNotifications(userId, unreadOnly = false) {
       {
         model: WaliBroadcast,
         as: "broadcast",
-        attributes: ["id", "title_ar", "title_fr"],
+        attributes: ["id", "uuid", "title_ar", "title_fr"],
+        required: false,
+      },
+      {
+        model: WaliInstruction,
+        as: "instruction",
+        attributes: ["id", "uuid", "title_ar", "title_fr"],
         required: false,
       },
     ],
+  });
+  return rows.map((row) => {
+    const plain = row.toJSON ? row.toJSON() : row;
+    if (plain.rapport) {
+      plain.rapport = withPublicId(plain.rapport);
+      if (plain.rapport.service) {
+        plain.rapport.service = withPublicId(plain.rapport.service);
+      }
+      if (plain.rapport_id != null && plain.rapport.id != null) {
+        plain.rapport_id = plain.rapport.id;
+      }
+    }
+    if (plain.broadcast) {
+      plain.broadcast = withPublicId(plain.broadcast);
+      if (plain.broadcast_id != null && plain.broadcast.id != null) {
+        plain.broadcast_id = plain.broadcast.id;
+      }
+    }
+    if (plain.instruction) {
+      plain.instruction = withPublicId(plain.instruction);
+      if (plain.instruction_id != null && plain.instruction.id != null) {
+        plain.instruction_id = plain.instruction.id;
+      }
+    }
+    return plain;
   });
 }
 
@@ -2040,14 +2299,16 @@ async function markNotificationRead(id, userId) {
 }
 
 async function markRapportNotificationsRead(rapportId, userId) {
+  const numericId = await resolveNumericRapportId(rapportId);
+  if (!numericId) return;
   await Notification.update(
     { read_at: new Date() },
-    { where: { user_id: userId, rapport_id: rapportId, read_at: null } },
+    { where: { user_id: userId, rapport_id: numericId, read_at: null } },
   );
 }
 
 async function hideRapport(id, actor, req) {
-  const rapport = await Rapport.findByPk(id);
+  const rapport = await loadRapport(id);
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
@@ -2070,7 +2331,7 @@ async function hideRapport(id, actor, req) {
 }
 
 async function restoreRapport(id, actor, req) {
-  const rapport = await Rapport.findByPk(id);
+  const rapport = await loadRapport(id);
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
@@ -2324,13 +2585,19 @@ async function resetRapportToFreshDraftV1(rapport, actor, req) {
 }
 
 async function officeDeleteRapport(id, actor, req) {
-  const rapport = await Rapport.findByPk(id, {
+  const rapport = await loadRapport(id, {
     include: [{ model: RapportType, as: "rapportType" }],
   });
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
+  }
+  const accessLevel = await resolveAccessLevel(actor, rapport.service_id);
+  try {
+    assertCan(actor, "rapport.delete", rapportPolicyResource(rapport, accessLevel));
+  } catch {
+    if (actor.role !== "ADMIN") throw forbidden();
   }
   if (rapport.delete_requested_at) {
     const err = new Error("Delete already requested");
@@ -2377,7 +2644,7 @@ async function officeDeleteRapport(id, actor, req) {
 }
 
 async function cancelDeleteRequest(id, actor, req) {
-  const rapport = await Rapport.findByPk(id);
+  const rapport = await loadRapport(id);
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
@@ -2403,7 +2670,7 @@ async function cancelDeleteRequest(id, actor, req) {
 }
 
 async function chefDeleteDecision(id, data, actor, req) {
-  const rapport = await Rapport.findByPk(id);
+  const rapport = await loadRapport(id);
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
@@ -2506,7 +2773,7 @@ async function chefDeleteDecision(id, data, actor, req) {
 }
 
 async function deleteRapportPermanently(id, actor, req, meta = {}) {
-  const rapport = await Rapport.findByPk(id);
+  const rapport = await loadRapport(id);
   if (!rapport) {
     const err = new Error("Not found");
     err.status = 404;
@@ -2534,6 +2801,8 @@ module.exports = {
   listRapports,
   unreadDiscussionRapportIds,
   getRapportDetail,
+  resolveNumericRapportId,
+  resolveNumericVersionId,
   applyReviewerDisplayVersion,
   assertVisibleToWali,
   assertVisibleToChef,

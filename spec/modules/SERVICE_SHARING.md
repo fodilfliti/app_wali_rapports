@@ -2,6 +2,8 @@
 
 Admin creates **services** (UI: **مجالات المتابعة** / **Domaines de suivi**) and assigns each **attaché de cabinet** (`OFFICE_USER`) one level per service:
 
+Office hub path segment: `/cabinet` (`ROUTES.md`). Grant `user_id` / `service_id` in API are public UUIDs (`IDENTITY_UUID.md`).
+
 | Level | Code | Attaché can |
 | ----- | ---- | ----------------- |
 | **Lecture** | `view` | Open domaine, read tables/documents/fiches |
@@ -26,10 +28,10 @@ Admin creates **services** (UI: **مجالات المتابعة** / **Domaines d
 #### Office enforcement
 
 - Service tree filtered to granted services only
-- `GET /office/services` and `GET /office/rapports` are also scoped to the caller’s grants (not the full org catalog)
+- `GET /cabinet/services` and `GET /cabinet/rapports` are also scoped to the caller’s grants (not the full org catalog)
 - Write APIs (`PATCH` table/document, `POST` submit/create) require `manage`
 - UI hides save/submit/create when `accessLevel === 'view'`
-- Service config page (`/office/services/:id/config`) visible only when `manage`
+- Service config page (`/cabinet/services/:id/config`) visible only when `manage`
 
 #### Visibility after grant
 

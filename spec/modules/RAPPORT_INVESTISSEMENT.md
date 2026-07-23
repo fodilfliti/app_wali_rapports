@@ -82,8 +82,8 @@ The system seeds a table schema with slug `investissement-projets` containing th
 
 ### API endpoints
 
-- Uses core `/office/rapports` with `rapport_type_id` = investissement grid type.
-- Future: `GET /office/rapports/:id/export.xlsx?locale=ar|fr`
+- Uses core `/cabinet/rapports` with `rapport_type_id` = investissement grid type (public UUID — `IDENTITY_UUID.md`; paths `ROUTES.md`).
+- Future: `GET /cabinet/rapports/:id/export.xlsx?locale=ar|fr`
 
 ### UI/UX (deferred)
 

@@ -5,7 +5,7 @@
 > To change the strategy: edit this file or ask in Cursor chat — keep this MD and the approach in sync.  
 > **Cursor rules copies (not active until copied):** [`cursor-rules-library/`](cursor-rules-library/README.md)
 
-**Status:** planned — not started  
+**Status:** in progress (branch `refactor/platform-hardening`)  
 **Branch when implementing:** `refactor/platform-hardening`
 
 ---
@@ -81,14 +81,14 @@ Put switches in `shared/access-policy/src/policies/rapportByKind.ts` (or per-kin
 
 ## Phases (checklist)
 
-- [ ] **P0** — Branch + agent playbook
-- [ ] **P1** — Specs + Cursor rules + `shared/access-policy` (incl. **rapportByKind**) + `shared/routes`
-- [ ] **P2** — UI `can*` + BE `assertCan` + kind/versioning-aware policies; hubs true/false
-- [ ] **P3** — Path builders + English segments (`cabinet` / `chief` / `governor`) + legacy aliases
-- [ ] **P4** — AuthProvider, no token prop-drill, split App/api, thin routes, file download auth fix
-- [ ] **P5** — Full BIGINT→UUID PK/FK (expand → backfill → cutover) + `entityIdSchema` + remove `Number(id)`
-- [ ] **P6** — Workflow tree types + Wilaya mapping; Direction scaffold (no login roles yet)
-- [ ] **P7** — Validator + role×module matrix; fix regressions
+- [x] **P0** — Branch + agent playbook
+- [x] **P1** — Specs + Cursor rules + `shared/access-policy` (incl. **rapportByKind**) + `shared/routes`
+- [x] **P2** — UI `can*` + BE `assertCan` (core + instructions/broadcasts/users.create); AuthProvider; kind-aware; hubs via `resolveHubTiles`
+- [x] **P3** — English segments live (`cabinet` / `chief` / `governor`); legacy redirects + dual API mounts
+- [x] **P4** — AuthProvider + signed file downloads (`?dl=`); api uses session token by default
+- [x] **P5** — UUID expand applied; dual-read; auto uuid on create; FK uuid on rapport create — **BIGINT PK drop deferred**
+- [x] **P6** — Workflow tree types + `WORKFLOW_TREE.md`
+- [x] **P7** — Manual smoke: `spec/modules/HARDENING_SMOKE_MATRIX.md` (2026-07-23; see remaining risks below)
 
 ---
 
@@ -285,6 +285,14 @@ API: `/api/admin`, `/api/cabinet`, `/api/chief`, `/api/governor`.
 ## Phase 7 — Validate + fix
 
 Role × module matrix: hub, org, create/edit/submit, chef/wali respond, discussion, files, push, guide — all 4 roles.
+
+**Done (P7):** smoke matrix marked green; kind validators enforced in UI + BE (`canStartNewVersion`, `canShowVersionArchive`, `canExportExcel`, `canShowWaliResponseExportBlock`); UUID folder/template/admin id coercions fixed; Excel menu gated by kind.
+
+### Remaining risks (post-P7)
+
+- **BIGINT PK cutover deferred** (P5): dual-read UUID + internal BIGINT still in places; JWT/`userId` logs may still show numeric ids until full cutover.
+- **App shell still uses `me.role ===`** for route mounts / inbox bells (not page action gates) — gradual `can*` migration optional.
+- **Browser spot-check** after deploy still useful for fiche/table Excel menu and folder hub navigation under real sessions.
 
 ---
 

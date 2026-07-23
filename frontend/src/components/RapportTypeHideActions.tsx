@@ -4,14 +4,16 @@ import { ActionsMenuButton } from './ActionsMenuButton'
 import { ConfirmActionModal } from './ConfirmActionModal'
 import { localizedRapportTypeName, type RapportTypeNav } from '../utils/rapportNavigation'
 
+import type { EntityIdParam } from '../api'
+
 type PendingAction = 'hide' | 'restore' | 'delete'
 
 type Props = {
   rapportType: RapportTypeNav | null | undefined
   canManage?: boolean
-  onHideType: (typeId: number) => void | Promise<void>
-  onRestoreType: (typeId: number) => void | Promise<void>
-  onDeleteType?: (typeId: number) => void | Promise<void>
+  onHideType: (typeId: EntityIdParam) => void | Promise<void>
+  onRestoreType: (typeId: EntityIdParam) => void | Promise<void>
+  onDeleteType?: (typeId: EntityIdParam) => void | Promise<void>
   variant?: 'hub' | 'page'
 }
 

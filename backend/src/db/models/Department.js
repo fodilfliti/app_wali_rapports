@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "Department",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       name_ar: { type: DataTypes.STRING(200), allowNull: false },
       name_fr: { type: DataTypes.STRING(200), allowNull: false },
       sort_order: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
+import type { EntityIdParam } from '../api'
 import { localizedName } from '../utils/schemaColumns'
 import { DocumentTemplateEditModal } from './DocumentTemplateEditModal'
 import { DocumentTemplatePickModal } from './DocumentTemplatePickModal'
@@ -13,7 +14,7 @@ import { officeNewDocumentPath } from '../utils/rapportNavigation'
 
 type Props = {
   token: string
-  serviceId: number
+  serviceId: EntityIdParam
   rapportTypes: any[]
   autoOpenCreate?: boolean
   onAutoOpenHandled?: () => void
@@ -32,7 +33,7 @@ export function DocumentTemplatesSection({
   const [templates, setTemplates] = useState<any[]>([])
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
-  const [createForTypeId, setCreateForTypeId] = useState<number | null>(null)
+  const [createForTypeId, setCreateForTypeId] = useState<EntityIdParam | null>(null)
   const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
@@ -125,7 +126,7 @@ export function DocumentTemplatesSection({
     if (!ids.length) return t('documentTemplateScopeAll')
     return ids
       .map((id: number) => {
-        const rt = documentTypes.find((row) => Number(row.id) === Number(id))
+        const rt = documentTypes.find((row) => String(row.id) === String(id))
         return rt ? localizedName(rt, i18n.language) : `#${id}`
       })
       .join(' · ')
@@ -133,7 +134,7 @@ export function DocumentTemplatesSection({
 
   const pagedTemplates = paginateSlice(templates, page, DEFAULT_PAGE_SIZE)
 
-  async function createRapport(typeId: number, templateId: number | null) {
+  async function createRapport(typeId: EntityIdParam, templateId: EntityIdParam | null) {
     setCreateForTypeId(null)
     navigate(
       officeNewDocumentPath(serviceId, {

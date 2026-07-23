@@ -7,10 +7,12 @@ import {
 } from '../utils/rapportNavigation'
 import { versionDetailPath } from '../utils/rapportVersionsNav'
 
-type VersionRow = { id: number; version_number: number; submitted_at?: string | null }
+import type { EntityIdParam } from '../api'
+
+type VersionRow = { id: EntityIdParam; version_number: number; submitted_at?: string | null }
 
 type Props = {
-  rapportId: number
+  rapportId: EntityIdParam
   rapportType?: { versioning_mode?: string } | null
   versions?: VersionRow[]
   wali?: boolean

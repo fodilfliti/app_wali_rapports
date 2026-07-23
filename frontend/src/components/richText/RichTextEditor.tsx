@@ -18,12 +18,15 @@ import { FontSize } from './fontSizeExtension'
 import { Video } from './videoExtension'
 import { SchemaTable } from './schemaTableExtension'
 import { BorderedBlock } from './borderedBlockExtension'
+import { SpreadRow, SpreadCell } from './spreadRowExtension'
 import { RichTextToolbar } from './RichTextToolbar'
 import { ImageLightbox, useImageLightbox } from '../ImageLightbox'
 import { UploadProgressBar } from '../UploadProgressBar'
 import { MediaUploadError, prepareFileForUpload } from '../../utils/media'
 import { blendedBatchPercent, runUploadQueue } from '../../utils/uploadQueue'
 import type { UploadProgress } from '../../utils/uploadFile'
+import type { EntityIdParam } from '../../api'
+import { prepareRichHtmlForSave } from '../../utils/richHtmlSecurity'
 import './richText.css'
 
 const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
@@ -49,12 +52,55 @@ function isEmptyRichHtml(html: string | null | undefined): boolean {
   )
 }
 
+/** Map data-file-id / bare /files/ path → display src (may include signed dl query). */
+function collectMediaSrcMap(html: string): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!html || typeof document === 'undefined') return map
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    doc.querySelectorAll('img[src], video[src]').forEach((el) => {
+      const src = el.getAttribute('src')
+      if (!src) return
+      const fileId = el.getAttribute('data-file-id')
+      if (fileId) map.set(`id:${fileId}`, src)
+      const path = src.replace(/[?#].*$/, '')
+      if (path.includes('/files/')) map.set(`path:${path}`, src)
+    })
+  } catch {
+    /* ignore */
+  }
+  return map
+}
+
+/** Refresh image/video src for signed URLs without remounting / losing caret. */
+function patchEditorMediaSrcs(editor: { state: any; view: { dispatch: (tr: any) => void } }, htmlWithSigned: string) {
+  const srcMap = collectMediaSrcMap(htmlWithSigned)
+  if (!srcMap.size) return false
+  const { tr } = editor.state
+  let changed = false
+  editor.state.doc.descendants((node: { type: { name: string }; attrs: Record<string, unknown> }, pos: number) => {
+    if (node.type.name !== 'image' && node.type.name !== 'video') return
+    const fileId = node.attrs.fileId != null ? String(node.attrs.fileId) : ''
+    const currentSrc = typeof node.attrs.src === 'string' ? node.attrs.src : ''
+    const path = currentSrc.replace(/[?#].*$/, '')
+    const nextSrc =
+      (fileId && srcMap.get(`id:${fileId}`)) ||
+      (path ? srcMap.get(`path:${path}`) : undefined)
+    if (nextSrc && nextSrc !== currentSrc) {
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: nextSrc })
+      changed = true
+    }
+  })
+  if (changed) editor.view.dispatch(tr)
+  return changed
+}
+
 type Props = {
   value: string
   onChange: (html: string) => void
   editable?: boolean
   placeholder?: string
-  onUpload?: (file: File, opts?: UploadOpts) => Promise<{ id: number; url: string }>
+  onUpload?: (file: File, opts?: UploadOpts) => Promise<{ id: EntityIdParam; url: string }>
   onUploadError?: (err: unknown) => void
   locale?: string
   insertTableId?: string | null
@@ -105,6 +151,12 @@ export function RichTextEditor({
   openVideoRef.current = lightbox.openVideo
 
   const mediaBusy = phase !== 'idle'
+  const valueRef = useRef(value)
+  valueRef.current = value
+  // TipTap may emit an empty update on mount before value is applied — don't wipe parent.
+  const appliedValueOnceRef = useRef(!isEmptyRichHtml(value))
+  // Last HTML we pushed via onChange — ignore echo (incl. sanitize / signed-URL round-trip).
+  const lastEmittedRef = useRef<string | null>(null)
 
   const resetUploadState = useCallback(() => {
     abortRef.current?.abort()
@@ -126,6 +178,8 @@ export function RichTextEditor({
       Link.configure({ openOnClick: false }),
       HorizontalRule,
       BorderedBlock,
+      SpreadRow.configure({ locale: locale === 'fr' ? 'fr' : 'ar' }),
+      SpreadCell,
       CustomImage.configure({ inline: false, allowBase64: false, HTMLAttributes: { class: 'editor-image' } }),
       Video.configure({
         onOpen: (src) => openVideoRef.current(src),
@@ -140,8 +194,20 @@ export function RichTextEditor({
     content: value || '<p></p>',
     editable,
     onUpdate: ({ editor: ed }) => {
+      const nextHtml = ed.getHTML()
+      const propValue = valueRef.current
+      if (isEmptyRichHtml(nextHtml) && !isEmptyRichHtml(propValue)) {
+        // Empty editor while parent still has content — ignore (mount race).
+        return
+      }
+      if (!isEmptyRichHtml(nextHtml)) {
+        appliedValueOnceRef.current = true
+      } else if (!appliedValueOnceRef.current && !isEmptyRichHtml(propValue)) {
+        return
+      }
+      lastEmittedRef.current = nextHtml
       skipNextUpdate.current = true
-      onChange(ed.getHTML())
+      onChange(nextHtml)
     },
   })
 
@@ -149,6 +215,12 @@ export function RichTextEditor({
     if (!editor) return
     editor.setEditable(editable)
   }, [editor, editable])
+
+  useEffect(() => {
+    if (!editor) return
+    const ext = editor.extensionManager.extensions.find((e) => e.name === 'spreadRow')
+    if (ext) ext.options.locale = locale === 'fr' ? 'fr' : 'ar'
+  }, [editor, locale])
 
   useEffect(() => {
     if (!editor || skipNextUpdate.current) {
@@ -160,9 +232,24 @@ export function RichTextEditor({
     const next = value || '<p></p>'
     const currentLooksEmpty = isEmptyRichHtml(current)
     const nextLooksEmpty = isEmptyRichHtml(next)
+    // Prefer non-empty prop over empty editor (never let empty mount win).
     if (nextLooksEmpty && !currentLooksEmpty) return
+
+    const saveEqual =
+      prepareRichHtmlForSave(next) === prepareRichHtmlForSave(current) ||
+      (lastEmittedRef.current != null &&
+        prepareRichHtmlForSave(next) === prepareRichHtmlForSave(lastEmittedRef.current))
+
+    // Same document body: only refresh signed media src (edit mode needs dl tokens).
+    // Never apply unsigned → signed-strip echoes (would break images until submit/view).
+    if (saveEqual) {
+      if (next !== current && /[?&]dl=/.test(next)) patchEditorMediaSrcs(editor, next)
+      return
+    }
+
     if (next !== current) {
       editor.commands.setContent(next, { emitUpdate: false })
+      if (!nextLooksEmpty) appliedValueOnceRef.current = true
     }
   }, [editor, value, mediaBusy])
 
@@ -280,6 +367,7 @@ export function RichTextEditor({
         <RichTextToolbar
           editor={editor}
           fontSizes={FONT_SIZES}
+          locale={locale === 'fr' ? 'fr' : 'ar'}
           mediaBusy={mediaBusy}
           onPickImages={() => imageInputRef.current?.click()}
           onPickVideos={() => videoInputRef.current?.click()}

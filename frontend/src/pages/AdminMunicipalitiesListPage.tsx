@@ -15,6 +15,7 @@ import { QueryListShell } from '../components/QueryListShell'
 import { BusyButton } from '../components/BusyButton'
 import { useAdminDairasQuery, useAdminMunicipalitiesQuery } from '../hooks/queries/useListQueries'
 import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { entityIdsEqual } from '../utils/entityIds'
 
 type Props = { token: string }
 
@@ -55,7 +56,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
 
   const dairaOptions = useMemo(() => {
     const list = [...dairas]
-    if (editDaira && !list.some((d) => Number(d.id) === Number(editDaira.id))) {
+    if (editDaira && !list.some((d) => entityIdsEqual(d.id, editDaira.id))) {
       list.push(editDaira)
     }
     return list
@@ -86,7 +87,7 @@ export function AdminMunicipalitiesListPage({ token }: Props) {
     if (!form.validate(fields, t, ['name_ar', 'name_fr', 'code', 'daira_id'])) return
     const payload = {
       ...fields,
-      daira_id: Number(fields.daira_id),
+      daira_id: fields.daira_id,
     }
     setSaving(true)
     try {

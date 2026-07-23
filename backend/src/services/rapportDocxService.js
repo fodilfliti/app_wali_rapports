@@ -35,6 +35,7 @@ const { marginTwip, blockPadTwip } = require("./exportLayout");
 const { rapportExportFilename } = require("./rapportExportFilename");
 const { metaLabel, communeNameCell, metaValuesForRow, exportMetaColumnKeys } = require("./tableExportMeta");
 const { getLatestWaliResponse, waliResponseDocxBlocks } = require("./waliResponseExport");
+const { canShowWaliResponseExportBlock } = require("../modules/access/assertCan");
 
 const IMAGE_W = 240;
 const IMAGE_H = 180;
@@ -419,7 +420,7 @@ async function buildDocxChildren(data, locale) {
     }
   }
 
-  if (kind === "fiche_lecture") {
+  if (canShowWaliResponseExportBlock({ content_kind: kind })) {
     const waliResponse = getLatestWaliResponse(rapport.waliResponses);
     children.push(
       ...waliResponseDocxBlocks(waliResponse, locale, {
@@ -480,7 +481,9 @@ async function generateRapportDocx(rapportId, { locale = "ar", showHidden = fals
     ]
   });
   const buffer = await Packer.toBuffer(doc);
-  await audit(actor?.id, "RAPPORT_DOCX_EXPORT", { rapport_id: Number(rapportId), locale: loc }, { req });
+  const rapportService = require("../modules/rapports/rapportService");
+  const numericRapportId = await rapportService.resolveNumericRapportId(rapportId);
+  await audit(actor?.id, "RAPPORT_DOCX_EXPORT", { rapport_id: numericRapportId, locale: loc }, { req });
   return { buffer, filename: rapportExportFilename(data.rapport, "docx") };
 }
 

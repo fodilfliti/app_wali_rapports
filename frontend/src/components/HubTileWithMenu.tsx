@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
 import { HubTile, type HubTileProps } from './HubTile'
 import { RapportTypeHideActions } from './RapportTypeHideActions'
+import type { EntityIdParam } from '../api'
 import type { RapportTypeNav } from '../utils/rapportNavigation'
 
 type Props = HubTileProps & {
   rapportType?: RapportTypeNav | null
   canManageType?: boolean
-  onHideType?: (typeId: number) => void | Promise<void>
-  onRestoreType?: (typeId: number) => void | Promise<void>
-  onDeleteType?: (typeId: number) => void | Promise<void>
+  onHideType?: (typeId: EntityIdParam) => void | Promise<void>
+  onRestoreType?: (typeId: EntityIdParam) => void | Promise<void>
+  onDeleteType?: (typeId: EntityIdParam) => void | Promise<void>
   dimmed?: boolean
   badgeOverlay?: ReactNode
 }

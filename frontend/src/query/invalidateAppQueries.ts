@@ -1,12 +1,14 @@
 import type { QueryClient, InvalidateQueryFilters } from '@tanstack/react-query'
 import type { HubCountsRole, ReviewerRole } from './queryKeys'
 
+import type { EntityIdParam } from '../api'
+
 export type InvalidateOptions = {
   hubCounts?: HubCountsRole | HubCountsRole[] | true
   rapports?: boolean
   serviceTrees?: boolean
   officeUsers?: ReviewerRole | ReviewerRole[] | true
-  serviceHub?: { scope: string; serviceId?: number }
+  serviceHub?: { scope: string; serviceId?: EntityIdParam }
   calendar?: ReviewerRole | ReviewerRole[] | true
   adminRef?: boolean
   instructions?: boolean

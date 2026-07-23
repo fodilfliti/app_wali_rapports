@@ -44,13 +44,9 @@ type FilterMode = "all" | "filled" | "empty";
 export function OfficeCommuneListPage({ token }: Props) {
   const { serviceId } = useParams();
   const [searchParams] = useSearchParams();
-  const rapportTypeId = searchParams.get("rapport_type_id")
-    ? Number(searchParams.get("rapport_type_id"))
-    : undefined;
-  const rapportId = searchParams.get("rapport_id")
-    ? Number(searchParams.get("rapport_id"))
-    : undefined;
-  const sid = Number(serviceId);
+  const rapportTypeId = searchParams.get("rapport_type_id") || undefined;
+  const rapportId = searchParams.get("rapport_id") || undefined;
+  const sid = (serviceId || "") as import("../api").EntityIdParam;
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
   const [workspace, setWorkspace] = useState<any>(null);
@@ -215,8 +211,8 @@ export function OfficeCommuneListPage({ token }: Props) {
       data_json.included_entity_keys = keys;
     }
     const { rapport } = await api.createRapport(token, {
-      service_id: Number(sid),
-      rapport_type_id: Number(workspace.rapportType.id),
+      service_id: sid,
+      rapport_type_id: workspace.rapportType.id,
       title: trimmed,
       data_json,
     });
@@ -261,8 +257,8 @@ export function OfficeCommuneListPage({ token }: Props) {
       snack.show(t("finishRapportDone"), "success");
       navigate(
         rapportTypeId
-          ? `/office/services/${sid}/rapports/${rapportTypeId}`
-          : `/office/services/${sid}`,
+          ? `/cabinet/services/${sid}/rapports/${rapportTypeId}`
+          : `/cabinet/services/${sid}`,
       );
     } catch {
       snack.show(t("errorGeneric"), "error");
@@ -320,8 +316,8 @@ export function OfficeCommuneListPage({ token }: Props) {
         snack.show(t("deleteRapportDone"), "success");
         navigate(
           rapportTypeId
-            ? `/office/services/${sid}/rapports/${rapportTypeId}`
-            : `/office/services/${sid}`,
+            ? `/cabinet/services/${sid}/rapports/${rapportTypeId}`
+            : `/cabinet/services/${sid}`,
           { replace: true },
         );
       }
@@ -493,7 +489,7 @@ export function OfficeCommuneListPage({ token }: Props) {
           {loadError === "tableSchemaNotConfigured" ? (
             <Link
               className="btn btn-primary"
-              to={`/office/services/${sid}/config`}
+              to={`/cabinet/services/${sid}/config`}
             >
               {t("goToServiceConfig")}
             </Link>
@@ -514,6 +510,7 @@ export function OfficeCommuneListPage({ token }: Props) {
           <RapportOfficeStatusBanner
             rapport={workspace.rapport}
             versioningMode={workspace.rapportType?.versioning_mode}
+            contentKind={workspace.rapportType?.content_kind}
             editable={!!editable}
             canManage={workspace?.accessLevel === "manage"}
             onReturnToDraft={returnCurrentToDraft}
@@ -638,7 +635,7 @@ export function OfficeCommuneListPage({ token }: Props) {
           {workspace?.rapport?.id ? (
             <RapportDiscussionSection
               token={token}
-              rapportId={Number(workspace.rapport.id)}
+              rapportId={workspace.rapport.id}
               mode="office"
               enabled={isDiscussionEnabledByStatus(workspace.rapport.status)}
               versionId={workspace.rapport.current_version_id ?? null}

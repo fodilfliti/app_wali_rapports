@@ -2,15 +2,17 @@ const { Op } = require("sequelize");
 const { Service, Department, RapportType, UserServiceGrant, User } = require("../../db");
 const { audit } = require("../../services/audit");const { baseSlugFromNames, ensureUniqueSlug } = require("../../utils/slugUtils");
 const { listGrantsForService, replaceServiceGrants } = require("./serviceAccessService");
+const { findByPublicId, withPublicId, publicId, resolveNumericId } = require("../access/idResolver");
 
 const { buildFicheDefaultBlocks } = require("./documentDefaults");
 
 async function listDepartments() {
-  return Department.findAll({
+  const rows = await Department.findAll({
     where: { is_active: true },
     order: [["sort_order", "ASC"], ["id", "ASC"]],
-    attributes: ["id", "name_ar", "name_fr", "sort_order"]
+    attributes: ["id", "uuid", "name_ar", "name_fr", "sort_order"]
   });
+  return rows.map((r) => withPublicId(r));
 }
 
 async function createDepartment(data, actor, req) {
@@ -34,11 +36,11 @@ async function createDepartment(data, actor, req) {
     is_active: true
   });
   await audit(actor.id, "DEPARTMENT_CREATE", { department_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function updateDepartment(id, data, actor, req) {
-  const row = await Department.findByPk(id);
+  const row = await findByPublicId(Department, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -70,11 +72,11 @@ async function updateDepartment(id, data, actor, req) {
     ...(data.is_active != null ? { is_active: data.is_active } : {})
   });
   await audit(actor.id, "DEPARTMENT_UPDATE", { department_id: row.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function deleteDepartment(id, actor, req) {
-  const row = await Department.findByPk(id);
+  const row = await findByPublicId(Department, id);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -95,9 +97,9 @@ async function listServicesAdmin() {
   const services = await Service.findAll({    where: { is_active: true },
     order: [["sort_order", "ASC"], ["id", "ASC"]],
     include: [
-      { model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] },
-      { model: RapportType, as: "rapportTypes", attributes: ["id", "slug", "content_kind"] },
-      { model: Service, as: "parent", attributes: ["id", "slug", "name_ar", "name_fr"], required: false }
+      { model: Department, as: "department", attributes: ["id", "uuid", "name_ar", "name_fr"] },
+      { model: RapportType, as: "rapportTypes", attributes: ["id", "uuid", "slug", "content_kind"] },
+      { model: Service, as: "parent", attributes: ["id", "uuid", "slug", "name_ar", "name_fr"], required: false }
     ]
   });
 
@@ -141,10 +143,19 @@ async function listServicesAdmin() {
   }
 
   return services.map((s) => {
-    const plain = s.toJSON();
+    const plain = withPublicId(s.toJSON());
     plain.grant_count_direct = directGrantCount(s.id);
     plain.grant_count = s.is_folder ? folderGrantCount(s.id) : plain.grant_count_direct;
     plain.child_service_count = s.is_folder ? (childrenByParent.get(Number(s.id)) || []).length : 0;
+    if (plain.parent_service_id != null) {
+      const parent = services.find((p) => Number(p.id) === Number(s.parent_service_id));
+      if (parent) plain.parent_service_id = publicId(parent);
+    }
+    if (plain.department) plain.department = withPublicId(plain.department);
+    if (Array.isArray(plain.rapportTypes)) {
+      plain.rapportTypes = plain.rapportTypes.map((t) => withPublicId(t));
+    }
+    if (plain.parent) plain.parent = withPublicId(plain.parent);
     return plain;
   });
 }
@@ -163,24 +174,36 @@ async function createService(data, actor, req) {
     }
   }
 
+  let parentNumericId = null;
   if (data.parent_service_id) {
-    const parent = await Service.findByPk(data.parent_service_id);
+    const parent = await findByPublicId(Service, data.parent_service_id);
     if (!parent || !parent.is_folder) {
       const err = new Error("invalidParent");
       err.status = 400;
       throw err;
     }
+    parentNumericId = parent.id;
+  }
+
+  let departmentNumericId = null;
+  if (data.department_id != null && data.department_id !== "") {
+    departmentNumericId = await resolveNumericId(Department, data.department_id);
+    if (!departmentNumericId) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
   }
 
   const service = await Service.create({
-    department_id: data.department_id ?? null,
+    department_id: departmentNumericId,
     slug,
     name_ar: data.name_ar,
     name_fr: data.name_fr,
     sort_order: data.sort_order ?? 0,
     is_active: true,
     is_folder: data.is_folder ?? false,
-    parent_service_id: data.parent_service_id || null
+    parent_service_id: parentNumericId
   });
 
   if (!service.is_folder) {
@@ -197,15 +220,29 @@ async function createService(data, actor, req) {
   }
 
   await audit(actor.id, "SERVICE_CREATE", { service_id: service.id, slug: service.slug }, { req });
-  return service;
+  return withPublicId(service);
 }
 
 async function updateService(id, data, actor, req) {
-  const service = await Service.findByPk(id);
+  const service = await findByPublicId(Service, id);
   if (!service) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
+  }
+
+  let departmentNumericId;
+  if (data.department_id !== undefined) {
+    if (data.department_id == null || data.department_id === "") {
+      departmentNumericId = null;
+    } else {
+      departmentNumericId = await resolveNumericId(Department, data.department_id);
+      if (!departmentNumericId) {
+        const err = new Error("Not found");
+        err.status = 404;
+        throw err;
+      }
+    }
   }
 
   await service.update({
@@ -213,11 +250,11 @@ async function updateService(id, data, actor, req) {
     ...(data.name_fr != null ? { name_fr: data.name_fr } : {}),
     ...(data.sort_order != null ? { sort_order: data.sort_order } : {}),
     ...(data.is_active != null ? { is_active: data.is_active } : {}),
-    ...(data.department_id !== undefined ? { department_id: data.department_id } : {}),
+    ...(data.department_id !== undefined ? { department_id: departmentNumericId } : {}),
   });
 
   await audit(actor.id, "SERVICE_UPDATE", { service_id: service.id }, { req });
-  return service;
+  return withPublicId(service);
 }
 
 async function collectActiveServiceSubtreeIds(rootId) {
@@ -239,7 +276,7 @@ async function collectActiveServiceSubtreeIds(rootId) {
 }
 
 async function deleteService(id, actor, req) {
-  const service = await Service.findByPk(id);
+  const service = await findByPublicId(Service, id);
   if (!service) {
     const err = new Error("Not found");
     err.status = 404;
@@ -257,11 +294,16 @@ async function deleteService(id, actor, req) {
 }
 
 async function listOfficeUsersForGrantPicker() {
-  return User.findAll({
+  const users = await User.findAll({
     where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
     order: [["name", "ASC"], ["id", "ASC"]],
-    attributes: ["id", "username", "name", "job_title", "department_id"],
-    include: [{ model: Department, as: "department", attributes: ["id", "name_ar", "name_fr"] }]
+    attributes: ["id", "uuid", "username", "name", "job_title", "department_id"],
+    include: [{ model: Department, as: "department", attributes: ["id", "uuid", "name_ar", "name_fr"] }]
+  });
+  return users.map((u) => {
+    const plain = withPublicId(u);
+    if (plain.department) plain.department = withPublicId(plain.department);
+    return plain;
   });
 }
 

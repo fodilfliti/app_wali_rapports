@@ -1,6 +1,8 @@
 const { Op } = require("sequelize");
 const { RapportCalendarEvent, Rapport, Service, RapportType } = require("../../db");
+const { findByPublicId } = require("../access/idResolver");
 const { assertRapportAccess } = require("./serviceAccessService");
+const { resolveNumericRapportId } = require("./rapportService");
 const { remindAfterCalendarSave } = require("../notifications/calendarReminderService");
 
 function parseDateOnly(s) {
@@ -29,8 +31,10 @@ async function listForRapport(rapportId, actor) {
   ) {
     await assertRapportAccess(actor, rapportId, "view");
   }
+  const numericRapportId = await resolveNumericRapportId(rapportId);
+  if (!numericRapportId) return [];
   const rows = await RapportCalendarEvent.findAll({
-    where: { rapport_id: rapportId },
+    where: { rapport_id: numericRapportId },
     order: [["event_date", "ASC"], ["id", "ASC"]]
   });
   return rows.map(serializeEvent);
@@ -38,15 +42,16 @@ async function listForRapport(rapportId, actor) {
 
 async function replaceForRapport(rapportId, events, actor) {
   await assertRapportAccess(actor, rapportId, "manage");
-  const rapport = await Rapport.findByPk(rapportId);
+  const rapport = await findByPublicId(Rapport, rapportId);
   if (!rapport || !["draft", "changes_requested"].includes(rapport.status)) {
     const err = new Error("Rapport not editable");
     err.status = 409;
     throw err;
   }
+  const numericRapportId = rapport.id;
 
   const existing = await RapportCalendarEvent.findAll({
-    where: { rapport_id: rapportId },
+    where: { rapport_id: numericRapportId },
   });
   const existingById = new Map(existing.map((e) => [Number(e.id), e]));
   const keepIds = new Set();
@@ -60,7 +65,7 @@ async function replaceForRapport(rapportId, events, actor) {
     }
     return {
       id: e.id != null ? Number(e.id) : null,
-      rapport_id: rapportId,
+      rapport_id: numericRapportId,
       event_date: date,
       title_ar: String(e.title_ar || "").slice(0, 200),
       title_fr: String(e.title_fr || "").slice(0, 200),

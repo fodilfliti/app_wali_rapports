@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 import { localizedName } from '../utils/schemaColumns'
 
 type Props = {
   token: string
-  serviceId: number
-  rapportTypeId: number
+  serviceId: EntityIdParam
+  rapportTypeId: EntityIdParam
   open: boolean
   mode: 'create' | 'import'
   onClose: () => void
-  onSelect: (templateId: number | null, importMode?: 'replace' | 'append') => void
+  onSelect: (templateId: EntityIdParam | null, importMode?: 'replace' | 'append') => void
 }
 
 export function DocumentTemplatePickModal({
@@ -26,7 +27,7 @@ export function DocumentTemplatePickModal({
   const { t, i18n } = useTranslation()
   const [templates, setTemplates] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [selectedId, setSelectedId] = useState<number | ''>('')
+  const [selectedId, setSelectedId] = useState<EntityIdParam | ''>('')
   const [importMode, setImportMode] = useState<'replace' | 'append'>('replace')
 
   useEffect(() => {
@@ -45,7 +46,7 @@ export function DocumentTemplatePickModal({
       })
       .catch(() => setTemplates([]))
       .finally(() => setLoading(false))
-  }, [open, token, serviceId, rapportTypeId])
+  }, [open, token, serviceId, rapportTypeId, mode])
 
   if (!open) return null
 
@@ -53,11 +54,11 @@ export function DocumentTemplatePickModal({
 
   function confirm() {
     if (mode === 'create') {
-      onSelect(selectedId === '' ? null : Number(selectedId))
+      onSelect(selectedId === '' ? null : selectedId)
       return
     }
     if (selectedId === '') return
-    onSelect(Number(selectedId), importMode)
+    onSelect(selectedId, importMode)
   }
 
   return createPortal(

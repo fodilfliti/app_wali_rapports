@@ -1,36 +1,45 @@
+import { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
+import { signFileUrlsBatch } from "../api";
 
-const ACCESS_TOKEN_QUERY_RE = /([?&])access_token=[^&#"'\s>]*/gi;
+const DOWNLOAD_TOKEN_QUERY_RE = /([?&])(?:access_token|dl)=[^&#"'\s>]*/gi;
+const FILE_ATTR_RE = /(src|href)=(["'])([^"']*?\/files\/[^"']*?)\2/gi;
 
-/** Remove access JWTs from /files URLs before persisting rich HTML. */
-export function stripAccessTokensFromHtml(html: string): string {
+/** Remove download tokens from /files URLs before persisting rich HTML. */
+export function stripDownloadTokensFromHtml(html: string): string {
   if (!html) return html;
-  let out = html.replace(ACCESS_TOKEN_QUERY_RE, (_match, sep: string) =>
+  let out = html.replace(DOWNLOAD_TOKEN_QUERY_RE, (_match, sep: string) =>
     sep === "?" ? "?" : "",
   );
-  // Clean leftover ? or & before closing quote/bracket
   out = out.replace(/\?(["'#>\s])/g, "$1");
   out = out.replace(/\?&/g, "?");
   out = out.replace(/&&+/g, "&");
   return out;
 }
 
-/** Append current access token to /files/... URLs for display only (never persist). */
-export function injectAccessTokensIntoHtml(
-  html: string,
-  token: string | undefined | null,
-): string {
-  if (!html || !token) return html || "";
-  const enc = encodeURIComponent(token);
-  return html.replace(
-    /(src|href)=(["'])([^"']*?\/files\/[^"']*?)\2/gi,
-    (_m, attr, quote, url) => {
-      let cleaned = String(url).replace(ACCESS_TOKEN_QUERY_RE, "").replace(/[?&]$/, "");
-      cleaned = cleaned.replace(/\?$/, "");
-      const sep = cleaned.includes("?") ? "&" : "?";
-      return `${attr}=${quote}${cleaned}${sep}access_token=${enc}${quote}`;
-    },
-  );
+/** @deprecated use stripDownloadTokensFromHtml */
+export const stripAccessTokensFromHtml = stripDownloadTokensFromHtml;
+
+function extractFilePaths(html: string): string[] {
+  const set = new Set<string>();
+  for (const m of html.matchAll(FILE_ATTR_RE)) {
+    const raw = String(m[3]).replace(/\?.*$/, "").replace(/#.*$/, "");
+    if (raw) set.add(raw);
+  }
+  return [...set];
+}
+
+function injectSignedUrls(html: string, signed: Map<string, string>): string {
+  if (!signed.size) return html;
+  return html.replace(FILE_ATTR_RE, (_m, attr, quote, url) => {
+    const cleaned = String(url)
+      .replace(DOWNLOAD_TOKEN_QUERY_RE, "")
+      .replace(/[?&]$/, "")
+      .replace(/\?$/, "");
+    const signedUrl = signed.get(cleaned) || signed.get(cleaned.replace(/^\//, "")) || "";
+    if (!signedUrl) return `${attr}=${quote}${cleaned}${quote}`;
+    return `${attr}=${quote}${signedUrl}${quote}`;
+  });
 }
 
 /** Sanitize rich HTML before dangerouslySetInnerHTML / TipTap hydrate. */
@@ -41,6 +50,8 @@ export function sanitizeRichHtml(html: string): string {
     ADD_ATTR: [
       "data-file-id",
       "data-schema-table-id",
+      "data-spread-cols",
+      "data-spread-slot",
       "target",
       "rel",
       "colspan",
@@ -56,17 +67,75 @@ export function sanitizeRichHtml(html: string): string {
   });
 }
 
-/** Display pipeline: strip stale tokens → sanitize → inject current token. */
-export function prepareRichHtmlForDisplay(
-  html: string,
-  token?: string | null,
-): string {
-  const stripped = stripAccessTokensFromHtml(html || "");
-  const clean = sanitizeRichHtml(stripped);
-  return injectAccessTokensIntoHtml(clean, token);
-}
-
 /** Persist pipeline: strip tokens + sanitize. */
 export function prepareRichHtmlForSave(html: string): string {
-  return sanitizeRichHtml(stripAccessTokensFromHtml(html || ""));
+  return sanitizeRichHtml(stripDownloadTokensFromHtml(html || ""));
+}
+
+/** Sync sanitize for first paint (no signed URLs yet). */
+export function prepareRichHtmlForDisplaySync(html: string): string {
+  return sanitizeRichHtml(stripDownloadTokensFromHtml(html || ""));
+}
+
+/** React hook: sanitize + inject short-lived signed /files/ URLs for display. */
+export function usePreparedRichHtml(html: string): string {
+  const [prepared, setPrepared] = useState(() => prepareRichHtmlForDisplaySync(html));
+
+  useEffect(() => {
+    let cancelled = false;
+    const clean = prepareRichHtmlForDisplaySync(html);
+    const paths = extractFilePaths(clean);
+    const pathsKey = paths.slice().sort().join("|");
+
+    // Text-only changes: keep already-signed media srcs when file set unchanged.
+    let reusedSigned = false;
+    setPrepared((prev) => {
+      const prevClean = prepareRichHtmlForDisplaySync(prev);
+      const prevPathsKey = extractFilePaths(prevClean).slice().sort().join("|");
+      if (pathsKey && pathsKey === prevPathsKey && prev !== clean && prev.includes("dl=")) {
+        reusedSigned = true;
+        return injectSignedUrlsFromPrevious(clean, prev);
+      }
+      return prepareRichHtmlForDisplaySync(prev) === clean ? prev : clean;
+    });
+
+    if (!paths.length || reusedSigned) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    (async () => {
+      try {
+        const signed = await signFileUrlsBatch(paths);
+        if (!cancelled) {
+          const withSigned = injectSignedUrls(clean, signed);
+          setPrepared((prev) => (prev === withSigned ? prev : withSigned));
+        }
+      } catch {
+        if (!cancelled) {
+          setPrepared((prev) =>
+            prepareRichHtmlForDisplaySync(prev) === clean ? prev : clean,
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [html]);
+
+  return prepared;
+}
+
+/** Copy signed query strings from previous HTML onto matching /files/ paths in next. */
+function injectSignedUrlsFromPrevious(cleanHtml: string, previousHtml: string): string {
+  const signed = new Map<string, string>();
+  for (const m of previousHtml.matchAll(FILE_ATTR_RE)) {
+    const raw = String(m[3] || "");
+    const path = raw.replace(/\?.*$/, "").replace(/#.*$/, "");
+    if (path && /[?&]dl=/.test(raw)) signed.set(path, raw);
+  }
+  return signed.size ? injectSignedUrls(cleanHtml, signed) : cleanHtml;
 }

@@ -16,8 +16,8 @@ export function ChefInboxBell({ token }: Props) {
   const discLabel = discussion > 99 ? '99+' : String(discussion)
   const inboxTo =
     deletePending > 0 && pending === 0
-      ? '/chef/rapports?status_group=delete_requested'
-      : '/chef/rapports'
+      ? '/chief/rapports?status_group=delete_requested'
+      : '/chief/rapports'
   const label =
     actionTotal > 0
       ? t('waliInboxBellWithCount', { count: countLabel })
@@ -47,7 +47,7 @@ export function ChefInboxBell({ token }: Props) {
       </Link>
       <Link
         className="btn btn-ghost notifBell"
-        to="/chef/rapports?view=discussion"
+        to="/chief/rapports?view=discussion"
         title={discAria}
         aria-label={discAria}
       >

@@ -9,8 +9,12 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Core (shared standards + app shell + export + validation)**: `spec/CORE.md`
 - **System Architecture Context (directories + models + flows)**: `spec/ARCHITECTURE_CONTEXT.md`
 - **Deploy (DZSecurity cPanel / File Manager / Node.js App)**: `DEPLOY.md`
-- **Platform hardening plan (access-policy, routes, UUID — planned, not started)**: `PLATFORM_HARDENING_PLAN.md`
-- **Cursor rules library (draft copies; copy to `.cursor/rules/` as `.mdc` when needed)**: `cursor-rules-library/`
+- **Platform hardening plan**: `PLATFORM_HARDENING_PLAN.md`
+- **Hardening smoke matrix (P7)**: `spec/modules/HARDENING_SMOKE_MATRIX.md`
+- **Cursor rules library**: `cursor-rules-library/`
+- **Routes (shared hub URL segments)**: `spec/modules/ROUTES.md`
+- **Identity UUID migration**: `spec/modules/IDENTITY_UUID.md`
+- **Workflow validation tree**: `spec/modules/WORKFLOW_TREE.md`
 - **Modules**:
   - **Organization (communes reference + user accounts)**: `spec/modules/ORGANIZATION.md`
   - **Access profiles (domain permissions)**: `spec/modules/ACCESS_PROFILES.md`
@@ -32,7 +36,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Four account types:** `ADMIN` (compte admin), `OFFICE_USER` (**ملحق بالديوان** / Attaché de cabinet), `WALI` (compte wali), `CHEF_CABINET` (رئيس الديوان) — never show raw enums in UI.
 - **Domain tree UI:** DB/API `services` → leaf **مجال المتابعة** / **Domaine de suivi**; folder **مجلد** / **Dossier** (not «dossier» for leaf nodes).
 - **Communes / dairas / directions (Directions):** reference rows only; no login accounts for these. Communes belong to a daira; directions are independent. UI path: `/directions` (labels المديريات / Directions). Service « départements / قطاعات » are hidden in admin UI.
-- **Route prefixes:** `/admin/*`, `/office/*`, `/wali/*`, `/chef/*` + `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`.
+- **Route prefixes:** stable hub keys `admin|office|chef|wali`; live UI/API segments `/admin`, `/cabinet`, `/chief`, `/governor` via `shared/routes` (`paths.hub.*`) — legacy `/office|/wali|/chef` one-release aliases — `spec/modules/ROUTES.md`. Auth: `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`.
 - **Form validation:** mandatory Zod client + server on all create/edit flows — `spec/CORE.md`.
 - **Distinct UI theme:** teal/gold tokens in `frontend/src/theme/tokens.css` (not app_wilaya green).
 - **Rapport architecture (4 content kinds):** Wali navigates office user → service/sub-service tree; types جدول / ملف مركّب / مذكرة استخلاصية / **قائمة** (`commune_list` with configurable commune / daira / direction targets) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
@@ -46,7 +50,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Rich document editor:** TipTap HTML (`rich_html_ar` / `rich_html_fr`), sticky toolbar, physical LTR align buttons in RTL UI — `spec/CORE.md`.
 - **Document templates:** per-service reusable starters for `document_compose` / `fiche_lecture` — `spec/modules/SCHEMA_CONFIGURATION.md`.
 - **Export PDF/Word:** preview before download, title+date filenames, Arabic Tahoma + PDF RTL shaping, editor-only body for documents (no rapport title / service / calendar in file) — `spec/CORE.md`, `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`.
-- **Office rapports list**: `/office/rapports` is a cross-service inbox only — **new documents are created from the service content hub**, not from this page.
+- **Office rapports list**: `/cabinet/rapports` (hub key `office`; legacy `/office/rapports`) is a cross-service inbox only — **new documents are created from the service content hub**, not from this page.
 
 ### Cross-cutting updates (2026-06-09)
 
@@ -76,7 +80,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 ### Cross-cutting updates (2026-07)
 
 - **Hide French content-value inputs (frontend flag):** `ENABLE_FR_VALUE_INPUTS` in `frontend/src/config/features.ts` — when `false`, hide `*_fr` form inputs across all accounts but keep UI language FR toggle, bilingual storage, and empty-FR→AR display fallback; do not overwrite `*_fr` on save — `spec/CORE.md` § Bilingual content fields.
-- **Chef as broadcast recipient:** `CHEF_CABINET` included in Wali share picker and “all” sends; Chef inbox `/chef/shared` — `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`, `CHEF_CABINET.md`.
+- **Chef as broadcast recipient:** `CHEF_CABINET` included in Wali share picker and “all” sends; Chef inbox `/chief/shared` — `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`, `CHEF_CABINET.md`.
 - **Office return to draft:** Éditeur may recall a sent rapport (`pending_chef` | `submitted` | `under_review`) to `draft` (same current version; wipe current-version Chef/Wali remarks + discussion + linked notifications; `chef_gate=required`; older versions kept; blocked after Wali accept/view) — `spec/modules/RAPPORTS.md`.
 - **Office delete:** instant when no Chef/Wali responses (or discard unsubmitted draft version only); otherwise delete request → Chef approve/reject; Chef filter `delete_requested` + `delete_pending` hub count + confirm dialogs — `RAPPORTS.md`, `CHEF_CABINET.md`.
 - **Guide videos:** Admin uploads guide videos (général + per role); Admin-audience videos hidden from others; `ENABLE_GUIDE_VIDEOS` flag — `spec/modules/GUIDE_VIDEOS.md`.
@@ -89,6 +93,16 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Explicit draft create:** workspace GET / “Nouveau rapport” navigation never inserts a `rapports` row; first **Enregistrer** creates `draft` (leave without save = nothing) — `RAPPORTS.md`, `RAPPORT_SERVICE_TYPES.md`.
 - **Device notifications:** Web Push + per-type user prefs; **all-devices** vs **this-device** toggles; Chef notified on `pending_chef`, Wali only after Chef accept; optimistic today/tomorrow calendar reminders (no polling) — `spec/modules/DEVICE_NOTIFICATIONS.md`.
 - **Hub-guided type create:** office leaf hub add-tiles per content kind (except fiche); جدول wizard = schema+type; unused types hard-deletable — `RAPPORT_SERVICE_TYPES.md`, `SCHEMA_CONFIGURATION.md`.
+
+### Cross-cutting updates (2026-07 hardening)
+
+- **Access policy:** UI `can*` + BE `assertCan` from `@wali/access-policy`; pages forbid `role ===`; ActionKey bridge to catalog/grants; rapport `can*` must pass `content_kind` + `versioning_mode` (`rapportByKind`) — `spec/modules/ACCESS_PROFILES.md`.
+- **Routes:** English hub segments `cabinet` / `chief` / `governor`; builders in `shared/routes`; legacy `/office|/wali|/chef` aliases one release — `spec/modules/ROUTES.md`.
+- **Auth shell:** `AuthProvider` / `useAuth()`; API client reads access token from `session.ts` (no prop-drill) — `spec/modules/AUTH.md`.
+- **File downloads:** short-lived signed `?dl=` token; **no** access JWT in file query strings; rich HTML strip-on-save + inject-on-display (edit **and** view); media `file_id` = UUID — `AUTH.md`, `spec/CORE.md`, `MEDIA_CALENDAR_WALI_SHARING.md`.
+- **Identity UUID:** expand + dual-read; API public `id` = UUID; BIGINT PK drop deferred; `entityIdSchema` dual during transition — `spec/modules/IDENTITY_UUID.md`.
+- **Workflow tree:** shared types + Wilaya default map + Direction scaffold only — `spec/modules/WORKFLOW_TREE.md`.
+- **P7 smoke:** role × module checklist — `spec/modules/HARDENING_SMOKE_MATRIX.md`.
 
 ### What to do when adding a new feature
 

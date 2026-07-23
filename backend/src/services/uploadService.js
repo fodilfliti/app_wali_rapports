@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { storageRoot, ensureStorageDirs } = require("./storage");
 const { UploadedFile } = require("../db");
 const { getLogger } = require("../logger");
+const { findByPublicId, publicId, isUuid } = require("../modules/access/idResolver");
 
 const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const VIDEO_MIMES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
@@ -166,7 +167,7 @@ async function removeDiskFile(relPath) {
 }
 
 async function deleteUploadedFileById(fileId) {
-  const row = await UploadedFile.findByPk(Number(fileId));
+  const row = await findByPublicId(UploadedFile, fileId);
   if (!row) return false;
   await removeDiskFile(row.storage_rel_path);
   await row.destroy();
@@ -221,6 +222,12 @@ async function saveUploadedFile({
     throw err;
   }
 
+  let numericRapportId = null;
+  if (rapportId) {
+    const { resolveNumericRapportId } = require("../modules/rapports/rapportService");
+    numericRapportId = await resolveNumericRapportId(rapportId);
+  }
+
   const max = maxBytesForMime(mime);
   if (!sizeBytes || sizeBytes > max) {
     const err = new Error("File too large");
@@ -241,7 +248,7 @@ async function saveUploadedFile({
 
   const row = await UploadedFile.create({
     storage_key: storageKey,
-    rapport_id: rapportId || null,
+    rapport_id: numericRapportId,
     uploaded_by_user_id: actor.id,
     original_name: sanitizeFilename(originalName),
     mime_type: ALLOWED_MIMES.has(mime) ? mime : contentTypeGuess(ext),
@@ -268,7 +275,7 @@ async function saveUploadedBuffer(opts) {
 function serializeFile(row) {
   const plain = row.toJSON ? row.toJSON() : row;
   return {
-    id: plain.id,
+    id: publicId(plain),
     storage_key: plain.storage_key,
     rapport_id: plain.rapport_id,
     original_name: plain.original_name,
@@ -283,21 +290,60 @@ function serializeFile(row) {
 function collectFileIdsFromRichHtml(html) {
   const ids = new Set();
   if (!html || typeof html !== "string") return ids;
-  const attrRe = /data-file-id=["'](\d+)["']/gi;
+  // Legacy numeric + UUID public ids in data-file-id.
+  const attrRe = /data-file-id=["']([^"']+)["']/gi;
   let match = attrRe.exec(html);
   while (match) {
-    ids.add(Number(match[1]));
+    const raw = String(match[1] || "").trim();
+    if (raw) ids.add(raw);
     match = attrRe.exec(html);
   }
   return ids;
 }
 
+async function findUploadedFileRows(ids) {
+  if (!ids?.length) return [];
+  const unique = [...new Set(ids.map((id) => String(id)).filter(Boolean))];
+  const numericIds = [];
+  const uuidIds = [];
+  for (const id of unique) {
+    if (isUuid(id)) uuidIds.push(id);
+    else {
+      const n = Number(id);
+      if (Number.isFinite(n) && n > 0) numericIds.push(n);
+    }
+  }
+  const where = [];
+  if (numericIds.length) where.push({ id: numericIds });
+  if (uuidIds.length) where.push({ uuid: uuidIds });
+  if (!where.length) return [];
+  const { Op } = require("sequelize");
+  return UploadedFile.findAll({
+    where: where.length === 1 ? where[0] : { [Op.or]: where },
+  });
+}
+
+/** Index by public UUID and legacy BIGINT so pre-migration file_id lookups work. */
+function buildDualKeyFileMap(rows) {
+  const fileMap = {};
+  for (const row of rows || []) {
+    const serialized = serializeFile(row);
+    const pub = publicId(row);
+    if (pub != null) fileMap[String(pub)] = serialized;
+    if (row.id != null) fileMap[String(row.id)] = serialized;
+  }
+  return fileMap;
+}
+
 async function getFilesByIds(ids) {
   if (!ids?.length) return [];
-  const unique = [...new Set(ids.map(Number).filter(Boolean))];
-  const rows = await UploadedFile.findAll({ where: { id: unique } });
-  const map = new Map(rows.map((r) => [Number(r.id), serializeFile(r)]));
-  return unique.map((id) => map.get(id)).filter(Boolean);
+  const unique = [...new Set(ids.map((id) => String(id)).filter(Boolean))];
+  const rows = await findUploadedFileRows(unique);
+  const byPublic = new Map(rows.map((r) => [String(publicId(r)), serializeFile(r)]));
+  const byNumeric = new Map(rows.map((r) => [String(r.id), serializeFile(r)]));
+  return unique
+    .map((id) => byPublic.get(id) || byNumeric.get(id))
+    .filter(Boolean);
 }
 
 function collectStoragePathsFromRichHtml(html) {
@@ -314,28 +360,50 @@ function collectStoragePathsFromRichHtml(html) {
   return paths;
 }
 
+function addFileRef(ids, fileId) {
+  if (fileId == null || fileId === "") return;
+  ids.add(String(fileId));
+}
+
+function collectFileIdsFromEntityEntry(ids, entry) {
+  if (!entry || typeof entry !== "object") return;
+  for (const row of entry.media_rows || []) {
+    for (const it of row.items || []) addFileRef(ids, it.file_id);
+  }
+  for (const id of collectFileIdsFromRichHtml(entry.rich_html_ar)) ids.add(id);
+  for (const id of collectFileIdsFromRichHtml(entry.rich_html_fr)) ids.add(id);
+  const blocks = entry.blocks || [];
+  for (const b of blocks) {
+    if (b.type === "media_row" && Array.isArray(b.items)) {
+      for (const it of b.items) addFileRef(ids, it.file_id);
+    }
+  }
+}
+
 async function collectFileIdsFromDataJson(dataJson) {
   const ids = new Set();
   const blocks = dataJson?.blocks || [];
   for (const b of blocks) {
     if (b.type === "media_row" && Array.isArray(b.items)) {
-      for (const it of b.items) if (it.file_id) ids.add(Number(it.file_id));
+      for (const it of b.items) addFileRef(ids, it.file_id);
     }
   }
   const tables = dataJson?.tables || [];
   for (const t of tables) {
     for (const row of t.media_rows || []) {
-      for (const it of row.items || []) if (it.file_id) ids.add(Number(it.file_id));
+      for (const it of row.items || []) addFileRef(ids, it.file_id);
     }
   }
   for (const row of dataJson?.media_rows || []) {
-    for (const it of row.items || []) if (it.file_id) ids.add(Number(it.file_id));
+    for (const it of row.items || []) addFileRef(ids, it.file_id);
   }
   const communes = dataJson?.communes || {};
   for (const entry of Object.values(communes)) {
-    for (const row of entry?.media_rows || []) {
-      for (const it of row.items || []) if (it.file_id) ids.add(Number(it.file_id));
-    }
+    collectFileIdsFromEntityEntry(ids, entry);
+  }
+  const entities = dataJson?.entities || {};
+  for (const entry of Object.values(entities)) {
+    collectFileIdsFromEntityEntry(ids, entry);
   }
   for (const id of collectFileIdsFromRichHtml(dataJson?.rich_html_ar)) ids.add(id);
   for (const id of collectFileIdsFromRichHtml(dataJson?.rich_html_fr)) ids.add(id);
@@ -345,10 +413,21 @@ async function collectFileIdsFromDataJson(dataJson) {
 async function enrichDataJsonWithFiles(dataJson, rapportId) {
   if (!dataJson) return { dataJson, files: {} };
   const ids = new Set(await collectFileIdsFromDataJson(dataJson));
+  const extraRows = [];
 
   if (rapportId) {
-    const rapportRows = await UploadedFile.findAll({ where: { rapport_id: Number(rapportId) } });
-    for (const row of rapportRows) ids.add(Number(row.id));
+    const { resolveNumericRapportId } = require("../modules/rapports/rapportService");
+    const numericRapportId = await resolveNumericRapportId(rapportId);
+    if (numericRapportId) {
+      const rapportRows = await UploadedFile.findAll({
+        where: { rapport_id: numericRapportId },
+      });
+      for (const row of rapportRows) {
+        ids.add(String(publicId(row)));
+        ids.add(String(row.id));
+        extraRows.push(row);
+      }
+    }
   }
 
   const storagePaths = new Set([
@@ -359,12 +438,19 @@ async function enrichDataJsonWithFiles(dataJson, rapportId) {
     const byPath = await UploadedFile.findAll({
       where: { storage_rel_path: [...storagePaths] },
     });
-    for (const row of byPath) ids.add(Number(row.id));
+    for (const row of byPath) {
+      ids.add(String(publicId(row)));
+      ids.add(String(row.id));
+      extraRows.push(row);
+    }
   }
 
-  const files = await getFilesByIds([...ids]);
-  const fileMap = Object.fromEntries(files.map((f) => [f.id, f]));
-  return { dataJson, files: fileMap };
+  const rowsById = new Map();
+  for (const row of extraRows) rowsById.set(Number(row.id), row);
+  for (const row of await findUploadedFileRows([...ids])) {
+    rowsById.set(Number(row.id), row);
+  }
+  return { dataJson, files: buildDualKeyFileMap([...rowsById.values()]) };
 }
 
 async function cleanupTempFile(sourcePath) {
@@ -394,6 +480,7 @@ module.exports = {
   multerFileInput,
   serializeFile,
   getFilesByIds,
+  buildDualKeyFileMap,
   collectFileIdsFromDataJson,
   collectFileIdsFromRichHtml,
   enrichDataJsonWithFiles,

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import type { EntityIdParam } from '../api'
 import * as api from '../api'
 
 type Props = {
@@ -29,7 +30,7 @@ export function RapportTitleField({ title, onChange, editable, fallback }: Props
   )
 }
 
-export async function patchRapportTitle(token: string, rapportId: number, title: string) {
+export async function patchRapportTitle(token: string, rapportId: EntityIdParam, title: string) {
   const trimmed = title.trim()
   if (!trimmed) {
     const err = new Error('rapportTitleRequired')

@@ -1,3 +1,9 @@
+import type { EntityId } from "@wali/access-policy";
+import {
+  HUB_SEGMENTS,
+  LISTE_ENTITY_DATA_SEGMENT,
+  LISTE_PATH_SEGMENT,
+} from "@wali/routes";
 import { getApiBase } from "./utils/apiBase";
 import { ApiError } from "./utils/apiError";
 import type { UploadOptions } from "./utils/uploadFile";
@@ -9,18 +15,87 @@ import {
   setAccessToken,
 } from "./auth/session";
 
+/** Accept UUID strings or legacy numeric ids during BIGINT→UUID transition. */
+export type EntityIdParam = EntityId | number;
+
 const API_BASE = getApiBase();
 
-/** Build an authenticated file URL (Bearer header not sent by `<a>` / `window.open`). */
-export function apiFileUrl(filePath: string, token: string) {
-  const path = filePath.startsWith("http")
-    ? filePath
-    : filePath.startsWith("/")
-    ? filePath
-    : `/${filePath}`;
-  if (path.startsWith("http")) return path;
-  const sep = path.includes("?") ? "&" : "?";
-  return `${API_BASE}${path}${sep}access_token=${encodeURIComponent(token)}`;
+const signCache = new Map<string, { url: string; exp: number }>();
+const SIGN_CACHE_MS = 55_000;
+
+function normalizeFileClientPath(filePath: string): string {
+  let path = filePath.trim();
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const u = new URL(path);
+      path = u.pathname;
+    } catch {
+      return path;
+    }
+  }
+  if (!path.startsWith("/")) path = `/${path}`;
+  return path.split("#")[0].replace(/\?.*$/, "");
+}
+
+function toAbsoluteFileUrl(relativeUrl: string): string {
+  if (/^https?:\/\//i.test(relativeUrl)) return relativeUrl;
+  return `${API_BASE}${relativeUrl.startsWith("/") ? relativeUrl : `/${relativeUrl}`}`;
+}
+
+/** Short-lived signed URL for `<img>` / `<a>` (no access JWT in query). */
+export async function signFileUrl(filePath: string): Promise<string> {
+  const path = normalizeFileClientPath(filePath);
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+
+  const cached = signCache.get(path);
+  if (cached && cached.exp > Date.now() + 5000) return cached.url;
+
+  const data = await request<{ url: string }>("/files/sign", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
+  const url = toAbsoluteFileUrl(data.url);
+  signCache.set(path, { url, exp: Date.now() + SIGN_CACHE_MS });
+  return url;
+}
+
+/** Batch sign for rich HTML with many embedded /files/ URLs. */
+export async function signFileUrlsBatch(
+  filePaths: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const pending: string[] = [];
+
+  for (const raw of filePaths) {
+    const path = normalizeFileClientPath(raw);
+    if (!path || /^https?:\/\//i.test(path)) continue;
+    const cached = signCache.get(path);
+    if (cached && cached.exp > Date.now() + 5000) {
+      out.set(raw.replace(/\?.*$/, "").replace(/#.*$/, ""), cached.url);
+      continue;
+    }
+    pending.push(path);
+  }
+
+  if (pending.length) {
+    const data = await request<{ urls: Record<string, string> }>(
+      "/files/sign-batch",
+      {
+        method: "POST",
+        body: JSON.stringify({ paths: [...new Set(pending)] }),
+      },
+    );
+    for (const [key, relUrl] of Object.entries(data.urls || {})) {
+      const url = toAbsoluteFileUrl(relUrl);
+      const norm = normalizeFileClientPath(key);
+      if (norm) signCache.set(norm, { url, exp: Date.now() + SIGN_CACHE_MS });
+      out.set(key.replace(/\?.*$/, "").replace(/#.*$/, ""), url);
+    }
+  }
+
+  return out;
 }
 
 export type UserCredentials = { code8: string; pdf_url: string };
@@ -82,7 +157,7 @@ async function request<T>(
 export type UserRole = "ADMIN" | "OFFICE_USER" | "CHEF_CABINET" | "WALI";
 
 export type SessionUser = {
-  id: number;
+  id: EntityId;
   username: string;
   name: string | null;
   role: UserRole;
@@ -204,7 +279,7 @@ export function listMunicipalities(
 
 export function createMunicipality(
   token: string,
-  body: { name_ar: string; name_fr: string; code: string; daira_id: number },
+  body: { name_ar: string; name_fr: string; code: string; daira_id: EntityIdParam },
 ) {
   return request<{ municipality: any }>("/admin/municipalities", {
     method: "POST",
@@ -215,8 +290,8 @@ export function createMunicipality(
 
 export function patchMunicipality(
   token: string,
-  id: number,
-  body: Partial<{ name_ar: string; name_fr: string; code: string; daira_id: number }>,
+  id: EntityIdParam,
+  body: Partial<{ name_ar: string; name_fr: string; code: string; daira_id: EntityIdParam }>,
 ) {
   return request<{ municipality: any }>(`/admin/municipalities/${id}`, {
     method: "PATCH",
@@ -225,14 +300,14 @@ export function patchMunicipality(
   });
 }
 
-export function hideMunicipality(token: string, id: number) {
+export function hideMunicipality(token: string, id: EntityIdParam) {
   return request<{ municipality: any }>(`/admin/municipalities/${id}/hide`, {
     method: "POST",
     token,
   });
 }
 
-export function restoreMunicipality(token: string, id: number) {
+export function restoreMunicipality(token: string, id: EntityIdParam) {
   return request<{ municipality: any }>(`/admin/municipalities/${id}/restore`, {
     method: "POST",
     token,
@@ -267,7 +342,7 @@ export function createDaira(
 
 export function patchDaira(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: Partial<{ name_ar: string; name_fr: string; code: string }>,
 ) {
   return request<{ daira: any }>(`/admin/dairas/${id}`, {
@@ -277,14 +352,14 @@ export function patchDaira(
   });
 }
 
-export function hideDaira(token: string, id: number) {
+export function hideDaira(token: string, id: EntityIdParam) {
   return request<{ daira: any }>(`/admin/dairas/${id}/hide`, {
     method: "POST",
     token,
   });
 }
 
-export function restoreDaira(token: string, id: number) {
+export function restoreDaira(token: string, id: EntityIdParam) {
   return request<{ daira: any }>(`/admin/dairas/${id}/restore`, {
     method: "POST",
     token,
@@ -319,7 +394,7 @@ export function createDirection(
 
 export function patchDirection(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: Partial<{ name_ar: string; name_fr: string; code: string }>,
 ) {
   return request<{ direction: any }>(`/admin/directions/${id}`, {
@@ -329,14 +404,14 @@ export function patchDirection(
   });
 }
 
-export function hideDirection(token: string, id: number) {
+export function hideDirection(token: string, id: EntityIdParam) {
   return request<{ direction: any }>(`/admin/directions/${id}/hide`, {
     method: "POST",
     token,
   });
 }
 
-export function restoreDirection(token: string, id: number) {
+export function restoreDirection(token: string, id: EntityIdParam) {
   return request<{ direction: any }>(`/admin/directions/${id}/restore`, {
     method: "POST",
     token,
@@ -376,7 +451,7 @@ export function createUser(
 
 export function patchUser(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: { name?: string; job_title?: string | null },
 ) {
   return request<{ user: any }>(`/admin/users/${id}`, {
@@ -386,14 +461,14 @@ export function patchUser(
   });
 }
 
-export function toggleBlockUser(token: string, id: number) {
+export function toggleBlockUser(token: string, id: EntityIdParam) {
   return request<{ user: any }>(`/admin/users/${id}/block`, {
     method: "POST",
     token,
   });
 }
 
-export function resetUserPassword(token: string, id: number) {
+export function resetUserPassword(token: string, id: EntityIdParam) {
   return request<{
     user: any;
     newPassword: string;
@@ -401,8 +476,8 @@ export function resetUserPassword(token: string, id: number) {
   }>(`/admin/users/${id}/reset-password`, { method: "POST", token });
 }
 
-export function softDeleteUser(token: string, id: number) {
-  return request<{ ok: boolean; user_id: number }>(`/admin/users/${id}`, {
+export function softDeleteUser(token: string, id: EntityIdParam) {
+  return request<{ ok: boolean; user_id: EntityIdParam }>(`/admin/users/${id}`, {
     method: "DELETE",
     token,
   });
@@ -413,8 +488,8 @@ export function listOfficeRapports(
   params: {
     page?: number;
     pageSize?: number;
-    service_id?: number;
-    rapport_type_id?: number;
+    service_id?: EntityIdParam;
+    rapport_type_id?: EntityIdParam;
     content_kind?: string;
     search?: string;
     status_group?: string;
@@ -450,7 +525,7 @@ export function listOfficeRapports(
     total: number;
     page?: number;
     pageSize?: number;
-  }>(`/office/rapports?${q}`, { token });
+  }>(`/cabinet/rapports?${q}`, { token });
 }
 
 export function listAdminRapports(
@@ -458,7 +533,7 @@ export function listAdminRapports(
   params: {
     page?: number;
     pageSize?: number;
-    service_id?: number;
+    service_id?: EntityIdParam;
     search?: string;
     status_group?: string;
     sort?: string;
@@ -485,10 +560,10 @@ export function listAdminRapports(
   }>(`/admin/rapports?${q}`, { token });
 }
 
-export function getRapportTableSnapshot(token: string, rapportId: number) {
+export function getRapportTableSnapshot(token: string, rapportId: EntityIdParam) {
   return request<{
     snapshot: import("./types/embeddedTable").TableImportSnapshot;
-  }>(`/office/rapports/${rapportId}/table-snapshot`, { token });
+  }>(`/cabinet/rapports/${rapportId}/table-snapshot`, { token });
 }
 
 export function listWaliRapports(
@@ -496,9 +571,9 @@ export function listWaliRapports(
   params: {
     page?: number;
     pageSize?: number;
-    service_id?: number;
-    rapport_type_id?: number;
-    office_user_id?: number;
+    service_id?: EntityIdParam;
+    rapport_type_id?: EntityIdParam;
+    office_user_id?: EntityIdParam;
     search?: string;
     status_group?: string;
     sort?: string;
@@ -526,7 +601,7 @@ export function listWaliRapports(
     total: number;
     page?: number;
     pageSize?: number;
-  }>(`/wali/rapports?${q}`, { token });
+  }>(`/governor/rapports?${q}`, { token });
 }
 
 export function listChefRapports(
@@ -534,9 +609,9 @@ export function listChefRapports(
   params: {
     page?: number;
     pageSize?: number;
-    service_id?: number;
-    rapport_type_id?: number;
-    office_user_id?: number;
+    service_id?: EntityIdParam;
+    rapport_type_id?: EntityIdParam;
+    office_user_id?: EntityIdParam;
     search?: string;
     status_group?: string;
     sort?: string;
@@ -564,24 +639,24 @@ export function listChefRapports(
     total: number;
     page?: number;
     pageSize?: number;
-  }>(`/chef/rapports?${q}`, { token });
+  }>(`/chief/rapports?${q}`, { token });
 }
 
 export function listOfficeServices(token: string) {
-  return request<{ services: any[] }>("/office/services", { token });
+  return request<{ services: any[] }>("/cabinet/services", { token });
 }
 
 export function createRapport(
   token: string,
   body: {
-    service_id: number;
-    rapport_type_id: number;
+    service_id: EntityIdParam;
+    rapport_type_id: EntityIdParam;
     title: string;
     reference_date?: string | null;
     data_json?: Record<string, unknown>;
   },
 ) {
-  return request<{ rapport: any }>("/office/rapports", {
+  return request<{ rapport: any }>("/cabinet/rapports", {
     method: "POST",
     token,
     body: JSON.stringify(body),
@@ -590,38 +665,38 @@ export function createRapport(
 
 export function patchOfficeRapport(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: { title?: string; reference_date?: string | null },
 ) {
-  return request<{ rapport: any }>(`/office/rapports/${id}`, {
+  return request<{ rapport: any }>(`/cabinet/rapports/${id}`, {
     method: "PATCH",
     token,
     body: JSON.stringify(body),
   });
 }
 
-export function submitRapport(token: string, id: number) {
-  return request<{ rapport: any }>(`/office/rapports/${id}/submit`, {
+export function submitRapport(token: string, id: EntityIdParam) {
+  return request<{ rapport: any }>(`/cabinet/rapports/${id}/submit`, {
     method: "POST",
     token,
   });
 }
 
-export function returnRapportToDraft(token: string, id: number) {
-  return request<{ rapport: any }>(`/office/rapports/${id}/return-to-draft`, {
+export function returnRapportToDraft(token: string, id: EntityIdParam) {
+  return request<{ rapport: any }>(`/cabinet/rapports/${id}/return-to-draft`, {
     method: "POST",
     token,
   });
 }
 
-export function startOfficeNewVersion(token: string, id: number) {
-  return request<{ rapport: any }>(`/office/rapports/${id}/new-version`, {
+export function startOfficeNewVersion(token: string, id: EntityIdParam) {
+  return request<{ rapport: any }>(`/cabinet/rapports/${id}/new-version`, {
     method: "POST",
     token,
   });
 }
 
-export function officeDeleteRapport(token: string, id: number) {
+export function officeDeleteRapport(token: string, id: EntityIdParam) {
   return request<{
     mode:
       | "instant"
@@ -629,17 +704,17 @@ export function officeDeleteRapport(token: string, id: number) {
       | "reset_fresh_v1"
       | "requested";
     ok?: boolean;
-    rapport_id?: number;
+    rapport_id?: EntityIdParam;
     rapport?: any;
-  }>(`/office/rapports/${id}/delete`, {
+  }>(`/cabinet/rapports/${id}/delete`, {
     method: "POST",
     token,
   });
 }
 
-export function cancelRapportDeleteRequest(token: string, id: number) {
+export function cancelRapportDeleteRequest(token: string, id: EntityIdParam) {
   return request<{ rapport: any }>(
-    `/office/rapports/${id}/cancel-delete-request`,
+    `/cabinet/rapports/${id}/cancel-delete-request`,
     {
       method: "POST",
       token,
@@ -649,31 +724,31 @@ export function cancelRapportDeleteRequest(token: string, id: number) {
 
 export function chefDeleteDecision(
   token: string,
-  id: number,
+  id: EntityIdParam,
   decision: "approved" | "rejected",
 ) {
   return request<{
     decision: string;
     mode?: "restored_previous" | "deleted";
     ok?: boolean;
-    rapport_id?: number;
+    rapport_id?: EntityIdParam;
     rapport?: any;
-  }>(`/chef/rapports/${id}/delete-decision`, {
+  }>(`/chief/rapports/${id}/delete-decision`, {
     method: "POST",
     token,
     body: JSON.stringify({ decision }),
   });
 }
 
-export function finishRapport(token: string, id: number) {
-  return request<{ rapport: any }>(`/office/rapports/${id}/finish`, {
+export function finishRapport(token: string, id: EntityIdParam) {
+  return request<{ rapport: any }>(`/cabinet/rapports/${id}/finish`, {
     method: "POST",
     token,
   });
 }
 
-export function restoreRapport(token: string, id: number) {
-  return request<{ rapport: any }>(`/office/rapports/${id}/restore`, {
+export function restoreRapport(token: string, id: EntityIdParam) {
+  return request<{ rapport: any }>(`/cabinet/rapports/${id}/restore`, {
     method: "POST",
     token,
   });
@@ -681,10 +756,10 @@ export function restoreRapport(token: string, id: number) {
 
 export function waliRespond(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: { decision: string; follow_up_status?: string; body_text?: string },
 ) {
-  return request<{ rapport: any }>(`/wali/rapports/${id}/respond`, {
+  return request<{ rapport: any }>(`/governor/rapports/${id}/respond`, {
     method: "POST",
     token,
     body: JSON.stringify(body),
@@ -693,10 +768,10 @@ export function waliRespond(
 
 export function chefRespond(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: { decision: string; follow_up_status?: string; body_text?: string },
 ) {
-  return request<{ rapport: any }>(`/chef/rapports/${id}/respond`, {
+  return request<{ rapport: any }>(`/chief/rapports/${id}/respond`, {
     method: "POST",
     token,
     body: JSON.stringify(body),
@@ -704,28 +779,28 @@ export function chefRespond(
 }
 
 export function listWaliOfficeUsers(token: string) {
-  return request<{ officeUsers: any[] }>("/wali/office-users", { token });
+  return request<{ officeUsers: any[] }>("/governor/office-users", { token });
 }
 
 export function listChefOfficeUsers(token: string) {
-  return request<{ officeUsers: any[] }>("/chef/office-users", { token });
+  return request<{ officeUsers: any[] }>("/chief/office-users", { token });
 }
 
-export function listWaliUserServices(token: string, userId: number) {
-  return request<{ services: any[] }>(`/wali/office-users/${userId}/services`, {
+export function listWaliUserServices(token: string, userId: EntityIdParam) {
+  return request<{ services: any[] }>(`/governor/office-users/${userId}/services`, {
     token,
   });
 }
 
-export function listChefUserServices(token: string, userId: number) {
-  return request<{ services: any[] }>(`/chef/office-users/${userId}/services`, {
+export function listChefUserServices(token: string, userId: EntityIdParam) {
+  return request<{ services: any[] }>(`/chief/office-users/${userId}/services`, {
     token,
   });
 }
 
 export function listOfficeNotifications(token: string, unreadOnly = false) {
   const q = unreadOnly ? "?unread=1" : "";
-  return request<{ notifications: any[] }>(`/office/notifications${q}`, {
+  return request<{ notifications: any[] }>(`/cabinet/notifications${q}`, {
     token,
   });
 }
@@ -754,27 +829,27 @@ export type ChefHubCounts = {
 };
 
 export function getOfficeHubCounts(token: string) {
-  return request<OfficeHubCounts>("/office/hub-counts", { token });
+  return request<OfficeHubCounts>("/cabinet/hub-counts", { token });
 }
 
 export function getWaliHubCounts(token: string) {
-  return request<WaliHubCounts>("/wali/hub-counts", { token });
+  return request<WaliHubCounts>("/governor/hub-counts", { token });
 }
 
 export function getChefHubCounts(token: string) {
-  return request<ChefHubCounts>("/chef/hub-counts", { token });
+  return request<ChefHubCounts>("/chief/hub-counts", { token });
 }
 
-export function markNotificationRead(token: string, id: number) {
-  return request<{ notification: any }>(`/office/notifications/${id}/read`, {
+export function markNotificationRead(token: string, id: EntityIdParam) {
+  return request<{ notification: any }>(`/cabinet/notifications/${id}/read`, {
     method: "PATCH",
     token,
   });
 }
 
-export function markRapportNotificationsRead(token: string, rapportId: number) {
+export function markRapportNotificationsRead(token: string, rapportId: EntityIdParam) {
   return request<{ ok: boolean }>(
-    `/office/rapports/${rapportId}/mark-notifications-read`,
+    `/cabinet/rapports/${rapportId}/mark-notifications-read`,
     {
       method: "POST",
       token,
@@ -784,88 +859,88 @@ export function markRapportNotificationsRead(token: string, rapportId: number) {
 
 export function getRapportVersion(
   token: string,
-  rapportId: number,
-  versionId: number,
+  rapportId: EntityIdParam,
+  versionId: EntityIdParam,
 ) {
   return request<{ version: any }>(
-    `/office/rapports/${rapportId}/versions/${versionId}`,
+    `/cabinet/rapports/${rapportId}/versions/${versionId}`,
     { token },
   );
 }
 
-export function listWaliRapportVersions(token: string, rapportId: number) {
+export function listWaliRapportVersions(token: string, rapportId: EntityIdParam) {
   return request<{ versions: any[] }>(
-    `/wali/rapports/${rapportId}/versions`,
+    `/governor/rapports/${rapportId}/versions`,
     { token },
   );
 }
 
-export function listChefRapportVersions(token: string, rapportId: number) {
+export function listChefRapportVersions(token: string, rapportId: EntityIdParam) {
   return request<{ versions: any[] }>(
-    `/chef/rapports/${rapportId}/versions`,
+    `/chief/rapports/${rapportId}/versions`,
     { token },
   );
 }
 
 export function getWaliRapportVersion(
   token: string,
-  rapportId: number,
-  versionId: number,
+  rapportId: EntityIdParam,
+  versionId: EntityIdParam,
 ) {
   return request<{ version: any }>(
-    `/wali/rapports/${rapportId}/versions/${versionId}`,
+    `/governor/rapports/${rapportId}/versions/${versionId}`,
     { token },
   );
 }
 
 export function getChefRapportVersion(
   token: string,
-  rapportId: number,
-  versionId: number,
+  rapportId: EntityIdParam,
+  versionId: EntityIdParam,
 ) {
   return request<{ version: any }>(
-    `/chef/rapports/${rapportId}/versions/${versionId}`,
+    `/chief/rapports/${rapportId}/versions/${versionId}`,
     { token },
   );
 }
 
 export function getCommuneWorkspace(
   token: string,
-  serviceId: number,
-  opts?: { rapportTypeId?: number; rapportId?: number },
+  serviceId: EntityIdParam,
+  opts?: { rapportTypeId?: EntityIdParam; rapportId?: EntityIdParam },
 ) {
   const q = new URLSearchParams();
   if (opts?.rapportTypeId) q.set("rapport_type_id", String(opts.rapportTypeId));
   if (opts?.rapportId) q.set("rapport_id", String(opts.rapportId));
   const qs = q.toString();
   return request<any>(
-    `/office/services/${serviceId}/commune-workspace${qs ? `?${qs}` : ""}`,
+    `/cabinet/services/${serviceId}/commune-workspace${qs ? `?${qs}` : ""}`,
     { token },
   );
 }
 
 export function getCommuneBulkWorkspace(
   token: string,
-  serviceId: number,
-  opts?: { rapportTypeId?: number; rapportId?: number },
+  serviceId: EntityIdParam,
+  opts?: { rapportTypeId?: EntityIdParam; rapportId?: EntityIdParam },
 ) {
   const q = new URLSearchParams();
   if (opts?.rapportTypeId) q.set("rapport_type_id", String(opts.rapportTypeId));
   if (opts?.rapportId) q.set("rapport_id", String(opts.rapportId));
   const qs = q.toString();
   return request<any>(
-    `/office/services/${serviceId}/commune-bulk-workspace${qs ? `?${qs}` : ""}`,
+    `/cabinet/services/${serviceId}/commune-bulk-workspace${qs ? `?${qs}` : ""}`,
     { token },
   );
 }
 
 export function saveCommuneBulkData(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   payload: any,
 ) {
   return request<{ rapport: any }>(
-    `/office/rapports/${rapportId}/commune-bulk-data`,
+    `/cabinet/rapports/${rapportId}/commune-bulk-data`,
     {
       method: "PATCH",
       token,
@@ -876,11 +951,11 @@ export function saveCommuneBulkData(
 
 export function patchIncludedEntities(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   keys: string[] | null,
 ) {
   return request<{ rapport: any }>(
-    `/office/rapports/${rapportId}/included-entities`,
+    `/cabinet/rapports/${rapportId}/included-entities`,
     {
       method: "PATCH",
       token,
@@ -891,18 +966,18 @@ export function patchIncludedEntities(
 
 export function getCommuneRows(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   municipalityCode: string,
 ) {
   return request<any>(
-    `/office/rapports/${rapportId}/communes/${encodeURIComponent(municipalityCode)}`,
+    `/${HUB_SEGMENTS.office}/rapports/${rapportId}/${LISTE_PATH_SEGMENT}/${encodeURIComponent(municipalityCode)}`,
     { token },
   );
 }
 
 export function saveCommuneData(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   body: {
     municipality_code: string;
     rows?: any[];
@@ -910,7 +985,7 @@ export function saveCommuneData(
     rich_html_fr?: string;
     embedded_tables?: unknown[];
     calendar_events?: unknown[];
-    media_rows?: { items: { file_id: number }[] }[];
+    media_rows?: { items: { file_id: EntityIdParam }[] }[];
     title_ar?: string;
     title_fr?: string;
     subtitle_ar?: string;
@@ -918,7 +993,7 @@ export function saveCommuneData(
   },
 ) {
   return request<{ rapport: any }>(
-    `/office/rapports/${rapportId}/commune-data`,
+    `/${HUB_SEGMENTS.office}/rapports/${rapportId}/${LISTE_ENTITY_DATA_SEGMENT}`,
     {
       method: "PATCH",
       token,
@@ -927,35 +1002,49 @@ export function saveCommuneData(
   );
 }
 
-export function listRapportVersions(token: string, rapportId: number) {
+export function clearCommuneEntityData(
+  token: string,
+  rapportId: EntityIdParam,
+  municipalityCode: string,
+) {
+  return request<{ rapport: any; mode: string }>(
+    `/${HUB_SEGMENTS.office}/rapports/${rapportId}/${LISTE_PATH_SEGMENT}/${encodeURIComponent(municipalityCode)}/clear`,
+    {
+      method: "POST",
+      token,
+    },
+  );
+}
+
+export function listRapportVersions(token: string, rapportId: EntityIdParam) {
   return request<{ versions: any[] }>(
-    `/office/rapports/${rapportId}/versions`,
+    `/cabinet/rapports/${rapportId}/versions`,
     { token },
   );
 }
 
 export function listOfficeServiceTree(token: string) {
-  return request<{ services: any[] }>("/office/services/tree", { token });
+  return request<{ services: any[] }>("/cabinet/services/tree", { token });
 }
 
 export function getTableWorkspace(
   token: string,
-  serviceId: number,
-  opts?: { rapportTypeId?: number; rapportId?: number },
+  serviceId: EntityIdParam,
+  opts?: { rapportTypeId?: EntityIdParam; rapportId?: EntityIdParam },
 ) {
   const q = new URLSearchParams();
   if (opts?.rapportTypeId) q.set("rapport_type_id", String(opts.rapportTypeId));
   if (opts?.rapportId) q.set("rapport_id", String(opts.rapportId));
   const qs = q.toString();
   return request<any>(
-    `/office/services/${serviceId}/table-workspace${qs ? `?${qs}` : ""}`,
+    `/cabinet/services/${serviceId}/table-workspace${qs ? `?${qs}` : ""}`,
     { token },
   );
 }
 
 export function saveTableData(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   body: {
     rows: any[];
     table_key?: string;
@@ -964,10 +1053,10 @@ export function saveTableData(
     subtitle_ar?: string;
     subtitle_fr?: string;
     merge_column_keys?: string[];
-    media_rows?: { items: { file_id: number }[] }[];
+    media_rows?: { items: { file_id: EntityIdParam }[] }[];
   },
 ) {
-  return request<{ rapport: any }>(`/office/rapports/${rapportId}/table-data`, {
+  return request<{ rapport: any }>(`/cabinet/rapports/${rapportId}/table-data`, {
     method: "PATCH",
     token,
     body: JSON.stringify(body),
@@ -976,10 +1065,10 @@ export function saveTableData(
 
 export function getDocumentList(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   opts?: {
     contentKind?: string;
-    rapportTypeId?: number;
+    rapportTypeId?: EntityIdParam;
     page?: number;
     pageSize?: number;
     hidden_only?: boolean;
@@ -993,14 +1082,14 @@ export function getDocumentList(
   if (opts?.pageSize) q.set("pageSize", String(opts.pageSize));
   if (opts?.hidden_only) q.set("hidden_only", "1");
   if (opts?.include_hidden) q.set("include_hidden", "1");
-  return request<any>(`/office/services/${serviceId}/documents?${q}`, {
+  return request<any>(`/cabinet/services/${serviceId}/documents?${q}`, {
     token,
   });
 }
 
 export function getServiceContentHub(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   params: { include_hidden?: boolean; hidden_only?: boolean } = {},
 ) {
   const q = new URLSearchParams()
@@ -1008,27 +1097,27 @@ export function getServiceContentHub(
   if (params.hidden_only) q.set('hidden_only', '1')
   const qs = q.toString()
   return request<any>(
-    `/office/services/${serviceId}/content${qs ? `?${qs}` : ''}`,
+    `/cabinet/services/${serviceId}/content${qs ? `?${qs}` : ''}`,
     { token },
   )
 }
 
-export function hideRapportType(token: string, rapportTypeId: number) {
-  return request<{ rapportType: any }>(`/office/rapport-types/${rapportTypeId}/hide`, {
+export function hideRapportType(token: string, rapportTypeId: EntityIdParam) {
+  return request<{ rapportType: any }>(`/cabinet/rapport-types/${rapportTypeId}/hide`, {
     method: 'POST',
     token,
   })
 }
 
-export function restoreRapportType(token: string, rapportTypeId: number) {
-  return request<{ rapportType: any }>(`/office/rapport-types/${rapportTypeId}/restore`, {
+export function restoreRapportType(token: string, rapportTypeId: EntityIdParam) {
+  return request<{ rapportType: any }>(`/cabinet/rapport-types/${rapportTypeId}/restore`, {
     method: 'POST',
     token,
   })
 }
 
-export function deleteRapportType(token: string, rapportTypeId: number) {
-  return request<{ ok: boolean }>(`/office/rapport-types/${rapportTypeId}`, {
+export function deleteRapportType(token: string, rapportTypeId: EntityIdParam) {
+  return request<{ ok: boolean }>(`/cabinet/rapport-types/${rapportTypeId}`, {
     method: 'DELETE',
     token,
   })
@@ -1036,22 +1125,22 @@ export function deleteRapportType(token: string, rapportTypeId: number) {
 
 export function getWaliServiceContentHub(
   token: string,
-  userId: number,
-  serviceId: number,
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
 ) {
   return request<any>(
-    `/wali/office-users/${userId}/services/${serviceId}/content`,
+    `/governor/office-users/${userId}/services/${serviceId}/content`,
     { token },
   );
 }
 
 export function getChefServiceContentHub(
   token: string,
-  userId: number,
-  serviceId: number,
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
 ) {
   return request<any>(
-    `/chef/office-users/${userId}/services/${serviceId}/content`,
+    `/chief/office-users/${userId}/services/${serviceId}/content`,
     { token },
   );
 }
@@ -1060,7 +1149,7 @@ export function listTableSchemas(
   token: string,
   params?: {
     q?: string;
-    serviceId?: number;
+    serviceId?: EntityIdParam;
     page?: number;
     limit?: number;
     includeShared?: boolean;
@@ -1094,7 +1183,7 @@ export function createTableSchema(
 
 export function patchTableSchema(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: Record<string, unknown>,
 ) {
   return request<{ schema: any }>(`/admin/table-schemas/${id}`, {
@@ -1104,14 +1193,14 @@ export function patchTableSchema(
   });
 }
 
-export function deleteTableSchema(token: string, id: number) {
+export function deleteTableSchema(token: string, id: EntityIdParam) {
   return request<{ ok: boolean }>(`/admin/table-schemas/${id}`, {
     method: "DELETE",
     token,
   });
 }
 
-export function listServiceRapportTypes(token: string, serviceId: number) {
+export function listServiceRapportTypes(token: string, serviceId: EntityIdParam) {
   return request<{ service: any; rapportTypes: any[] }>(
     `/admin/services/${serviceId}/rapport-types`,
     { token },
@@ -1120,7 +1209,7 @@ export function listServiceRapportTypes(token: string, serviceId: number) {
 
 export function createRapportType(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   body: Record<string, unknown>,
 ) {
   return request<{ rapportType: any }>(
@@ -1150,7 +1239,7 @@ export function createAdminDepartment(
 
 export function patchAdminDepartment(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: {
     name_ar?: string;
     name_fr?: string;
@@ -1165,7 +1254,7 @@ export function patchAdminDepartment(
   });
 }
 
-export function deleteAdminDepartment(token: string, id: number) {
+export function deleteAdminDepartment(token: string, id: EntityIdParam) {
   return request<{ ok: boolean }>(`/admin/departments/${id}`, {
     method: "DELETE",
     token,
@@ -1189,7 +1278,7 @@ export function createAdminService(
 
 export function patchAdminService(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: {
     name_ar?: string;
     name_fr?: string;
@@ -1204,14 +1293,14 @@ export function patchAdminService(
   });
 }
 
-export function deleteAdminService(token: string, id: number) {
+export function deleteAdminService(token: string, id: EntityIdParam) {
   return request<{ ok: boolean }>(`/admin/services/${id}`, {
     method: "DELETE",
     token,
   });
 }
 
-export function deleteAdminRapport(token: string, id: number) {
+export function deleteAdminRapport(token: string, id: EntityIdParam) {
   return request<{ ok: boolean }>(`/admin/rapports/${id}`, {
     method: "DELETE",
     token,
@@ -1222,7 +1311,7 @@ export function listAdminOfficeUsers(token: string) {
   return request<{ users: any[] }>("/admin/office-users", { token });
 }
 
-export function listServiceGrants(token: string, serviceId: number) {
+export function listServiceGrants(token: string, serviceId: EntityIdParam) {
   return request<{ grants: any[] }>(`/admin/services/${serviceId}/grants`, {
     token,
   });
@@ -1230,8 +1319,8 @@ export function listServiceGrants(token: string, serviceId: number) {
 
 export function saveServiceGrants(
   token: string,
-  serviceId: number,
-  grants: { user_id: number; access_level: string }[],
+  serviceId: EntityIdParam,
+  grants: { user_id: EntityIdParam; access_level: string }[],
 ) {
   return request<{ grants: any[] }>(`/admin/services/${serviceId}/grants`, {
     method: "PUT",
@@ -1242,17 +1331,17 @@ export function saveServiceGrants(
 
 export function createDocument(
   token: string,
-  serviceId: number,
-  rapportTypeId: number,
+  serviceId: EntityIdParam,
+  rapportTypeId: EntityIdParam,
   opts?: {
-    templateId?: number | null;
+    templateId?: EntityIdParam | null;
     skipDefault?: boolean;
     title?: string;
     reference_date?: string | null;
     data_json?: Record<string, unknown>;
   },
 ) {
-  return request<{ rapport: any }>(`/office/services/${serviceId}/documents`, {
+  return request<{ rapport: any }>(`/cabinet/services/${serviceId}/documents`, {
     method: "POST",
     token,
     body: JSON.stringify({
@@ -1268,10 +1357,10 @@ export function createDocument(
 
 export function previewDocumentCreate(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   opts: {
-    rapportTypeId: number;
-    templateId?: number | null;
+    rapportTypeId: EntityIdParam;
+    templateId?: EntityIdParam | null;
     skipDefault?: boolean;
   },
 ) {
@@ -1285,35 +1374,35 @@ export function previewDocumentCreate(
     rapportType: any;
     suggestedTitle: string;
     data_json: any;
-  }>(`/office/services/${serviceId}/documents/draft-init?${q}`, { token });
+  }>(`/cabinet/services/${serviceId}/documents/draft-init?${q}`, { token });
 }
 
-export function listOfficeDocumentTemplates(token: string, serviceId: number) {
+export function listOfficeDocumentTemplates(token: string, serviceId: EntityIdParam) {
   return request<{ templates: any[] }>(
-    `/office/services/${serviceId}/document-templates`,
+    `/cabinet/services/${serviceId}/document-templates`,
     { token },
   );
 }
 
 export function listDocumentTemplatesForCreate(
   token: string,
-  serviceId: number,
-  rapportTypeId: number,
+  serviceId: EntityIdParam,
+  rapportTypeId: EntityIdParam,
 ) {
   const q = new URLSearchParams({ rapport_type_id: String(rapportTypeId) });
   return request<{ templates: any[] }>(
-    `/office/services/${serviceId}/document-templates/for-create?${q}`,
+    `/cabinet/services/${serviceId}/document-templates/for-create?${q}`,
     { token },
   );
 }
 
 export function createOfficeDocumentTemplate(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   body: Record<string, unknown>,
 ) {
   return request<{ template: any }>(
-    `/office/services/${serviceId}/document-templates`,
+    `/cabinet/services/${serviceId}/document-templates`,
     {
       method: "POST",
       token,
@@ -1324,11 +1413,11 @@ export function createOfficeDocumentTemplate(
 
 export function patchOfficeDocumentTemplate(
   token: string,
-  templateId: number,
+  templateId: EntityIdParam,
   body: Record<string, unknown>,
 ) {
   return request<{ template: any }>(
-    `/office/document-templates/${templateId}`,
+    `/cabinet/document-templates/${templateId}`,
     {
       method: "PATCH",
       token,
@@ -1339,9 +1428,9 @@ export function patchOfficeDocumentTemplate(
 
 export function deleteOfficeDocumentTemplate(
   token: string,
-  templateId: number,
+  templateId: EntityIdParam,
 ) {
-  return request<{ ok: boolean }>(`/office/document-templates/${templateId}`, {
+  return request<{ ok: boolean }>(`/cabinet/document-templates/${templateId}`, {
     method: "DELETE",
     token,
   });
@@ -1349,12 +1438,12 @@ export function deleteOfficeDocumentTemplate(
 
 export function applyDocumentTemplate(
   token: string,
-  rapportId: number,
-  templateId: number,
+  rapportId: EntityIdParam,
+  templateId: EntityIdParam,
   mode: "replace" | "append" = "replace",
 ) {
   return request<{ rapport: any }>(
-    `/office/rapports/${rapportId}/document/apply-template`,
+    `/cabinet/rapports/${rapportId}/document/apply-template`,
     {
       method: "POST",
       token,
@@ -1363,25 +1452,25 @@ export function applyDocumentTemplate(
   );
 }
 
-export function getRapport(token: string, id: number) {
+export function getRapport(token: string, id: EntityIdParam) {
   return request<{ rapport: any; accessLevel?: string }>(
-    `/office/rapports/${id}`,
+    `/cabinet/rapports/${id}`,
     { token },
   );
 }
 
 export function saveDocument(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   payload: {
     blocks?: any[];
     rich_html_ar?: string;
     rich_html_fr?: string;
     embedded_tables?: unknown[];
-    media_rows?: { items: { file_id: number }[] }[];
+    media_rows?: { items: { file_id: EntityIdParam }[] }[];
   },
 ) {
-  return request<{ rapport: any }>(`/office/rapports/${rapportId}/document`, {
+  return request<{ rapport: any }>(`/cabinet/rapports/${rapportId}/document`, {
     method: "PATCH",
     token,
     body: JSON.stringify(payload),
@@ -1390,9 +1479,9 @@ export function saveDocument(
 
 export function getAdminRapportView(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   showHidden = false,
-  versionId: number | null = null,
+  versionId: EntityIdParam | null = null,
 ) {
   const q = new URLSearchParams();
   if (showHidden) q.set("showHidden", "1");
@@ -1405,30 +1494,30 @@ export function getAdminRapportView(
 
 export function getWaliRapportView(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   showHidden = false,
-  versionId: number | null = null,
+  versionId: EntityIdParam | null = null,
 ) {
   const q = new URLSearchParams();
   if (showHidden) q.set("showHidden", "1");
   if (versionId) q.set("versionId", String(versionId));
   const qs = q.toString();
-  return request<any>(`/wali/rapports/${rapportId}/view${qs ? `?${qs}` : ""}`, {
+  return request<any>(`/governor/rapports/${rapportId}/view${qs ? `?${qs}` : ""}`, {
     token,
   });
 }
 
 export function getChefRapportView(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   showHidden = false,
-  versionId: number | null = null,
+  versionId: EntityIdParam | null = null,
 ) {
   const q = new URLSearchParams();
   if (showHidden) q.set("showHidden", "1");
   if (versionId) q.set("versionId", String(versionId));
   const qs = q.toString();
-  return request<any>(`/chef/rapports/${rapportId}/view${qs ? `?${qs}` : ""}`, {
+  return request<any>(`/chief/rapports/${rapportId}/view${qs ? `?${qs}` : ""}`, {
     token,
   });
 }
@@ -1439,19 +1528,19 @@ export function listPermissionsCatalog(token: string) {
   });
 }
 
-export function listOfficeServiceSchemas(token: string, serviceId: number) {
+export function listOfficeServiceSchemas(token: string, serviceId: EntityIdParam) {
   return request<{ schemas: any[]; templates: any[] }>(
-    `/office/services/${serviceId}/schemas`,
+    `/cabinet/services/${serviceId}/schemas`,
     { token },
   );
 }
 
 export function createOfficeServiceSchema(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   body: Record<string, unknown>,
 ) {
-  return request<{ schema: any }>(`/office/services/${serviceId}/schemas`, {
+  return request<{ schema: any }>(`/cabinet/services/${serviceId}/schemas`, {
     method: "POST",
     token,
     body: JSON.stringify(body),
@@ -1460,18 +1549,18 @@ export function createOfficeServiceSchema(
 
 export function patchOfficeSchema(
   token: string,
-  schemaId: number,
+  schemaId: EntityIdParam,
   body: Record<string, unknown>,
 ) {
-  return request<{ schema: any }>(`/office/schemas/${schemaId}`, {
+  return request<{ schema: any }>(`/cabinet/schemas/${schemaId}`, {
     method: "PATCH",
     token,
     body: JSON.stringify(body),
   });
 }
 
-export function deleteOfficeSchema(token: string, schemaId: number) {
-  return request<{ ok: boolean }>(`/office/schemas/${schemaId}`, {
+export function deleteOfficeSchema(token: string, schemaId: EntityIdParam) {
+  return request<{ ok: boolean }>(`/cabinet/schemas/${schemaId}`, {
     method: "DELETE",
     token,
   });
@@ -1479,11 +1568,11 @@ export function deleteOfficeSchema(token: string, schemaId: number) {
 
 export function duplicateOfficeServiceSchema(
   token: string,
-  serviceId: number,
-  body: { source_schema_id: number; slug?: string },
+  serviceId: EntityIdParam,
+  body: { source_schema_id: EntityIdParam; slug?: string },
 ) {
   return request<{ schema: any }>(
-    `/office/services/${serviceId}/schemas/duplicate`,
+    `/cabinet/services/${serviceId}/schemas/duplicate`,
     {
       method: "POST",
       token,
@@ -1494,21 +1583,21 @@ export function duplicateOfficeServiceSchema(
 
 export function listOfficeServiceRapportTypes(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
 ) {
   return request<{ service: any; rapportTypes: any[] }>(
-    `/office/services/${serviceId}/rapport-types`,
+    `/cabinet/services/${serviceId}/rapport-types`,
     { token },
   );
 }
 
 export function createOfficeServiceRapportType(
   token: string,
-  serviceId: number,
+  serviceId: EntityIdParam,
   body: Record<string, unknown>,
 ) {
   return request<{ rapportType: any }>(
-    `/office/services/${serviceId}/rapport-types`,
+    `/cabinet/services/${serviceId}/rapport-types`,
     {
       method: "POST",
       token,
@@ -1519,11 +1608,11 @@ export function createOfficeServiceRapportType(
 
 export function patchOfficeRapportType(
   token: string,
-  rapportTypeId: number,
+  rapportTypeId: EntityIdParam,
   body: Record<string, unknown>,
 ) {
   return request<{ rapportType: any }>(
-    `/office/rapport-types/${rapportTypeId}`,
+    `/cabinet/rapport-types/${rapportTypeId}`,
     {
       method: "PATCH",
       token,
@@ -1534,12 +1623,12 @@ export function patchOfficeRapportType(
 
 export function uploadRapportFile(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   file: File,
   opts: UploadOptions = {},
 ) {
   return uploadFormData<{ file: any }>(
-    `/office/rapports/${rapportId}/uploads`,
+    `/cabinet/rapports/${rapportId}/uploads`,
     () => {
       const fd = new FormData();
       fd.append("file", file);
@@ -1563,7 +1652,7 @@ export function uploadAdminFile(token: string, file: File, opts: UploadOptions =
 
 export function uploadWaliFile(token: string, file: File, opts: UploadOptions = {}) {
   return uploadFormData<{ file: any }>(
-    "/wali/uploads",
+    "/governor/uploads",
     () => {
       const fd = new FormData();
       fd.append("file", file);
@@ -1573,27 +1662,27 @@ export function uploadWaliFile(token: string, file: File, opts: UploadOptions = 
   );
 }
 
-export function getRapportMediaFiles(token: string, rapportId: number) {
-  return request<{ files: Record<number, any> }>(
-    `/office/rapports/${rapportId}/media`,
+export function getRapportMediaFiles(token: string, rapportId: EntityIdParam) {
+  return request<{ files: Record<string, any> }>(
+    `/cabinet/rapports/${rapportId}/media`,
     { token },
   );
 }
 
-export function getCalendarEvents(token: string, rapportId: number) {
+export function getCalendarEvents(token: string, rapportId: EntityIdParam) {
   return request<{ events: any[] }>(
-    `/office/rapports/${rapportId}/calendar-events`,
+    `/cabinet/rapports/${rapportId}/calendar-events`,
     { token },
   );
 }
 
 export function saveCalendarEvents(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   events: any[],
 ) {
   return request<{ events: any[] }>(
-    `/office/rapports/${rapportId}/calendar-events`,
+    `/cabinet/rapports/${rapportId}/calendar-events`,
     {
       method: "PUT",
       token,
@@ -1610,7 +1699,7 @@ export function getWaliCalendar(
   if (params.from) q.set("from", params.from);
   if (params.to) q.set("to", params.to);
   if (params.week) q.set("week", params.week);
-  return request<any>(`/wali/calendar?${q}`, { token });
+  return request<any>(`/governor/calendar?${q}`, { token });
 }
 
 export function getChefCalendar(
@@ -1621,19 +1710,19 @@ export function getChefCalendar(
   if (params.from) q.set("from", params.from);
   if (params.to) q.set("to", params.to);
   if (params.week) q.set("week", params.week);
-  return request<any>(`/chef/calendar?${q}`, { token });
+  return request<any>(`/chief/calendar?${q}`, { token });
 }
 
 export function listWaliBroadcasts(token: string) {
-  return request<{ broadcasts: any[] }>("/wali/broadcasts", { token });
+  return request<{ broadcasts: any[] }>("/governor/broadcasts", { token });
 }
 
-export function getWaliBroadcast(token: string, id: number) {
-  return request<{ broadcast: any }>(`/wali/broadcasts/${id}`, { token });
+export function getWaliBroadcast(token: string, id: EntityIdParam) {
+  return request<{ broadcast: any }>(`/governor/broadcasts/${id}`, { token });
 }
 
 export function listWaliShareUsers(token: string) {
-  return request<{ users: any[] }>("/wali/office-users-for-share", { token });
+  return request<{ users: any[] }>("/governor/office-users-for-share", { token });
 }
 
 export function createWaliBroadcast(
@@ -1644,7 +1733,7 @@ export function createWaliBroadcast(
 ) {
   if (file) {
     return uploadFormData<{ broadcast: any }>(
-      "/wali/broadcasts",
+      "/governor/broadcasts",
       () => {
         const fd = new FormData();
         fd.append("file", file);
@@ -1654,7 +1743,7 @@ export function createWaliBroadcast(
       { ...opts, token, method: "POST" },
     );
   }
-  return request<{ broadcast: any }>("/wali/broadcasts", {
+  return request<{ broadcast: any }>("/governor/broadcasts", {
     method: "POST",
     token,
     body: JSON.stringify(body),
@@ -1663,33 +1752,33 @@ export function createWaliBroadcast(
 
 export function addWaliBroadcastComment(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body_text: string,
 ) {
-  return request<{ broadcast: any }>(`/wali/broadcasts/${id}/comments`, {
+  return request<{ broadcast: any }>(`/governor/broadcasts/${id}/comments`, {
     method: "POST",
     token,
     body: JSON.stringify({ body_text }),
   });
 }
 
-export function remindBroadcastUnread(token: string, id: number) {
-  return request<{ reminded: number }>(`/wali/broadcasts/${id}/remind`, {
+export function remindBroadcastUnread(token: string, id: EntityIdParam) {
+  return request<{ reminded: number }>(`/governor/broadcasts/${id}/remind`, {
     method: "POST",
     token,
   });
 }
 
 export function listOfficeBroadcasts(token: string) {
-  return request<{ broadcasts: any[] }>("/office/broadcasts", { token });
+  return request<{ broadcasts: any[] }>("/cabinet/broadcasts", { token });
 }
 
-export function getOfficeBroadcast(token: string, id: number) {
-  return request<{ broadcast: any }>(`/office/broadcasts/${id}`, { token });
+export function getOfficeBroadcast(token: string, id: EntityIdParam) {
+  return request<{ broadcast: any }>(`/cabinet/broadcasts/${id}`, { token });
 }
 
-export function markOfficeBroadcastRead(token: string, id: number) {
-  return request<{ broadcast: any }>(`/office/broadcasts/${id}/read`, {
+export function markOfficeBroadcastRead(token: string, id: EntityIdParam) {
+  return request<{ broadcast: any }>(`/cabinet/broadcasts/${id}/read`, {
     method: "POST",
     token,
   });
@@ -1697,10 +1786,10 @@ export function markOfficeBroadcastRead(token: string, id: number) {
 
 export function addOfficeBroadcastComment(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body_text: string,
 ) {
-  return request<{ broadcast: any }>(`/office/broadcasts/${id}/comments`, {
+  return request<{ broadcast: any }>(`/cabinet/broadcasts/${id}/comments`, {
     method: "POST",
     token,
     body: JSON.stringify({ body_text }),
@@ -1708,15 +1797,15 @@ export function addOfficeBroadcastComment(
 }
 
 export function listChefBroadcasts(token: string) {
-  return request<{ broadcasts: any[] }>("/chef/broadcasts", { token });
+  return request<{ broadcasts: any[] }>("/chief/broadcasts", { token });
 }
 
-export function getChefBroadcast(token: string, id: number) {
-  return request<{ broadcast: any }>(`/chef/broadcasts/${id}`, { token });
+export function getChefBroadcast(token: string, id: EntityIdParam) {
+  return request<{ broadcast: any }>(`/chief/broadcasts/${id}`, { token });
 }
 
-export function markChefBroadcastRead(token: string, id: number) {
-  return request<{ broadcast: any }>(`/chef/broadcasts/${id}/read`, {
+export function markChefBroadcastRead(token: string, id: EntityIdParam) {
+  return request<{ broadcast: any }>(`/chief/broadcasts/${id}/read`, {
     method: "POST",
     token,
   });
@@ -1724,10 +1813,10 @@ export function markChefBroadcastRead(token: string, id: number) {
 
 export function addChefBroadcastComment(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body_text: string,
 ) {
-  return request<{ broadcast: any }>(`/chef/broadcasts/${id}/comments`, {
+  return request<{ broadcast: any }>(`/chief/broadcasts/${id}/comments`, {
     method: "POST",
     token,
     body: JSON.stringify({ body_text }),
@@ -1742,13 +1831,20 @@ export function listWaliInstructions(
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
   return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
-    `/wali/instructions?${q}`,
+    `/governor/instructions?${q}`,
     { token },
   );
 }
 
-export function getWaliInstruction(token: string, id: number) {
-  return request<{ instruction: any }>(`/wali/instructions/${id}`, { token });
+export function getWaliInstruction(token: string, id: EntityIdParam) {
+  return request<{ instruction: any }>(`/governor/instructions/${id}`, { token });
+}
+
+export function deleteWaliInstruction(token: string, id: EntityIdParam) {
+  return request<{ ok: boolean; id: EntityIdParam }>(`/governor/instructions/${id}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export function createWaliInstruction(
@@ -1759,7 +1855,7 @@ export function createWaliInstruction(
 ) {
   if (files.length) {
     return uploadFormData<{ instruction: any }>(
-      "/wali/instructions",
+      "/governor/instructions",
       () => {
         const fd = new FormData();
         for (const file of files) fd.append("files", file);
@@ -1769,7 +1865,7 @@ export function createWaliInstruction(
       { ...opts, token, method: "POST" },
     );
   }
-  return request<{ instruction: any }>("/wali/instructions", {
+  return request<{ instruction: any }>("/governor/instructions", {
     method: "POST",
     token,
     body: JSON.stringify(body),
@@ -1784,13 +1880,13 @@ export function listOfficeInstructions(
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
   return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
-    `/office/instructions?${q}`,
+    `/cabinet/instructions?${q}`,
     { token },
   );
 }
 
-export function getOfficeInstruction(token: string, id: number) {
-  return request<{ instruction: any }>(`/office/instructions/${id}`, { token });
+export function getOfficeInstruction(token: string, id: EntityIdParam) {
+  return request<{ instruction: any }>(`/cabinet/instructions/${id}`, { token });
 }
 
 export function listChefInstructions(
@@ -1801,13 +1897,13 @@ export function listChefInstructions(
   if (params.page) q.set("page", String(params.page));
   if (params.pageSize) q.set("pageSize", String(params.pageSize));
   return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
-    `/chef/instructions?${q}`,
+    `/chief/instructions?${q}`,
     { token },
   );
 }
 
-export function getChefInstruction(token: string, id: number) {
-  return request<{ instruction: any }>(`/chef/instructions/${id}`, { token });
+export function getChefInstruction(token: string, id: EntityIdParam) {
+  return request<{ instruction: any }>(`/chief/instructions/${id}`, { token });
 }
 
 export type RapportExportOpts = {
@@ -1817,7 +1913,7 @@ export type RapportExportOpts = {
   showHidden?: boolean;
   rowFilter?: "active" | "with_finished" | "finished_only";
   /** Export a specific archived version snapshot (read-only). */
-  versionId?: number;
+  versionId?: EntityIdParam;
 };
 
 function filenameFromDisposition(header: string | null, fallback: string) {
@@ -1839,7 +1935,7 @@ function filenameFromDisposition(header: string | null, fallback: string) {
 
 async function fetchRapportExport(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   kind: "pdf" | "docx" | "xlsx",
   opts: RapportExportOpts = {},
 ) {
@@ -1849,10 +1945,10 @@ async function fetchRapportExport(
   if (opts.rowFilter && opts.rowFilter !== "active") q.set("rowFilter", opts.rowFilter);
   if (opts.versionId) q.set("versionId", String(opts.versionId));
   const base = opts.chef
-    ? `/chef/rapports/${rapportId}/export.${kind}`
+    ? `/chief/rapports/${rapportId}/export.${kind}`
     : opts.wali
-      ? `/wali/rapports/${rapportId}/export.${kind}`
-      : `/office/rapports/${rapportId}/export.${kind}`;
+      ? `/governor/rapports/${rapportId}/export.${kind}`
+      : `/cabinet/rapports/${rapportId}/export.${kind}`;
   const res = await fetch(`${API_BASE}${base}?${q}`, {
     headers: { Authorization: `Bearer ${token}` },
     credentials: "include",
@@ -1881,7 +1977,7 @@ async function fetchRapportExport(
 
 export async function fetchRapportPdfBlob(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   opts: RapportExportOpts = {},
 ) {
   const { blob } = await fetchRapportExport(token, rapportId, "pdf", opts);
@@ -1890,7 +1986,7 @@ export async function fetchRapportPdfBlob(
 
 export async function fetchRapportDocxBlob(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   opts: RapportExportOpts = {},
 ) {
   const { blob } = await fetchRapportExport(token, rapportId, "docx", opts);
@@ -1899,7 +1995,7 @@ export async function fetchRapportDocxBlob(
 
 export async function fetchRapportExcelBlob(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   opts: RapportExportOpts = {},
 ) {
   const { blob } = await fetchRapportExport(token, rapportId, "xlsx", opts);
@@ -1908,7 +2004,7 @@ export async function fetchRapportExcelBlob(
 
 export async function downloadRapportPdf(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   opts: RapportExportOpts = {},
 ) {
   const { blob, filename } = await fetchRapportExport(
@@ -1922,7 +2018,7 @@ export async function downloadRapportPdf(
 
 export async function downloadRapportDocx(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   opts: RapportExportOpts = {},
 ) {
   const { blob, filename } = await fetchRapportExport(
@@ -1936,7 +2032,7 @@ export async function downloadRapportDocx(
 
 export async function downloadRapportExcel(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   opts: RapportExportOpts = {},
 ) {
   const { blob, filename } = await fetchRapportExport(
@@ -1950,8 +2046,8 @@ export async function downloadRapportExcel(
 
 export function listOfficeRapportComments(
   token: string,
-  rapportId: number,
-  params: { page?: number; pageSize?: number; versionId?: number } = {},
+  rapportId: EntityIdParam,
+  params: { page?: number; pageSize?: number; versionId?: EntityIdParam } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
@@ -1965,16 +2061,16 @@ export function listOfficeRapportComments(
     discussion_available?: boolean;
     can_comment?: boolean;
     rapport_version_id?: number | null;
-  }>(`/office/rapports/${rapportId}/comments?${q}`, { token });
+  }>(`/cabinet/rapports/${rapportId}/comments?${q}`, { token });
 }
 
 export function createOfficeRapportComment(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   body_text: string,
-  versionId?: number,
+  versionId?: EntityIdParam,
 ) {
-  return request<{ comment: any }>(`/office/rapports/${rapportId}/comments`, {
+  return request<{ comment: any }>(`/cabinet/rapports/${rapportId}/comments`, {
     method: "POST",
     token,
     body: JSON.stringify({
@@ -1986,8 +2082,8 @@ export function createOfficeRapportComment(
 
 export function listChefRapportComments(
   token: string,
-  rapportId: number,
-  params: { page?: number; pageSize?: number; versionId?: number } = {},
+  rapportId: EntityIdParam,
+  params: { page?: number; pageSize?: number; versionId?: EntityIdParam } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
@@ -2001,16 +2097,16 @@ export function listChefRapportComments(
     discussion_available?: boolean;
     can_comment?: boolean;
     rapport_version_id?: number | null;
-  }>(`/chef/rapports/${rapportId}/comments?${q}`, { token });
+  }>(`/chief/rapports/${rapportId}/comments?${q}`, { token });
 }
 
 export function createChefRapportComment(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   body_text: string,
-  versionId?: number,
+  versionId?: EntityIdParam,
 ) {
-  return request<{ comment: any }>(`/chef/rapports/${rapportId}/comments`, {
+  return request<{ comment: any }>(`/chief/rapports/${rapportId}/comments`, {
     method: "POST",
     token,
     body: JSON.stringify({
@@ -2022,8 +2118,8 @@ export function createChefRapportComment(
 
 export function listWaliRapportComments(
   token: string,
-  rapportId: number,
-  params: { page?: number; pageSize?: number; versionId?: number } = {},
+  rapportId: EntityIdParam,
+  params: { page?: number; pageSize?: number; versionId?: EntityIdParam } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
@@ -2037,16 +2133,16 @@ export function listWaliRapportComments(
     discussion_available?: boolean;
     can_comment?: boolean;
     rapport_version_id?: number | null;
-  }>(`/wali/rapports/${rapportId}/comments?${q}`, { token });
+  }>(`/governor/rapports/${rapportId}/comments?${q}`, { token });
 }
 
 export function createWaliRapportComment(
   token: string,
-  rapportId: number,
+  rapportId: EntityIdParam,
   body_text: string,
-  versionId?: number,
+  versionId?: EntityIdParam,
 ) {
-  return request<{ comment: any }>(`/wali/rapports/${rapportId}/comments`, {
+  return request<{ comment: any }>(`/governor/rapports/${rapportId}/comments`, {
     method: "POST",
     token,
     body: JSON.stringify({
@@ -2069,9 +2165,9 @@ export type GuideVideoListRole = "admin" | "office" | "wali" | "chef";
 
 function guideVideosBase(role: GuideVideoListRole) {
   if (role === "admin") return "/admin/guide-videos";
-  if (role === "office") return "/office/guide-videos";
-  if (role === "chef") return "/chef/guide-videos";
-  return "/wali/guide-videos";
+  if (role === "office") return "/cabinet/guide-videos";
+  if (role === "chef") return "/chief/guide-videos";
+  return "/governor/guide-videos";
 }
 
 export function listGuideVideos(
@@ -2119,7 +2215,7 @@ export function createGuideVideo(
 
 export function patchGuideVideo(
   token: string,
-  id: number,
+  id: EntityIdParam,
   body: Record<string, unknown>,
   file?: File | null,
   opts: UploadOptions = {},
@@ -2143,7 +2239,7 @@ export function patchGuideVideo(
   });
 }
 
-export function deleteGuideVideo(token: string, id: number) {
+export function deleteGuideVideo(token: string, id: EntityIdParam) {
   return request<{ ok: boolean }>(`/admin/guide-videos/${id}`, {
     method: "DELETE",
     token,

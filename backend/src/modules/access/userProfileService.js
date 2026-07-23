@@ -1,9 +1,10 @@
 const { resolveEffectivePermissions } = require("./userAccessService");
+const { publicId } = require("./idResolver");
 
 async function enrichSessionUser(user) {
   const effective_permissions = await resolveEffectivePermissions(user);
   return {
-    id: user.id,
+    id: publicId(user),
     username: user.username,
     name: user.name,
     role: user.role,

@@ -28,6 +28,12 @@ const {
 } = require("../../src/modules/rapports/documentDefaults");
 const { entityKey } = require("../../src/modules/rapports/entityKeys");
 const {
+  createRapportSeed,
+  createVersionSeed,
+  setRapportCurrentVersion,
+  createNotificationSeed,
+} = require("./seedIdentity");
+const {
   rowMeta,
   headingBlock,
   paragraphBlock,
@@ -59,7 +65,7 @@ async function createRapportBundle({
   chefResponses = [],
   calendarEvents = [],
 }) {
-  const rapport = await Rapport.create({
+  const rapport = await createRapportSeed({
     service_id: serviceId,
     rapport_type_id: typeId,
     title,
@@ -74,26 +80,26 @@ async function createRapportBundle({
 
   const versionRows = [];
   for (const v of versions) {
-    const row = await RapportVersion.create({
-      rapport_id: rapport.id,
-      version_number: v.number,
-      data_json: v.data_json,
-      changed_entity_keys: v.changed_entity_keys || null,
-      changed_commune_codes: v.changed_commune_codes || null,
-      submitted_at: v.submitted_at || null,
-      created_by_user_id: authorId,
-      created_at: v.submitted_at || new Date(),
-    });
+    const row = await createVersionSeed(
+      {
+        version_number: v.number,
+        data_json: v.data_json,
+        changed_entity_keys: v.changed_entity_keys || null,
+        changed_commune_codes: v.changed_commune_codes || null,
+        submitted_at: v.submitted_at || null,
+        created_by_user_id: authorId,
+        created_at: v.submitted_at || new Date(),
+      },
+      rapport,
+    );
     versionRows.push(row);
   }
 
   const current = versionRows[versionRows.length - 1];
-  await rapport.update({
-    current_version_id: current.id,
+  await setRapportCurrentVersion(rapport, current, {
     status,
     chef_gate: chefGate,
     hidden_at: hiddenAt,
-    updated_at: new Date(),
   });
 
   for (const wr of waliResponses) {
@@ -110,7 +116,7 @@ async function createRapportBundle({
       created_at: wr.created_at || new Date(),
     });
     if (wr.notifyOffice) {
-      await Notification.create({
+      await createNotificationSeed({
         user_id: ownerId,
         rapport_id: rapport.id,
         wali_response_id: response.id,
@@ -134,7 +140,7 @@ async function createRapportBundle({
       created_at: cr.created_at || new Date(),
     });
     if (cr.notifyOffice) {
-      await Notification.create({
+      await createNotificationSeed({
         user_id: ownerId,
         rapport_id: rapport.id,
         chef_response_id: response.id,

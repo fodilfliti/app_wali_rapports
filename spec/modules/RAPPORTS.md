@@ -1,10 +1,6 @@
 ## Module: Rapports (core)
 
-
-
 ### Purpose & constraints
-
-
 
 - Replace Excel/Word/paper workflows for Wilaya office → Wali reporting.
 
@@ -14,6 +10,7 @@
 - **Excel (.xlsx)**: Exported via `exceljs` on the backend. Preserves merged column headers, cell colors (where applicable), and row-level vertical merges. RTL support for Arabic locale. Available for `table_grid` and `commune_list` (in table mode).
 - **Word (.docx)**: Exported via `docx` library; Arabic tables use `visuallyRightToLeft` + fixed weighted column widths — `spec/CORE.md`.
 - **PDF (.pdf)**: Exported via **PDFKit** (`rapportPdfService.js`, `richHtmlExport.js`); Arabic tables use RTL column slots + Tahoma with `liga`/`calt` — `spec/CORE.md` § Table layout policy.
+- **Paths / ids / gates:** live hubs `/cabinet`, `/chief`, `/governor` (`ROUTES.md`); public entity `id` = UUID (`IDENTITY_UUID.md`); UI/BE via `can*` / `assertCan` with `content_kind` + `versioning_mode` (`ACCESS_PROFILES.md`). Role tables below are product rules, not page `role ===` gates.
 
 ### Data Model Extension (2026-06-09)
 
@@ -21,27 +18,15 @@
 - `changed_commune_codes`: JSON array of municipality codes updated in this version.
 - `commune_versions`: JSON object mapping municipality codes to their specific version IDs for incremental tracking.
 
-
-
 ### Roles & rules
 
-
-
 | Role | Capabilities |
-
 | ---- | ------------ |
-
 | **OFFICE_USER** | Create/edit drafts, submit versions, **return to draft** after send (Éditeur / `manage` only), export (domain-scoped); receive Wali notifications |
-
 | **WALI** | Browse by office user → service tree; review; optional note or confirm-only |
-
 | **ADMIN** | Configure services, sub-services, schemas, content kinds |
 
-
-
 ### Wali navigation (summary)
-
-
 
 1. Wali → **liste ملحقو الديوان / attachés du cabinet** (one click per user).
 
@@ -51,33 +36,18 @@
 
 4. Wali responds or marks viewed; office gets **notification**.
 
-
-
 ### Content kinds (summary)
 
-
-
 | Kind | Description |
-
 | ---- | ----------- |
-
 | `table_grid` | Typed tables, formulas, row hide/show, highlights, version archive, graphs (future) |
-
 | `document_compose` | List of rich documents (text/table/image blocks) → PDF/Word |
-
 | `fiche_lecture` | Shared dated fiche; new file each time (all office users) |
-
 | `commune_list` | **قائمة / Liste** — per-entity (commune / daira / direction) table/inputs; versioned or standalone |
-
-
 
 Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
-
-
 ### Data model
-
-
 
 #### `departments`
 
@@ -88,11 +58,7 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 - `id`, `department_id`, `slug`, `name_ar`, `name_fr`, `is_folder`, `parent_service_id` (nullable self-referential FK), `sort_order`, `is_active`
 - **Sub-services & folder hierarchy:** stored directly in this table using `parent_service_id` and `is_folder`. There is no separate `sub_services` table.
 
-
-
 #### `rapport_types`
-
-
 
 - `id`, `service_id`, `slug`, `name_ar`, `name_fr`
 
@@ -104,19 +70,11 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 - `schema_json`: default table/document schema
 
-
-
 #### `rapport_table_schemas` (template library)
-
-
 
 - Reusable column definitions; import into type-2 documents or new type-1 tables.
 
-
-
 #### `rapport_document_templates` (document starters)
-
-
 
 - Per-**service** reusable content for `document_compose` and `fiche_lecture`.
 
@@ -124,13 +82,9 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 - **Default resolution on create:** type-specific default → content-kind default → service-wide default → `rapport_type.schema_json.default_blocks`.
 
-- Managed in office **Configuration** (`/office/services/:id/config`); see **`SCHEMA_CONFIGURATION.md`**.
-
-
+- Managed in office **Configuration** (`/cabinet/services/:id/config`); see **`SCHEMA_CONFIGURATION.md`**.
 
 #### `rapports`
-
-
 
 - `id`, `service_id`, `rapport_type_id`, `title`, `reference_date`, `status`
 
@@ -140,21 +94,13 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 - `created_at`, `updated_at`
 
-
-
 **Status:** `draft` | `pending_chef` | `submitted` | `under_review` | `changes_requested` | `acknowledged` | `archived`
 
-
-
 #### `rapport_versions`
-
-
 
 - Snapshot for versioned content; **`data_json`** holds tables/blocks/commune rows.
 
 - **`version_number`**, **`submitted_at`**, archive for graphs.
-
-
 
 #### `wali_responses`
 
@@ -171,25 +117,19 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 ### Versioning rules
 
-
-
 - **Versioned:** each send → new `rapport_versions` row; UI **Versions archivées** lists history (read-only).
 
 - **Chef/Wali live preview:** when `current_version` has no `submitted_at` (office draft after fork / start-new-version while still visible), show the **latest submitted** snapshot for table / liste / document content. Explicit archive `versionId` always loads that exact version. Office editors always use the true current draft.
 
 - **Standalone:** new `rapport` row per file/subject/date (types 2, 3, some type 4).
 
-
-
 ### Workflows
-
-
 
 1. Office opens a table / liste / document editor — **no `rapports` row yet**. Editing stays in the client until **Enregistrer** (brouillon). First Enregistrer **creates** a `draft` (or updates an existing editable draft for that type). Leaving without Enregistrer creates nothing.
 
 2. **Envoyer au wali** → `pending_chef` (chef gate required) or `submitted` + version snapshot (`submitted_at` on current version). Requires a persisted draft (at least one Enregistrer).
 
-3. Wali opens (inbox detail or `/wali/rapports/:id/view`) → `submitted` becomes `under_review`; may **confirmer**, **demander modification**, or **lu sans commentaire**. Chef/Admin open does **not** change status.
+3. Wali opens (inbox detail or `/governor/rapports/:id/view`) → `submitted` becomes `under_review`; may **confirmer**, **demander modification**, or **lu sans commentaire**. Chef/Admin open does **not** change status.
 
 4. Office notified; if changes requested → edit → new version → resubmit.
 
@@ -234,38 +174,28 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
      - **Reject** → clear request + notify office.
    - Soft-hide (`finish`) unchanged — not a delete.
 
-
-
 ### API endpoints
 
-
-
 Phase 1 (implemented): list/create/submit/respond — see git routes `office.js`, `wali.js`.
-
-
 
 Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, version archive, notifications, per-table submit.
 
 | Method | Path | Notes |
 | ------ | ---- | ----- |
-| `POST` | `/office/rapports/:id/return-to-draft` | Éditeur (`manage`); recall sent rapport to draft (see workflow §5). `409` if status not allowed or Wali already accepted/viewed current version |
-| `POST` | `/office/rapports/:id/new-version` | Éditeur (`manage`); fork next draft after `acknowledged` for `versioned` types (see workflow §5b). `409` if not versioned / not acknowledged |
-| `POST` | `/office/rapports/:id/delete` | Éditeur (`manage`); instant full/draft-version delete **or** open delete request (see workflow §6). `409` if already requested |
-| `POST` | `/office/rapports/:id/cancel-delete-request` | Éditeur (`manage`); clear pending delete request |
-| `POST` | `/chef/rapports/:id/delete-decision` | Chef; body `{ decision: "approved" \| "rejected" }` — see `CHEF_CABINET.md` |
-
-
+| `POST` | `/cabinet/rapports/:id/return-to-draft` | Éditeur (`manage`); recall sent rapport to draft (see workflow §5). `409` if status not allowed or Wali already accepted/viewed current version |
+| `POST` | `/cabinet/rapports/:id/new-version` | Éditeur (`manage`); fork next draft after `acknowledged` for `versioned` types (see workflow §5b). `409` if not versioned / not acknowledged |
+| `POST` | `/cabinet/rapports/:id/delete` | Éditeur (`manage`); instant full/draft-version delete **or** open delete request (see workflow §6). `409` if already requested |
+| `POST` | `/cabinet/rapports/:id/cancel-delete-request` | Éditeur (`manage`); clear pending delete request |
+| `POST` | `/chief/rapports/:id/delete-decision` | Chef; body `{ decision: "approved" \| "rejected" }` — see `CHEF_CABINET.md` |
 
 ### UI/UX
-
-
 
 - Wali: office user list → service tree → content by kind; presentation like Excel/Word.
 
 - Office: service tree, draft/save (first Enregistrer creates the row), version archive button, notification bell; **Modifier après envoi** on awaiting Chef/Wali banner (confirm → draft); after **acknowledged** on versioned types, banner + list CTA **nouvelle version** (fork draft from latest).
 
-- **Office rapports list** (`/office/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**. Primary tabs: **التقارير** / **المناقشة** only. Finished soft-hidden list via segment chips **النشطة** / **المنتهية** (same row as status + sort; `?hidden=1` → `hidden_only`). Discussion inbox: `?view=discussion` (New / All) — see **`RAPPORT_DISCUSSION.md`**.
-- **Global rapport lists** (`/admin/rapports`, `/office/rapports`, `/wali/rapports`, `/chef/rapports`): optional title **search** query param (`search`) filters by rapport title (`iLike`); same search field in UI across roles.
+- **Office rapports list** (`/cabinet/rapports`): cross-service status inbox — **no “new rapport” action**; create documents/fiches/tables from each **service content hub**. Primary tabs: **التقارير** / **المناقشة** only. Finished soft-hidden list via segment chips **النشطة** / **المنتهية** (same row as status + sort; `?hidden=1` → `hidden_only`). Discussion inbox: `?view=discussion` (New / All) — see **`RAPPORT_DISCUSSION.md`**.
+- **Global rapport lists** (`/admin/rapports`, `/cabinet/rapports`, `/governor/rapports`, `/chief/rapports`): optional title **search** query param (`search`) filters by rapport title (`iLike`); same search field in UI across roles.
 - **Sort by date** (rapports list mode only — not Discussion): query param `sort` = `created_at` | `updated_at` (default **`created_at`**, always DESC). UI chips: الأحدث إنشاءً / Plus récents (création) · آخر تحديث / Dernière mise à jour. Status + sort chip groups sit on **one row on desktop**, stacked on narrow screens. URL-synced (`?sort=`); omit param when default. Chef default inbox still prioritizes `pending_chef` first, then the chosen date field.
 - **Status group filter** (rapports list mode only — hidden on Discussion tabs): query param `status_group` = `all` | `in_progress` | `needs_edit` | `done` | `new` | `delete_requested` (Chef only). Prefer `status_group` over raw `status` when both are sent. Chips in UI (AR / FR): الكل / Tous · جاري / En cours · يحتاج تعديل / À corriger · منتهٍ / Terminé; Wali and Chef also get جديد / Nouveau; **Chef only** طلبات الحذف / Suppressions (`delete_requested`) with hub count badge. Mutually exclusive chips; URL-synced (`?status_group=`).
   - **Office / Admin:** `all` = no status filter; `in_progress` = `draft` | `pending_chef` | `submitted` | `under_review`; `needs_edit` = `changes_requested`; `done` = `acknowledged`. No `new` chip. Row/banner when `delete_requested_at` set (awaiting Chef).
@@ -279,60 +209,34 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 - See **`RAPPORT_SERVICE_TYPES.md`** § UI/UX — Wali presentation rules.
 
-
-
 ### Audit events
 
-
-
 | Action type | When |
-
 | ----------- | ---- |
-
 | `RAPPORT_CREATE` | New rapport |
-
 | `RAPPORT_UPDATE` | Draft save |
-
 | `RAPPORT_SUBMIT` | Submit to wali |
-
 | `RAPPORT_RETURN_TO_DRAFT` | Office recalls sent rapport to draft (before Wali accept/view) |
-
 | `RAPPORT_NEW_VERSION` | Office forks a new draft version after `acknowledged` (versioned types) |
-
 | `RAPPORT_DELETE` | Instant or Chef-approved permanent delete (full or draft-version discard) |
-
 | `RAPPORT_DELETE_REQUEST` | Office opens delete request awaiting Chef |
-
 | `RAPPORT_DELETE_REQUEST_CANCEL` | Office cancels pending delete request |
-
 | `RAPPORT_DELETE_REJECTED` | Chef rejects delete request |
-
 | `RAPPORT_WALI_RESPONSE` | Wali respond |
-
 | `RAPPORT_EXPORT` | Export (generic) |
-
 | `RAPPORT_PDF_EXPORT` | PDF download / preview blob |
-
 | `RAPPORT_DOCX_EXPORT` | Word download / preview blob |
 | `RAPPORT_TYPE_HIDE` | Office hides rapport type from service hub |
 | `RAPPORT_TYPE_RESTORE` | Office restores hidden rapport type |
 | `RAPPORT_TYPE_DELETE` | Office hard-deletes unused rapport type (never used in a rapport) |
 | `RAPPORT_FINISH` | Office soft-hides individual rapport |
 | `RAPPORT_RESTORE` | Office restores hidden rapport |
-
 | `DOCUMENT_TEMPLATE_CREATE` | Document template created |
-
 | `DOCUMENT_TEMPLATE_UPDATE` | Document template updated |
-
 | `DOCUMENT_TEMPLATE_DELETE` | Document template deleted |
-
 | `NOTIFICATION_READ` | Office reads Wali note |
 
-
-
 ### Migration notes
-
-
 
 - `20260607_*` — foundation.
 
@@ -342,11 +246,7 @@ Phase 2 (specified in `RAPPORT_SERVICE_TYPES.md`): Wali office-user tree, versio
 
 - `20260721_000031_rapport_delete_request.js` — `delete_requested_at`, `delete_requested_by_user_id` on `rapports`.
 
-
-
 ### Related specs
-
-
 
 - **`RAPPORT_SERVICE_TYPES.md`** — four types, formulas, visibility, composer, navigation API.
 

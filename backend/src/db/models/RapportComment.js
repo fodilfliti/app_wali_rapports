@@ -5,6 +5,7 @@ module.exports = (sequelize) =>
     "RapportComment",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       rapport_id: { type: DataTypes.BIGINT, allowNull: false },
       author_user_id: { type: DataTypes.BIGINT, allowNull: false },
       rapport_version_id: { type: DataTypes.BIGINT, allowNull: true },

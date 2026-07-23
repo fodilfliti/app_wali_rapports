@@ -12,6 +12,9 @@ app_wali_rapports/
 │   ├── modules/             # Specs for specific features (ORGANIZATION, RAPPORTS, etc.)
 │   ├── CORE.md              # Shared standards & global rules
 │   └── ARCHITECTURE_CONTEXT.md # This document
+├── shared/                  # Compiled TS packages imported by FE + BE
+│   ├── access-policy/       # ActionKeys, can*, entityIdSchema, workflowTree
+│   └── routes/              # HUB_SEGMENTS, paths.*, legacy aliases
 ├── backend/                 # Backend project root (Node.js/Express)
 │   ├── config/              # Sequelize database configurations
 │   ├── src/
@@ -21,7 +24,7 @@ app_wali_rapports/
 │   │   │   └── seed-data/   # Initial reference and demo datasets
 │   │   ├── middleware/      # JWT, roles, permissions, and request validation middlewares
 │   │   ├── modules/         # Domain-focused services (organization, access, rapports)
-│   │   ├── routes/          # Express routing (admin.js, office.js, wali.js, auth.js)
+│   │   ├── routes/          # Express routing (admin, cabinet/office, chief/chef, governor/wali, auth)
 │   │   ├── services/        # Export engines, storage, table layout policy, rich HTML export
 │   │   │   ├── tableLayoutPolicy.js   # Shared view/PDF/Word table rules
 │   │   │   ├── rapportPdfService.js   # PDFKit PDF export
@@ -34,6 +37,7 @@ app_wali_rapports/
 │   └── storage/             # Locally stored media uploads & exports (ignored by git)
 └── frontend/                # Frontend project root (React/Vite/TypeScript)
     ├── src/
+    │   ├── auth/            # AuthProvider, session.ts (access token memory)
     │   ├── components/      # Reusable UI widgets, modals, forms & editors
     │   │   └── richText/    # TipTap rich text custom configuration files
     │   ├── hooks/           # Custom React hooks (useHubCounts, etc.)
@@ -95,25 +99,31 @@ erDiagram
 
 ### 3. API Routing & Middleware Structure
 
-Routes are partitioned by role security barriers under the prefix `/api`:
+Routes are partitioned by **hub key** under the API prefix. Live URL segments come from `shared/routes` (`HUB_SEGMENTS`): `/admin`, `/cabinet`, `/chief`, `/governor`. Legacy `/office`, `/chef`, `/wali` remain dual-mounted for one release — `spec/modules/ROUTES.md`.
 
 - **Public / auth**: `POST /auth/login`, `POST /auth/refresh` (HttpOnly refresh cookie), `POST /auth/logout` — access JWT 15m HS256; refresh 7d — `spec/modules/AUTH.md`. Also notification prefs + Web Push subscribe under `/auth/me/notification-preferences` and `/auth/push/*`.
 - **Admin Routing (`/admin/*`)**:
-  - Bound to `requireRole('ADMIN')`.
+  - Bound to `requireRole('ADMIN')` (hub shell).
   - Admin handles municipalities (`/admin/municipalities`), users (`/admin/users`), services (`/admin/services`), schemas (`/admin/table-schemas`), and departments.
-  - Granular permissions checks are validated through the `requirePermission` middleware (e.g., `organization.users.manage`).
-- **Office Routing (`/office/*`)**:
+  - Fine-grained checks: shared `assertCan` / catalog permissions (e.g. `organization.users.manage`) — `ACCESS_PROFILES.md`.
+- **Office Routing (`/cabinet/*`, hub key `office`)**:
   - Accessible to `OFFICE_USER` or `ADMIN` actors.
-  - Governs own service trees, draft saves, submissions to the Wali, templates creation, and notifications.
-- **Wali Routing (`/wali/*`)**:
+  - Governs own service trees, draft saves, submissions, templates, and notifications.
+- **Chef Routing (`/chief/*`, hub key `chef`)**:
+  - Restricted to `CHEF_CABINET` or `ADMIN`.
+  - Inbox validation, delete requests, discussion, shared broadcasts — `CHEF_CABINET.md`.
+- **Wali Routing (`/governor/*`, hub key `wali`)**:
   - Restricted to `WALI` or `ADMIN` actors.
-  - Controls inbox lists, details viewing, writing responses, checking calendar inputs, and launching file broadcasts.
+  - Controls inbox lists, details viewing, writing responses, calendar, and broadcasts.
+
+Entity path params (`:id`) are **public UUIDs** (dual-read during transition) — `IDENTITY_UUID.md`.
 
 #### Request Verification Pipeline
 1. `requireAuth`: Extracts and validates the **access** JWT (`Authorization: Bearer`, `typ: "access"`).
-2. `attachUser`: Attaches the user object from the DB database to `req.user`.
+2. `attachUser`: Attaches the user object from the DB to `req.user`.
 3. `checkBlocked`: Rejects credentials if `is_blocked === true`.
-4. `requireRole` / `requirePermission`: Verifies access scopes before executing service controllers.
+4. `requireRole`: Coarse hub shell only (who may enter the mount).
+5. `assertCan` / shared `can*`: Business allow/deny (same rules as UI). Catalog `requirePermission` may still apply where templates gate keys.
 
 Refresh renewal uses the `wr_refresh` cookie on `/auth/refresh` only (hashed rows in `refresh_tokens`); see `spec/modules/AUTH.md`.
 
@@ -123,13 +133,16 @@ Refresh renewal uses the `wr_refresh` cookie on `/auth/refresh` only (hashed row
 
 The UI is built with React, compiled via Vite, and styled with HSL tokens.
 
+- **Auth:** `AuthProvider` / `useAuth()`; access token in `session.ts`; pages use `can*` / flags — not `role ===`. Hub paths via `paths.hub.*` (`ROUTES.md`).
+- **Files:** `SignedFileLink` / `useSignedFileUrl` → signed `?dl=` (no access JWT in query).
+
 #### Design Tokens & Layouts
 - **Theme Color tokens:** Declared under [tokens.css](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/theme/tokens.css) (uses a primary teal `#0d4f4f` and gold accent `#c9a227` to reflect governorate status).
 - **RTL Support:** The application defaults to Arabic (RTL). Toggle switches to French (LTR). Document formatting toolbars (`.richTextToolbar`) use forced LTR direction to prevent left/right orientation buttons from swapping physically under RTL flex direction.
 - **BackButtons:** Back buttons are consistently placed at the trailing end of actions tables.
 
 #### Forms & Validation (Zod)
-All forms are validated using Zod models located in [forms.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/validation/schemas/forms.ts). The [useZodForm.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/validation/useZodForm.ts) hook is used in components to handle validation states, displaying validation errors through `FieldErrorText` and global messages via `FormErrorBlock`.
+All forms are validated using Zod models located in [forms.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/validation/schemas/forms.ts). The [useZodForm.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/validation/useZodForm.ts) hook is used in components to handle validation states, displaying validation errors through `FieldErrorText` and global messages via `FormErrorBlock`. Entity ids use `entityIdSchema` (UUID dual-read during transition) — `IDENTITY_UUID.md`.
 
 #### Key Modules & Interactive Views
 - **Table Grid View (`table_grid`)**: Rendered by [TableGridView.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/TableGridView.tsx). Wrapped in [TableScrollShell.tsx](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/components/TableScrollShell.tsx) for RTL + horizontal scroll on wide tables. Layout policy mirrored in [tableLayoutPolicy.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/utils/tableLayoutPolicy.ts). Standardizes inputs, formats (percentages, currencies), cell highlights, and formulas computed using the custom engine [formulaEngine.ts](file:///C:/Users/lemsa/Documents/wilaya/app_wali_rapports/frontend/src/utils/formulaEngine.ts).
@@ -150,9 +163,9 @@ When creating a new report within a service content hub:
 
 #### Report Version Submission
 1. Office edits content in draft state -> `status = 'draft'`.
-2. Office clicks "Submit" -> calls `/office/rapports/:id/submit`.
-3. Backend freezes current data, increments version count, creates a snapshot row in `rapport_versions`, sets status to `submitted`, and triggers a Wali notification.
-4. If Wali replies with `changes_requested`, status updates to `changes_requested`, notifying the author. The draft becomes editable again, repeating the cycle.
+2. Office clicks "Submit" -> calls `POST /cabinet/rapports/:id/submit` (`:id` = public UUID; via `paths.api.*`).
+3. Backend freezes current data, increments version count, creates a snapshot row in `rapport_versions`, sets status toward Chef/Wali per workflow (`WORKFLOW_TREE.md` / `CHEF_CABINET.md`), and triggers notifications.
+4. If Wali replies with `changes_requested`, status updates to `changes_requested`, notifying the author. The draft becomes editable again; resubmit may skip Chef (bypass) — repeating the cycle.
 
 ---
 

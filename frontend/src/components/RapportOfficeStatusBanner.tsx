@@ -14,10 +14,12 @@ type Props = {
     hidden_at?: string | null
     delete_requested?: boolean
     delete_requested_at?: string | null
-    rapportType?: { versioning_mode?: string } | null
+    rapportType?: { versioning_mode?: string; content_kind?: string } | null
   } | null
   /** Fallback when rapport.rapportType is absent (workspace.rapportType). */
   versioningMode?: string | null
+  /** Fallback content_kind for kind-aware new-version gate. */
+  contentKind?: string | null
   editable: boolean
   /** Éditeur (`manage`) — required for return-to-draft / new version. */
   canManage?: boolean
@@ -33,6 +35,7 @@ type Props = {
 export function RapportOfficeStatusBanner({
   rapport,
   versioningMode,
+  contentKind,
   editable,
   canManage,
   onReturnToDraft,
@@ -63,6 +66,11 @@ export function RapportOfficeStatusBanner({
     rapport.rapportType?.versioning_mode ||
     null
 
+  const kind =
+    contentKind ||
+    rapport.rapportType?.content_kind ||
+    null
+
   const showReturn =
     canManage === true &&
     typeof onReturnToDraft === 'function' &&
@@ -71,7 +79,7 @@ export function RapportOfficeStatusBanner({
   const showNewVersion =
     canManage === true &&
     typeof onStartNewVersion === 'function' &&
-    canOfficeStartNewVersion(rapport.status, mode)
+    canOfficeStartNewVersion(rapport.status, mode, kind)
 
   const returnAction = showReturn ? (
     <ReturnRapportToDraftConfirm onConfirm={onReturnToDraft}>

@@ -449,7 +449,7 @@ adminRouter.get("/rapports/:id/view", async (req, res, next) => {
   try {
     await assertRapportAccess(req.user, req.params.id, "view");
     const showHidden = req.query.showHidden === "1";
-    const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+    const versionId = req.query.versionId || null;
     res.json(
       await workspaceService.getRapportView(
         req.params.id,

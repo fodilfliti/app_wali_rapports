@@ -21,7 +21,7 @@
 - **OFFICE_USER** / **CHEF_CABINET** / **WALI**:
   - Read-only list + large video player.
   - See `general` + all role audiences **except** `ADMIN`.
-  - Hub tiles → `/office/guide`, `/chef/guide`, `/wali/guide`.
+  - Hub tiles → `/cabinet/guide`, `/chief/guide`, `/governor/guide`.
 
 ### Data model
 
@@ -29,14 +29,14 @@
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `id` | BIGINT PK | |
+| `id` | Public UUID (API); internal BIGINT until drop — `IDENTITY_UUID.md` | |
 | `title_ar`, `title_fr` | STRING(200) | At least one required (bilingual helpers) |
 | `description_ar`, `description_fr` | TEXT | Optional |
 | `audience` | ENUM | `general` \| `ADMIN` \| `OFFICE_USER` \| `CHEF_CABINET` \| `WALI` |
-| `uploaded_file_id` | BIGINT FK → `uploaded_files` | Must be `media_kind = video` |
+| `uploaded_file_id` | FK → `uploaded_files` (public file id = UUID in API) | Must be `media_kind = video` |
 | `is_new` | BOOLEAN | Default `false`; admin toggle for « جديد » badge |
 | `sort_order` | INT | Default `0` |
-| `created_by_user_id` | BIGINT FK → `users` | |
+| `created_by_user_id` | FK → `users` (public user id = UUID in API) | |
 | `created_at`, `updated_at` | DATE | |
 
 #### Relationships
@@ -69,19 +69,19 @@
 
 | Method | Path |
 | ------ | ---- |
-| `GET` | `/office/guide-videos` |
-| `GET` | `/wali/guide-videos` |
-| `GET` | `/chef/guide-videos` |
+| `GET` | `/cabinet/guide-videos` |
+| `GET` | `/governor/guide-videos` |
+| `GET` | `/chief/guide-videos` |
 
 Same list shape as admin GET, but **exclude `audience = ADMIN`** unless caller role is `ADMIN`. Optional `?audience=` filter. Sort: `sort_order ASC`, `created_at ASC` (oldest first; latest at end), then `id ASC`. Each item includes serialized `file` (`url_path`, mime, …). « جديد » is a badge only — it does **not** reorder the list.
 
 ### UI/UX
 
 - **Entry:** `HubTile` on each role hub when `ENABLE_GUIDE_VIDEOS === true` ([`frontend/src/config/features.ts`](../../frontend/src/config/features.ts)).
-- **Routes:** `/admin/guide`, `/office/guide`, `/wali/guide`, `/chef/guide`.
+- **Routes:** `/admin/guide`, `/cabinet/guide`, `/governor/guide`, `/chief/guide`.
 - **Tabs:** Général, Bureau, Chef, Wali; Admin tab only if current user is admin.
 - **Cards:** title, optional description, « جديد » / « Nouveau » when `is_new`.
-- **Player:** near-fullscreen modal + native `<video controls>` and browser fullscreen; URLs via `fileUrl(token, file)`.
+- **Player:** near-fullscreen modal + native `<video controls>` and browser fullscreen; URLs via `SignedFileLink` / signed `?dl=` (never access JWT in query) — `AUTH.md`.
 - **Admin form:** upload-on-pick with byte progress (`mediaUploadProgress`); optional client video prep when `ENABLE_CLIENT_VIDEO_TRANSCODE`. Titles, descriptions (FR gated by `ENABLE_FR_VALUE_INPUTS`), audience select, `is_new` checkbox, edit/delete. Save sends metadata only when file already uploaded via `POST /admin/uploads` or multipart create/patch.
 - **Pre-upload API:** `POST /admin/uploads` (multipart `file`) → `{ file }` for guide-video create/patch with `uploaded_file_id` in payload.
 - **Validation:** Zod client `guideVideoFormSchema` in `frontend/src/validation/schemas/forms.ts`; server `guideVideoCreateSchema` / `guideVideoPatchSchema` in `backend/src/validation/schemas/adminCrud.js` (payload parsed from multipart).

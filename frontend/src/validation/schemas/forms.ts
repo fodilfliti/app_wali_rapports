@@ -4,6 +4,13 @@ import { hasBilingualText } from '../../utils/bilingual'
 
 const USERNAME_RE = /^[A-Za-z0-9_]+$/
 
+/** Public entity id: UUID, legacy digit string, or positive number (transition). */
+const publicEntityIdSchema = z.union([
+  z.string().uuid(),
+  z.string().regex(/^\d+$/),
+  z.coerce.number().int().positive(),
+])
+
 export const municipalityFormSchema = z
   .object({
     name_ar: z.string().trim().max(255, V.maxLength),
@@ -14,7 +21,7 @@ export const municipalityFormSchema = z
       .min(1, V.municipalityCodeRequired)
       .max(32, V.maxLength)
       .regex(/^\d+$/, V.municipalityCodeDigitsOnly),
-    daira_id: z.coerce.number().int().positive(V.dairaRequired),
+    daira_id: publicEntityIdSchema,
   })
   .superRefine((data, ctx) => {
     if (!hasBilingualText(data.name_ar, data.name_fr)) {
@@ -76,8 +83,8 @@ export const userPatchFormSchema = z.object({
 })
 
 export const rapportCreateSchema = z.object({
-  service_id: z.number().int().positive(),
-  rapport_type_id: z.number().int().positive(),
+  service_id: publicEntityIdSchema,
+  rapport_type_id: publicEntityIdSchema,
   title: z.string().trim().min(1, V.rapportTitleRequired).max(500, V.maxLength),
 })
 

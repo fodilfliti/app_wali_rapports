@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as api from '../api'
 import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
@@ -13,10 +13,10 @@ import { useSnackbar } from '../snackbar/SnackbarContext'
 import { guideVideoFormSchema } from '../validation/schemas/forms'
 import { useZodForm } from '../validation/useZodForm'
 import { bilingualPairForSave, pickBilingualText } from '../utils/bilingual'
-import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
 import { useGuideVideosListQuery } from '../hooks/queries/useListQueries'
+import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { useSignedFileUrl } from '../hooks/useSignedFileUrl'
 import {
-  fileUrl,
   formatBytes,
   MEDIA_MAX_VIDEO_BYTES,
   MediaUploadError,
@@ -63,6 +63,42 @@ function audienceLabelKey(audience: Audience): string {
   if (audience === 'OFFICE_USER') return 'roleOffice'
   if (audience === 'CHEF_CABINET') return 'roleChefCabinet'
   return 'roleWali'
+}
+
+function GuideVideoThumbMedia({ file }: { file: MediaFile }) {
+  const src = useSignedFileUrl(file.url_path)
+  if (!src) return <span className="guideVideoThumbFallback" aria-hidden />
+  return (
+    <video
+      className="guideVideoThumbMedia"
+      src={`${src}#t=0.1`}
+      muted
+      playsInline
+      preload="metadata"
+      tabIndex={-1}
+      aria-hidden
+    />
+  )
+}
+
+function GuideVideoPlayerSource({
+  file,
+  videoRef,
+}: {
+  file: MediaFile
+  videoRef: RefObject<HTMLVideoElement | null>
+}) {
+  const src = useSignedFileUrl(file.url_path)
+  return (
+    <video
+      ref={videoRef}
+      className="guideVideoPlayer"
+      controls
+      autoPlay
+      playsInline
+      src={src}
+    />
+  )
 }
 
 export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
@@ -182,7 +218,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
       audience: fields.audience,
       is_new: fields.is_new,
     }
-    if (uploadedFile) body.uploaded_file_id = Number(uploadedFile.id)
+    if (uploadedFile) body.uploaded_file_id = uploadedFile.id
 
     setSaving(true)
     try {
@@ -273,7 +309,6 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
           {rows.map((row) => {
             const title = pickBilingualText(row.title_ar, row.title_fr, locale)
             const desc = pickBilingualText(row.description_ar, row.description_fr, locale)
-            const thumbSrc = fileUrl(token, row.file)
             return (
               <article key={row.id} className="guideVideoCard">
                 <button
@@ -282,16 +317,8 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
                   onClick={() => setPlaying(row)}
                   aria-label={t('guideVideoPlay', { title })}
                 >
-                  {thumbSrc ? (
-                    <video
-                      className="guideVideoThumbMedia"
-                      src={`${thumbSrc}#t=0.1`}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      tabIndex={-1}
-                      aria-hidden
-                    />
+                  {row.file ? (
+                    <GuideVideoThumbMedia file={row.file} />
                   ) : (
                     <span className="guideVideoThumbFallback" aria-hidden />
                   )}
@@ -354,14 +381,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
                 </button>
               </div>
             </div>
-            <video
-              ref={videoRef}
-              className="guideVideoPlayer"
-              controls
-              autoPlay
-              playsInline
-              src={fileUrl(token, playing.file)}
-            />
+            <GuideVideoPlayerSource file={playing.file} videoRef={videoRef} />
           </div>
         </div>
       ) : null}

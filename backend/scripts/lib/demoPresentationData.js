@@ -7,8 +7,17 @@
 const crypto = require("crypto");
 const {
   buildFicheDefaultBlocks,
+  buildFicheDefaultDataJson,
   buildCommuneDocumentDefaultBlocks,
+  buildCommuneDocumentDefaultDataJson,
 } = require("../../src/modules/rapports/documentDefaults");
+
+function appendAfterLetterhead(baseHtml, extraHtml) {
+  const base = String(baseHtml || "").replace(/<p><\/p>\s*$/i, "");
+  const extra = String(extraHtml || "").trim();
+  if (!extra) return `${base}<p></p>`;
+  return `${base}${extra}`;
+}
 
 function rowMeta(overrides = {}) {
   return {
@@ -47,19 +56,22 @@ function communeStatusTable(id, titleAr, titleFr, rows) {
 
 function buildCommuneComplexEntry(municipality, opts = {}) {
   const tableId = opts.tableId || crypto.randomUUID();
-  const blocks = buildCommuneDocumentDefaultBlocks(municipality).concat(opts.extraBlocks || []);
+  const defaults = buildCommuneDocumentDefaultDataJson(municipality);
+  const blocks = (defaults.blocks || buildCommuneDocumentDefaultBlocks(municipality)).concat(
+    opts.extraBlocks || [],
+  );
   const embeddedTable = opts.table ? { ...opts.table, id: tableId } : null;
   const embedded_tables = embeddedTable ? [embeddedTable] : [];
   const introAr = opts.introAr || "";
   const introFr = opts.introFr || "";
-  const rich_html_ar =
+  const bodyAr =
     opts.rich_html_ar ||
     (embedded_tables.length
       ? `<p>${introAr}</p><div data-schema-table-id="${tableId}"></div>`
       : introAr
         ? `<p>${introAr}</p>`
         : "");
-  const rich_html_fr =
+  const bodyFr =
     opts.rich_html_fr ||
     (embedded_tables.length
       ? `<p>${introFr}</p><div data-schema-table-id="${tableId}"></div>`
@@ -68,8 +80,8 @@ function buildCommuneComplexEntry(municipality, opts = {}) {
         : "");
   return {
     blocks,
-    rich_html_ar,
-    rich_html_fr,
+    rich_html_ar: appendAfterLetterhead(defaults.rich_html_ar, bodyAr),
+    rich_html_fr: appendAfterLetterhead(defaults.rich_html_fr, bodyFr),
     embedded_tables,
     calendar_events: opts.calendar_events || [],
   };
@@ -152,8 +164,8 @@ function buildHydFicheDataJson(tableId) {
 
   return {
     blocks,
-    rich_html_ar,
-    rich_html_fr,
+    rich_html_ar: appendAfterLetterhead(buildFicheDefaultDataJson().rich_html_ar, rich_html_ar),
+    rich_html_fr: appendAfterLetterhead(buildFicheDefaultDataJson().rich_html_fr, rich_html_fr),
     embedded_tables: [
       ficheEmbeddedTable(
         tableId,
@@ -259,8 +271,8 @@ function buildInvFicheDataJson(tableId) {
 
   return {
     blocks,
-    rich_html_ar,
-    rich_html_fr,
+    rich_html_ar: appendAfterLetterhead(buildFicheDefaultDataJson().rich_html_ar, rich_html_ar),
+    rich_html_fr: appendAfterLetterhead(buildFicheDefaultDataJson().rich_html_fr, rich_html_fr),
     embedded_tables: [
       ficheEmbeddedTable(
         tableId,
@@ -546,6 +558,7 @@ module.exports = {
   paragraphBlock,
   communeStatusTable,
   buildCommuneComplexEntry,
+  appendAfterLetterhead,
   ficheEmbeddedTable,
   buildHydFicheDataJson,
   buildInvFicheDataJson,

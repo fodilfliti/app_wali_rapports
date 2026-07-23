@@ -5,8 +5,10 @@ module.exports = (sequelize) =>
     "UploadedFile",
     {
       id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+      uuid: { type: DataTypes.UUID, allowNull: false, unique: true, defaultValue: DataTypes.UUIDV4 },
       storage_key: { type: DataTypes.STRING(64), allowNull: false, unique: true },
       rapport_id: { type: DataTypes.BIGINT, allowNull: true },
+      rapport_uuid: { type: DataTypes.UUID, allowNull: true },
       uploaded_by_user_id: { type: DataTypes.BIGINT, allowNull: false },
       original_name: { type: DataTypes.STRING(255), allowNull: false },
       mime_type: { type: DataTypes.STRING(120), allowNull: false },

@@ -10,7 +10,7 @@ export type VideoOptions = {
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     video: {
-      setVideo: (options: { src: string; fileId?: number }) => ReturnType
+      setVideo: (options: { src: string; fileId?: string | number }) => ReturnType
     }
   }
 }

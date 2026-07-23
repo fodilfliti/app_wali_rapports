@@ -4,13 +4,15 @@
 
 Admin defines **reusable table column schemas** and **rapport types** per service. Office users fill data against those schemas — **no separate module per domain** (Finance, Hydraulique, etc. are examples in seed data only).
 
+Paths: office hub segment `/cabinet` (`ROUTES.md`). Entity ids: public UUID (`IDENTITY_UUID.md`).
+
 ### Data model
 
 #### `rapport_table_schemas`
 
 | Field | Description |
 | ----- | ----------- |
-| `id` | Primary key (BIGINT) |
+| `id` | Public UUID (API); internal BIGINT PK may remain until drop — `IDENTITY_UUID.md` |
 | `slug` | Unique key (e.g. `consommation-credits`) |
 | `name_ar`, `name_fr` | Display name |
 | `columns_json` | Array of column defs (see below) |
@@ -63,10 +65,10 @@ Reusable **rich HTML starters** for `document_compose` and `fiche_lecture` on a 
 
 | Field | Notes |
 | ----- | ----- |
-| `id` | Primary key (BIGINT) |
+| `id` | Public UUID (API); internal BIGINT PK may remain until drop — `IDENTITY_UUID.md` |
 | `service_id` | Owner service (required) |
 | `rapport_type_id` | Legacy optional field — limit template to one rapport type |
-| `rapport_type_ids` | JSONB array of numbers — limit template to multiple rapport types |
+| `rapport_type_ids` | JSONB array of **UUID strings** (public type ids) — limit template to multiple rapport types |
 | `content_kind` | Optional — `document_compose` \| `fiche_lecture` when no type ids |
 | `slug` | Unique key |
 | `name_ar`, `name_fr` | List label |
@@ -74,9 +76,9 @@ Reusable **rich HTML starters** for `document_compose` and `fiche_lecture` on a 
 | `content_json` | `{ rich_html_ar, rich_html_fr, embedded_tables[] }` |
 | `created_at`, `updated_at` | Timestamps |
 
-**Create rapport:** `POST …/documents` body may include `template_id` or `skip_default: true` (blank document).
+**Create rapport:** `POST …/documents` body may include `template_id` or `skip_default: true` (no user template; **official wilaya letterhead still seeded** — see `spec/CORE.md` § Rich text editor).
 
-**Editor import:** `POST /office/rapports/:id/document/apply-template` with `{ template_id, mode: "replace" \| "append" }`.
+**Editor import:** `POST /cabinet/rapports/:id/document/apply-template` with `{ template_id, mode: "replace" \| "append" }`.
 
 ### Admin API
 
@@ -94,14 +96,14 @@ Reusable **rich HTML starters** for `document_compose` and `fiche_lecture` on a 
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| `GET` | `/office/services/:id/schemas` | Service schemas + system templates (`can_delete` on owned unused schemas) |
-| `POST` | `/office/services/:id/schemas` | Create schema for service |
-| `PATCH` | `/office/schemas/:id` | Update owned schema (not `is_system`) |
-| `DELETE` | `/office/schemas/:id` | Delete unused owned schema (not `is_system`; no type references slug) |
-| `POST` | `/office/services/:id/schemas/duplicate` | Copy template into service |
-| `GET` | `/office/services/:id/rapport-types` | List types |
-| `POST` | `/office/services/:id/rapport-types` | Add type |
-| `DELETE` | `/office/rapport-types/:id` | Hard-delete unused type (zero rapports; never `fiche_lecture`); may cascade orphan schema |
+| `GET` | `/cabinet/services/:id/schemas` | Service schemas + system templates (`can_delete` on owned unused schemas) |
+| `POST` | `/cabinet/services/:id/schemas` | Create schema for service |
+| `PATCH` | `/cabinet/schemas/:id` | Update owned schema (not `is_system`) |
+| `DELETE` | `/cabinet/schemas/:id` | Delete unused owned schema (not `is_system`; no type references slug) |
+| `POST` | `/cabinet/services/:id/schemas/duplicate` | Copy template into service |
+| `GET` | `/cabinet/services/:id/rapport-types` | List types |
+| `POST` | `/cabinet/services/:id/rapport-types` | Add type |
+| `DELETE` | `/cabinet/rapport-types/:id` | Hard-delete unused type (zero rapports; never `fiche_lecture`); may cascade orphan schema |
 
 **Unused type:** no rows in `rapports` with that `rapport_type_id`. **Unused schema (office):** not `is_system`, `service_id` = this service, and no `rapport_types.schema_json.table_schema_slug` equals its slug.
 
@@ -109,12 +111,12 @@ Reusable **rich HTML starters** for `document_compose` and `fiche_lecture` on a 
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| `GET` | `/office/services/:serviceId/document-templates` | List templates (`?rapport_type_id`, `?content_kind`) |
-| `GET` | `/office/services/:serviceId/document-templates/for-create` | Templates valid for new rapport (`?rapport_type_id` required) |
-| `POST` | `/office/services/:serviceId/document-templates` | Create template |
-| `PATCH` | `/office/document-templates/:id` | Update template |
-| `DELETE` | `/office/document-templates/:id` | Delete template |
-| `POST` | `/office/rapports/:id/document/apply-template` | Import into draft (`replace` \| `append`) |
+| `GET` | `/cabinet/services/:serviceId/document-templates` | List templates (`?rapport_type_id`, `?content_kind`) |
+| `GET` | `/cabinet/services/:serviceId/document-templates/for-create` | Templates valid for new rapport (`?rapport_type_id` required) |
+| `POST` | `/cabinet/services/:serviceId/document-templates` | Create template |
+| `PATCH` | `/cabinet/document-templates/:id` | Update template |
+| `DELETE` | `/cabinet/document-templates/:id` | Delete template |
+| `POST` | `/cabinet/rapports/:id/document/apply-template` | Import into draft (`replace` \| `append`) |
 
 Validation: `documentTemplateCreateSchema`, `documentTemplatePatchSchema`, `applyDocumentTemplateSchema` in `schemaConfig.js`.
 
@@ -138,7 +140,7 @@ Validation: `documentTemplateCreateSchema`, `documentTemplatePatchSchema`, `appl
 
 - French content-value inputs (`name_fr`, column/choice/header `label_fr`, etc.) respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 - Admin hub → **Schémas & types** → `/admin/schemas`
-- Office editor → service hub → **Configuration** → `/office/services/:id/config` — **tabbed** UI (schemas | rapport types | document templates); advanced path for reuse/edit; `?new=schema|type|template` still supported
+- Office editor → service hub → **Configuration** → `/cabinet/services/:id/config` — **tabbed** UI (schemas | rapport types | document templates); advanced path for reuse/edit; `?new=schema|type|template` still supported
 - Office service hub (`manage`): **kind-scoped add tiles** (see `RAPPORT_SERVICE_TYPES.md`); جدول header **مخططات الأعمدة** opens schema browser (search, inline column preview, edit, delete unused); hub header keeps **إعداد المجال** only (no primary « مخطط جديد / نوع تقرير جديد » shortcuts)
 - Office Configuration schemas tab / hub schema browser: **search + select** then **table preview** (same Data/Schema preview as insert-schema flow); edit name inline; edit columns via editor modal; delete unused; **duplicate-from-template** control is **hidden in UI** for now (API remains)
 - Office → service → hub tiles per content kind — **new document/fiche** opens template picker (default pre-selected, or blank)

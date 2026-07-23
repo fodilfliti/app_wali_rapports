@@ -1,9 +1,8 @@
-import { getApiBase } from './apiBase'
-
-const API_BASE = getApiBase()
+import { signFileUrl } from '../api'
+import type { EntityIdParam } from '../api'
 
 export type MediaFile = {
-  id: number
+  id: EntityIdParam
   storage_key: string
   original_name: string
   mime_type: string
@@ -12,7 +11,7 @@ export type MediaFile = {
   url_path: string
 }
 
-export type MediaRow = { items: { file_id: number }[] }
+export type MediaRow = { items: { file_id: EntityIdParam }[] }
 
 export const MEDIA_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const MEDIA_MAX_VIDEO_BYTES = 100 * 1024 * 1024
@@ -30,10 +29,10 @@ export class MediaUploadError extends Error {
   }
 }
 
-export function fileUrl(token: string, file: MediaFile | undefined | null) {
+/** @deprecated use signFileUrl or useSignedFileUrl */
+export async function fileUrl(_token: string, file: MediaFile | undefined | null) {
   if (!file?.url_path) return ''
-  const sep = file.url_path.includes('?') ? '&' : '?'
-  return `${API_BASE}${file.url_path}${sep}access_token=${encodeURIComponent(token)}`
+  return signFileUrl(file.url_path)
 }
 
 export function emptyMediaRow(): MediaRow {
@@ -52,23 +51,32 @@ export function formatBytes(bytes: number) {
   return `${bytes} B`
 }
 
-export function flattenMediaRows(rows: MediaRow[] | undefined): number[] {
-  const ids: number[] = []
+export function flattenMediaRows(rows: MediaRow[] | undefined): EntityIdParam[] {
+  const ids: EntityIdParam[] = []
   for (const row of rows || []) {
     for (const it of row.items || []) {
-      if (it.file_id) ids.push(Number(it.file_id))
+      if (it.file_id != null && it.file_id !== '') ids.push(it.file_id)
     }
   }
   return ids
 }
 
-export function mediaRowsFromFileIds(ids: number[]): MediaRow[] {
-  const items = ids.filter(Boolean).map((file_id) => ({ file_id }))
+export function mediaRowsFromFileIds(ids: EntityIdParam[]): MediaRow[] {
+  const items = ids.filter((id) => id != null && id !== '').map((file_id) => ({ file_id }))
   return items.length ? [{ items }] : []
 }
 
 export function normalizeMediaRows(rows: MediaRow[] | undefined): MediaRow[] {
   return mediaRowsFromFileIds(flattenMediaRows(rows))
+}
+
+/** Resolve media file whether map is keyed by UUID or legacy BIGINT. */
+export function lookupMediaFile(
+  files: Record<string, MediaFile> | undefined | null,
+  fileId: EntityIdParam | null | undefined,
+): MediaFile | null {
+  if (!files || fileId == null || fileId === '') return null
+  return files[String(fileId)] ?? null
 }
 
 let worker: Worker | null = null

@@ -13,34 +13,36 @@ import { useOfficeNotificationsListQuery } from '../hooks/queries/useListQueries
 import { waliDecisionLabel } from '../utils/waliDecision'
 import { DEFAULT_PAGE_SIZE, paginateSlice } from '../utils/pagination'
 
+import { paths } from '@wali/routes'
+
 type Props = { token: string }
 
 function rapportLink(n: any) {
   const rapport = n.rapport
-  if (!rapport) return '/office/rapports'
+  if (!rapport) return paths.hub.path('office', 'rapports')
   const kind = rapport.rapportType?.content_kind
-  const sid = rapport.service_id
-  const typeId = rapport.rapport_type_id || rapport.rapportType?.id
+  const sid = rapport.service?.id ?? rapport.service_id
+  const typeId = rapport.rapportType?.id ?? rapport.rapport_type_id
   if (kind === 'table_grid') {
     const q = new URLSearchParams()
     if (typeId) q.set('rapport_type_id', String(typeId))
     q.set('rapport_id', String(rapport.id))
-    return `/office/services/${sid}/table?${q}`
+    return `${paths.hub.path('office', 'services', String(sid), 'table')}?${q}`
   }
   if (kind === 'commune_list') {
     const q = new URLSearchParams()
     if (typeId) q.set('rapport_type_id', String(typeId))
     q.set('rapport_id', String(rapport.id))
-    return `/office/services/${sid}/communes?${q}`
+    return `${paths.hub.liste.hub(String(sid))}?${q}`
   }
   if (kind === 'fiche_lecture' || kind === 'document_compose') {
-    return `/office/rapports/${rapport.id}/document`
+    return paths.hub.path('office', 'rapports', String(rapport.id), 'document')
   }
-  return `/office/rapports/${rapport.id}/document`
+  return paths.hub.path('office', 'rapports', String(rapport.id), 'document')
 }
 
 function notificationLink(n: any) {
-  if (n.broadcast_id) return `/office/shared/${n.broadcast_id}`
+  if (n.broadcast_id) return paths.hub.path('office', 'shared', String(n.broadcast_id))
   return rapportLink(n)
 }
 
@@ -57,7 +59,7 @@ export function OfficeNotificationsBell({ token }: Props) {
   return (
     <Link
       className="btn btn-ghost notifBell"
-      to="/office/notifications"
+      to="/cabinet/notifications"
       title={label}
       aria-label={label}
     >
@@ -87,7 +89,7 @@ export function OfficeDiscussionBell({ token }: Props) {
   return (
     <Link
       className="btn btn-ghost notifBell"
-      to="/office/rapports?view=discussion"
+      to="/cabinet/rapports?view=discussion"
       title={discAria}
       aria-label={discAria}
     >
@@ -173,7 +175,7 @@ export function OfficeNotificationsPage({ token }: Props) {
             </p>
           ) : null}
         </div>
-        <BackButton fallbackTo="/office" />
+        <BackButton fallbackTo="/cabinet" />
       </div>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
       <div className="card notificationPageCard">

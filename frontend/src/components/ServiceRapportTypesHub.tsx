@@ -17,21 +17,23 @@ import {
   waliRapportTypeListPath,
 } from '../utils/rapportNavigation'
 
+import type { EntityIdParam } from '../api'
+
 type Props = {
-  service: { id: number; name_ar?: string; name_fr?: string }
+  service: { id: EntityIdParam; name_ar?: string; name_fr?: string }
   rapportTypes: RapportTypeNav[]
   accessLevel?: string
   backTo: string
   mode: 'office' | 'wali'
-  waliUserId?: number
+  waliUserId?: EntityIdParam
   showConfig?: boolean
   pageTitle?: string
   manageTypes?: boolean
   showHiddenTypes?: boolean
   onShowHiddenTypesChange?: (showHidden: boolean) => void
-  onHideType?: (typeId: number) => void | Promise<void>
-  onRestoreType?: (typeId: number) => void | Promise<void>
-  onDeleteType?: (typeId: number) => void | Promise<void>
+  onHideType?: (typeId: EntityIdParam) => void | Promise<void>
+  onRestoreType?: (typeId: EntityIdParam) => void | Promise<void>
+  onDeleteType?: (typeId: EntityIdParam) => void | Promise<void>
 }
 
 export function ServiceRapportTypesHub({
@@ -71,7 +73,7 @@ export function ServiceRapportTypesHub({
         </div>
         {mode === 'office' && accessLevel === 'view' ? <span className="badge">{t('accessView')}</span> : null}
         {mode === 'office' && showConfig ? (
-          <Link className="btn btn-secondary" to={`/office/services/${service.id}/config`}>
+          <Link className="btn btn-secondary" to={`/cabinet/services/${service.id}/config`}>
             {t('serviceConfig')}
           </Link>
         ) : null}

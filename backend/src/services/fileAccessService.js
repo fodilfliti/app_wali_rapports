@@ -67,6 +67,12 @@ async function canAccessUploadedFile(user, file) {
   if (Number(file.uploaded_by_user_id) === Number(user.id)) return true;
 
   if (file.rapport_id) {
+    const { assertCan } = require("../modules/access/assertCan");
+    try {
+      assertCan(user, "rapport.view");
+    } catch {
+      if (user.role !== "ADMIN") return false;
+    }
     try {
       await assertRapportAccess(user, file.rapport_id, "view");
       return true;

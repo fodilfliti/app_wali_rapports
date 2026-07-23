@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "../api";
-import { ApiError } from "../api";
+import { ApiError, type EntityIdParam } from "../api";
 import { BackButton } from "../components/BackButton";
 import { BusyButton } from "../components/BusyButton";
 import { TableSchemaEditorModal } from "../components/TableSchemaEditorModal";
@@ -52,7 +52,7 @@ function linkedSchemaSlug(rt: any) {
 
 export function OfficeServiceConfigPage({ token }: Props) {
   const { serviceId } = useParams();
-  const sid = Number(serviceId);
+  const sid = (serviceId || "") as import("../api").EntityIdParam;
   const [searchParams, setSearchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
   const snack = useSnackbar();
@@ -62,7 +62,9 @@ export function OfficeServiceConfigPage({ token }: Props) {
   const [service, setService] = useState<any>(null);
   const [activePanel, setActivePanel] = useState<ConfigPanel>("schemas");
   const [schemaModal, setSchemaModal] = useState(false);
-  const [editingSchemaId, setEditingSchemaId] = useState<number | null>(null);
+  const [editingSchemaId, setEditingSchemaId] = useState<EntityIdParam | null>(
+    null,
+  );
   const [typeModal, setTypeModal] = useState(false);
   const [autoOpenTemplate, setAutoOpenTemplate] = useState(false);
   const [editTypeModal, setEditTypeModal] = useState(false);
@@ -192,7 +194,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
 
   function openEditSchemaModal(schema: any) {
     const loaded = loadSchemaEditorState(schema);
-    setEditingSchemaId(Number(schema.id));
+    setEditingSchemaId(schema.id);
     setSchemaForm(loaded.schemaForm);
     setDraftColumns(loaded.draftColumns);
     setDraftHeaderGroups(loaded.draftHeaderGroups);
@@ -273,7 +275,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
     if (!dupForm.source_schema_id) return;
     try {
       await api.duplicateOfficeServiceSchema(token, sid, {
-        source_schema_id: Number(dupForm.source_schema_id),
+        source_schema_id: dupForm.source_schema_id,
       });
       setDuplicateModal(false);
       load();
@@ -284,7 +286,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
     }
   }
 
-  async function deleteSchema(schemaId: number) {
+  async function deleteSchema(schemaId: EntityIdParam) {
     try {
       await api.deleteOfficeSchema(token, schemaId);
       snack.show(t("deleteUnusedSchemaDone"), "success");
@@ -329,7 +331,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
         <h1>
           {label} — {t("serviceConfig")}
         </h1>
-        <BackButton fallbackTo={`/office/services/${sid}`} />
+        <BackButton fallbackTo={`/cabinet/services/${sid}`} />
       </div>
       <p className="muted">{t("officeConfigHelp")}</p>
       <ol className="schemasPageSteps muted small">

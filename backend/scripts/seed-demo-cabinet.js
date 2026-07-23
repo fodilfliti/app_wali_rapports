@@ -42,8 +42,17 @@ const {
 const inventory = require("./data/prodBootstrapInventory");
 const {
   buildFicheDefaultBlocks,
+  buildFicheDefaultDataJson,
+  buildDocumentDefaultDataJson,
 } = require("../src/modules/rapports/documentDefaults");
 const { seedHeroIfNeeded } = require("./lib/seedCabinetHeroes");
+const {
+  createRapportSeed,
+  createVersionSeed,
+  setRapportCurrentVersion,
+  createNotificationSeed,
+} = require("./lib/seedIdentity");
+const { appendAfterLetterhead } = require("./lib/demoPresentationData");
 
 function assertDevOnly() {
   if (process.env.NODE_ENV === "production") {
@@ -108,7 +117,7 @@ async function createRapportBundle({
   chefResponses = [],
   calendarEvents = [],
 }) {
-  const rapport = await Rapport.create({
+  const rapport = await createRapportSeed({
     service_id: serviceId,
     rapport_type_id: typeId,
     title,
@@ -122,23 +131,21 @@ async function createRapportBundle({
 
   const versionRows = [];
   for (const v of versions) {
-    const row = await RapportVersion.create({
-      rapport_id: rapport.id,
-      version_number: v.number,
-      data_json: v.data_json,
-      submitted_at: v.submitted_at || null,
-      created_by_user_id: authorId,
-      created_at: v.submitted_at || new Date(),
-    });
+    const row = await createVersionSeed(
+      {
+        version_number: v.number,
+        data_json: v.data_json,
+        submitted_at: v.submitted_at || null,
+        created_by_user_id: authorId,
+        created_at: v.submitted_at || new Date(),
+      },
+      rapport,
+    );
     versionRows.push(row);
   }
 
   const current = versionRows[versionRows.length - 1];
-  await rapport.update({
-    status,
-    current_version_id: current.id,
-    updated_at: new Date(),
-  });
+  await setRapportCurrentVersion(rapport, current, { status });
 
   for (const wr of waliResponses) {
     const resp = await WaliResponse.create({
@@ -151,7 +158,7 @@ async function createRapportBundle({
       created_by_user_id: wr.authorId,
     });
     if (wr.notifyUserId) {
-      await Notification.create({
+      await createNotificationSeed({
         user_id: wr.notifyUserId,
         rapport_id: rapport.id,
         wali_response_id: resp.id,
@@ -171,7 +178,7 @@ async function createRapportBundle({
       created_by_user_id: cr.authorId,
     });
     if (cr.notifyUserId) {
-      await Notification.create({
+      await createNotificationSeed({
         user_id: cr.notifyUserId,
         rapport_id: rapport.id,
         chef_response_id: resp.id,
@@ -196,17 +203,35 @@ async function createRapportBundle({
 }
 
 function ficheHtml(serviceName, bodyAr) {
+  const base = buildFicheDefaultDataJson();
   return {
-    rich_html_ar: `<h2>مذكرة استخلاصية — ${serviceName}</h2><p>${bodyAr}</p><p>ولاية تلمسان — الديوان — عرض تقديمي.</p>`,
-    rich_html_fr: `<h2>Fiche — ${serviceName}</h2><p>Données de démonstration.</p>`,
-    blocks: buildFicheDefaultBlocks(),
+    ...base,
+    rich_html_ar: appendAfterLetterhead(
+      base.rich_html_ar,
+      `<p>${bodyAr}</p><p>ولاية تلمسان — الديوان — عرض تقديمي.</p>`,
+    ),
+    rich_html_fr: appendAfterLetterhead(
+      base.rich_html_fr,
+      `<p>Données de démonstration — ${serviceName}.</p>`,
+    ),
   };
 }
 
 function docHtml(serviceName) {
+  const base = buildDocumentDefaultDataJson({
+    titleAr: serviceName,
+    titleFr: serviceName,
+  });
   return {
-    rich_html_ar: `<h2>${serviceName}</h2><p>ملف مركّب للمتابعة الأسبوعية. يتضمن ملخص الوضعية والتوصيات.</p><ul><li>متابعة ميدانية</li><li>تنسيق مع المصالح</li><li>آجال الإنجاز</li></ul>`,
-    rich_html_fr: `<h2>${serviceName}</h2><p>Document de suivi hebdomadaire (démo).</p>`,
+    ...base,
+    rich_html_ar: appendAfterLetterhead(
+      base.rich_html_ar,
+      `<p>ملف مركّب للمتابعة الأسبوعية. يتضمن ملخص الوضعية والتوصيات.</p><ul><li>متابعة ميدانية</li><li>تنسيق مع المصالح</li><li>آجال الإنجاز</li></ul>`,
+    ),
+    rich_html_fr: appendAfterLetterhead(
+      base.rich_html_fr,
+      `<p>Document de suivi hebdomadaire (démo).</p>`,
+    ),
     embedded_tables: [],
   };
 }

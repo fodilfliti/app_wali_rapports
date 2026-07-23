@@ -28,7 +28,7 @@ export function SchemaTableImportPreview({ token, rapportId }: Props) {
     setLoading(true)
     setError(false)
     api
-      .getRapportTableSnapshot(token, Number(rapportId))
+      .getRapportTableSnapshot(token, rapportId)
       .then((res) => {
         if (!cancelled) setSnapshot(res.snapshot)
       })

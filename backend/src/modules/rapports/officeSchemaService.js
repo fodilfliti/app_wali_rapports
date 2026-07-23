@@ -1,14 +1,24 @@
 const { Op } = require("sequelize");
-const { RapportTableSchema } = require("../../db");
-const { assertServiceAccess } = require("./serviceAccessService");
+const { RapportTableSchema, RapportType } = require("../../db");
+const { findByPublicId, withPublicId, withPublicIds } = require("../access/idResolver");
+const {
+  assertServiceAccess,
+  resolveNumericServiceId,
+} = require("./serviceAccessService");
 const schemaConfig = require("./schemaConfigService");
 const { audit } = require("../../services/audit");
 const { baseSlugFromNames, ensureUniqueSlug } = require("../../utils/slugUtils");
 
 async function listSchemasForOfficeService(serviceId, user) {
   await assertServiceAccess(user, serviceId, "manage");
+  const numericServiceId = await resolveNumericServiceId(serviceId);
+  if (!numericServiceId) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
   const owned = await RapportTableSchema.findAll({
-    where: { service_id: serviceId },
+    where: { service_id: numericServiceId },
     order: [["slug", "ASC"]],
   });
   const templates = await RapportTableSchema.findAll({
@@ -18,7 +28,6 @@ async function listSchemasForOfficeService(serviceId, user) {
     order: [["slug", "ASC"]],
   });
 
-  const { RapportType } = require("../../db");
   const types = await RapportType.findAll({
     attributes: ["schema_json"],
     raw: true,
@@ -27,40 +36,41 @@ async function listSchemasForOfficeService(serviceId, user) {
     types.map((t) => t.schema_json?.table_schema_slug).filter(Boolean),
   );
 
-  const schemas = owned.map((row) => {
-    const json = row.toJSON ? row.toJSON() : { ...row };
-    return {
-      ...json,
-      can_delete: !row.is_system && !usedSlugs.has(row.slug),
-    };
-  });
-  const templateRows = templates.map((row) => {
-    const json = row.toJSON ? row.toJSON() : { ...row };
-    return { ...json, can_delete: false };
-  });
+  const schemas = withPublicIds(owned).map((json, i) => ({
+    ...json,
+    can_delete: !owned[i].is_system && !usedSlugs.has(owned[i].slug),
+  }));
+  const templateRows = withPublicIds(templates).map((json) => ({
+    ...json,
+    can_delete: false,
+  }));
 
   return { schemas, templates: templateRows };
 }
 
 async function createSchemaForOfficeService(serviceId, data, user, req) {
   await assertServiceAccess(user, serviceId, "manage");
-  const row = await schemaConfig.createTableSchema(
+  const numericServiceId = await resolveNumericServiceId(serviceId);
+  if (!numericServiceId) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  // createTableSchema already persists layout_json and returns withPublicId(plain).
+  return schemaConfig.createTableSchema(
     {
       ...data,
-      service_id: serviceId,
-      columns: data.columns
+      service_id: numericServiceId,
+      columns: data.columns,
+      layout_json: data.layout_json ?? null,
     },
     user,
-    req
+    req,
   );
-  if (data.layout_json != null) {
-    await row.update({ layout_json: data.layout_json });
-  }
-  return row;
 }
 
 async function updateSchemaForOffice(schemaId, data, user, req) {
-  const row = await RapportTableSchema.findByPk(schemaId);
+  const row = await findByPublicId(RapportTableSchema, schemaId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -77,7 +87,13 @@ async function updateSchemaForOffice(schemaId, data, user, req) {
 
 async function duplicateSchemaToService(serviceId, sourceSchemaId, newSlug, user, req) {
   await assertServiceAccess(user, serviceId, "manage");
-  const source = await RapportTableSchema.findByPk(sourceSchemaId);
+  const numericServiceId = await resolveNumericServiceId(serviceId);
+  if (!numericServiceId) {
+    const err = new Error("Not found");
+    err.status = 404;
+    throw err;
+  }
+  const source = await findByPublicId(RapportTableSchema, sourceSchemaId);
   if (!source) {
     const err = new Error("Not found");
     err.status = 404;
@@ -96,16 +112,16 @@ async function duplicateSchemaToService(serviceId, sourceSchemaId, newSlug, user
     }
   }
   const row = await RapportTableSchema.create({
-    service_id: serviceId,
+    service_id: numericServiceId,
     slug,
     name_ar: source.name_ar,
     name_fr: source.name_fr,
     columns_json: source.columns_json,
     layout_json: source.layout_json,
-    is_system: false
+    is_system: false,
   });
   await audit(user.id, "TABLE_SCHEMA_DUPLICATE", { schema_id: row.id, source_id: source.id }, { req });
-  return row;
+  return withPublicId(row);
 }
 
 async function listRapportTypesForOffice(serviceId, user) {
@@ -119,8 +135,7 @@ async function createRapportTypeForOffice(serviceId, data, user, req) {
 }
 
 async function updateRapportTypeForOffice(rapportTypeId, data, user, req) {
-  const { RapportType } = require("../../db");
-  const row = await RapportType.findByPk(rapportTypeId);
+  const row = await findByPublicId(RapportType, rapportTypeId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -131,8 +146,7 @@ async function updateRapportTypeForOffice(rapportTypeId, data, user, req) {
 }
 
 async function hideRapportTypeForOffice(rapportTypeId, user, req) {
-  const { RapportType } = require("../../db");
-  const row = await RapportType.findByPk(rapportTypeId);
+  const row = await findByPublicId(RapportType, rapportTypeId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -143,8 +157,7 @@ async function hideRapportTypeForOffice(rapportTypeId, user, req) {
 }
 
 async function restoreRapportTypeForOffice(rapportTypeId, user, req) {
-  const { RapportType } = require("../../db");
-  const row = await RapportType.findByPk(rapportTypeId);
+  const row = await findByPublicId(RapportType, rapportTypeId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -155,8 +168,7 @@ async function restoreRapportTypeForOffice(rapportTypeId, user, req) {
 }
 
 async function deleteRapportTypeForOffice(rapportTypeId, user, req) {
-  const { RapportType } = require("../../db");
-  const row = await RapportType.findByPk(rapportTypeId);
+  const row = await findByPublicId(RapportType, rapportTypeId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -167,7 +179,7 @@ async function deleteRapportTypeForOffice(rapportTypeId, user, req) {
 }
 
 async function deleteSchemaForOffice(schemaId, user, req) {
-  const row = await RapportTableSchema.findByPk(schemaId);
+  const row = await findByPublicId(RapportTableSchema, schemaId);
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
