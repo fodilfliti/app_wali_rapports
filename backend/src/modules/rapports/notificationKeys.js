@@ -1,6 +1,7 @@
 /** Keys owned by dedicated hub counters (instructions / shared files). */
 const DEDICATED_NOTIFICATION_KEYS = [
   "waliInstruction",
+  "chefInstruction",
   "waliBroadcast",
   "waliBroadcastReminder",
 ];
@@ -23,6 +24,7 @@ const MESSAGE_KEY_PREF = {
   chefFeedback: "rapport_feedback",
   rapportComment: "discussion",
   waliInstruction: "instructions",
+  chefInstruction: "chef_instructions",
   waliBroadcast: "broadcasts",
   waliBroadcastReminder: "broadcasts",
   calendarToday: "calendar",
@@ -36,6 +38,7 @@ const PREF_DEFAULTS = {
   rapport_feedback: true,
   discussion: true,
   instructions: true,
+  chef_instructions: true,
   broadcasts: true,
   calendar: true,
 };

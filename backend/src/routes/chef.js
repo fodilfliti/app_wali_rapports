@@ -24,6 +24,12 @@ const { generateRapportExcel } = require("../services/rapportExcelService");
 const {
   contentDispositionAttachment,
 } = require("../services/rapportExportFilename");
+const { singleUpload, optionalSingleUpload, optionalMultiUpload } = require("../middleware/upload");
+const {
+  saveUploadedFile,
+  multerFileInput,
+  cleanupTempFile,
+} = require("../services/uploadService");
 
 const chefRouter = express.Router();
 chefRouter.use(
@@ -439,9 +445,79 @@ chefRouter.get("/instructions/:id", async (req, res, next) => {
   }
 });
 
+const chefInstructionService = require("../modules/rapports/chefInstructionService");
+
+chefRouter.get("/chef-instructions", async (req, res, next) => {
+  try {
+    res.json(await chefInstructionService.listForChef(req.query));
+  } catch (e) {
+    next(e);
+  }
+});
+
+chefRouter.get("/chef-instructions/:id", async (req, res, next) => {
+  try {
+    res.json({
+      instruction: await chefInstructionService.getInstruction(req.params.id, {
+        asChef: true,
+      }),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+chefRouter.delete(
+  "/chef-instructions/:id",
+  requirePermission("rapports.inbox.respond", "manage"),
+  async (req, res, next) => {
+    try {
+      res.json(await chefInstructionService.deleteInstruction(req.params.id, req.user, req));
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      next(e);
+    }
+  },
+);
+
+chefRouter.post(
+  "/chef-instructions",
+  requirePermission("rapports.inbox.respond", "manage"),
+  optionalMultiUpload("files", 10),
+  async (req, res, next) => {
+    try {
+      let body = {};
+      try {
+        body = req.body.payload ? JSON.parse(req.body.payload) : req.body;
+      } catch {
+        body = req.body;
+      }
+      const instruction = await chefInstructionService.createInstruction(
+        { files: req.files || [], body },
+        req.user,
+        req,
+      );
+      res.status(201).json({ instruction });
+    } catch (e) {
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
+
+chefRouter.get("/chef-instructions-office-users", async (req, res, next) => {
+  try {
+    res.json({ users: await chefInstructionService.listOfficeUsers() });
+  } catch (e) {
+    next(e);
+  }
+});
+
 chefRouter.get("/broadcasts", async (req, res, next) => {
   try {
-    const broadcasts = await broadcastService.listForOfficeUser(req.user.id);
+    const broadcasts = await broadcastService.listForChef(req.user.id);
     res.json({ broadcasts });
   } catch (e) {
     next(e);
@@ -482,6 +558,94 @@ chefRouter.post("/broadcasts/:id/comments", async (req, res, next) => {
     next(e);
   }
 });
+
+chefRouter.post(
+  "/broadcasts/:id/remind",
+  requirePermission("rapports.inbox.respond", "manage"),
+  async (req, res, next) => {
+    try {
+      res.json(
+        await broadcastService.notifyUnreadRecipients(req.params.id, req.user),
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
+
+chefRouter.get(
+  "/office-users-for-share",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      const users = await broadcastService.listShareRecipients(req.user);
+      res.json({ users });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+chefRouter.post(
+  "/uploads",
+  requirePermission("rapports.inbox.respond", "manage"),
+  singleUpload("file"),
+  async (req, res, next) => {
+    try {
+      const input = multerFileInput(req.file);
+      if (!input?.sourcePath && !input?.buffer) {
+        return res.status(400).json({ error: "File required" });
+      }
+      const file = await saveUploadedFile({
+        ...input,
+        rapportId: null,
+        actor: req.user,
+        req,
+        startedAt: req.uploadStartedAt,
+      });
+      res.status(201).json({ file });
+    } catch (e) {
+      const input = multerFileInput(req.file);
+      if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
+      if (e.status === 413) return res.status(413).json({ error: e.message });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+chefRouter.post(
+  "/broadcasts",
+  requirePermission("rapports.inbox.respond", "manage"),
+  optionalSingleUpload("file"),
+  async (req, res, next) => {
+    try {
+      let body = {};
+      try {
+        body = req.body.payload ? JSON.parse(req.body.payload) : req.body;
+      } catch {
+        body = req.body;
+      }
+      const broadcast = await broadcastService.createBroadcast(
+        {
+          fileInput: multerFileInput(req.file),
+          body,
+        },
+        req.user,
+        req,
+      );
+      res.status(201).json({ broadcast });
+    } catch (e) {
+      const input = multerFileInput(req.file);
+      if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
+      if (e.status === 413) return res.status(413).json({ error: e.message });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      next(e);
+    }
+  },
+);
 
 chefRouter.get(
   "/rapports/:id/comments",

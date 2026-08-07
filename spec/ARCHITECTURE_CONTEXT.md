@@ -93,7 +93,8 @@ erDiagram
    - `uploaded_files`: Tracks attachments (`image`, `video`, `file`) uploaded via rapport fields or Wali broadcasts.
    - `rapport_calendar_events`: Events linked to reports displayed on the Wali's calendar interface.
    - `notifications`: Alerts on Wali/Chef feedback, discussion, broadcasts, pending inbox, calendar reminders — plus Web Push via `web_push_subscriptions` and prefs in `user_notification_preferences` (`DEVICE_NOTIFICATIONS.md`).
-   - `wali_broadcasts`: System bulletins created by the Wali to share documents globally or with select recipients. Comments are tracked in `wali_broadcast_comments` and read markers in `wali_broadcast_recipients`.
+   - `wali_broadcasts`: Shared file pool created by Wali **or** Chef; recipients and comments as before — `MEDIA_CALENDAR_WALI_SHARING.md`.
+   - `chef_instructions`: Chef→office instructions (parallel to `wali_instructions`) — `CHEF_INSTRUCTIONS.md`.
 
 ---
 
@@ -181,7 +182,7 @@ When creating a new report within a service content hub:
 
 **Demo seed (`db:seed-demo`)** — each run **wipes then reseeds** (safe while iterating):
 
-Clears: departments/services, all rapports & related tables, grants, instructions, broadcasts, guide videos, refresh tokens, audit logs, permission overrides, **all non-admin users**, **all directions**, and soft-hide flags on dairas/communes.
+Clears: departments/services, all rapports & related tables, grants, Wali/Chef instructions, broadcasts, guide videos, refresh tokens, audit logs, permission overrides, **all non-admin users**, **all directions**, and soft-hide flags on dairas/communes.
 
 Keeps: `ADMIN` account(s), Tlemcen dairas/communes (`db:seed-dev`), access role templates.
 
@@ -192,7 +193,7 @@ Then creates:
 - Liste **targets** mixing commune / daira / direction + `changed_entity_keys` across versions
 - Rich fiches with `rich_html`, embedded tables; media/broadcast/guide files reuse `backend/storage/uploads/` when present
 - Lifecycle samples: `draft`, `pending_chef`, `submitted`, `under_review`, `changes_requested` (`chef_gate=bypass`), `acknowledged`, plus soft-hidden rapport/type and org refs
-- Chef responses, rapport discussion comments, Wali instructions, Wali broadcast (office + Chef), guide videos (all audiences including Admin-secret)
+- Chef responses, rapport discussion comments, Wali instructions, **Chef instructions**, Wali + Chef shared broadcasts, guide videos (all audiences including Admin-secret)
 - Document templates, calendar events, notifications
 - Fresh demo logins (password `TEST_USER_PASSWORD` or default **`Test1234!`**):
   - **`admin`** (from `db:seed-dev`) — compte admin

@@ -270,7 +270,13 @@ export function useAdminUsersQuery(
   })
 }
 
-type InstructionsScope = 'office' | 'wali' | 'chef'
+type InstructionsScope =
+  | 'office'
+  | 'wali'
+  | 'chef'
+  | 'office_chef'
+  | 'wali_chef'
+  | 'chef_authored'
 
 export function useInstructionsListQuery(
   token: string,
@@ -282,6 +288,9 @@ export function useInstructionsListQuery(
     queryFn: () => {
       if (scope === 'wali') return api.listWaliInstructions(token, params)
       if (scope === 'chef') return api.listChefInstructions(token, params)
+      if (scope === 'office_chef') return api.listOfficeChefInstructions(token, params)
+      if (scope === 'wali_chef') return api.listWaliChefInstructions(token, params)
+      if (scope === 'chef_authored') return api.listChefAuthoredInstructions(token, params)
       return api.listOfficeInstructions(token, params)
     },
     enabled: !!token,

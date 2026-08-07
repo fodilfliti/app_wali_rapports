@@ -97,6 +97,26 @@ async function countUnreadInstructions(userId, prefs) {
   });
 }
 
+async function countUnreadChefInstructions(userId, prefs) {
+  if (prefs && !prefs.enabled) return 0;
+  if (prefs && prefs.chef_instructions === false) return 0;
+  const { ChefInstructionRecipient } = require("../../db");
+  const [recipientUnread, notifUnread] = await Promise.all([
+    ChefInstructionRecipient.count({
+      where: { user_id: userId, read_at: null },
+    }),
+    Notification.count({
+      where: {
+        user_id: userId,
+        message_key: "chefInstruction",
+        read_at: null,
+      },
+    }),
+  ]);
+  // Office: recipient rows; Wali: notification-only (not a recipient). Use max to avoid double-count.
+  return Math.max(recipientUnread, notifUnread);
+}
+
 async function loadRapportCountsByService(whereExtra) {
   const rows = await Rapport.findAll({
     attributes: ["service_id", [Rapport.sequelize.fn("COUNT", Rapport.sequelize.col("id")), "count"]],
@@ -163,6 +183,7 @@ async function getOfficeHubCounts(userId) {
     changes_requested_rapports,
     unread_shared_files,
     unread_instructions,
+    unread_chef_instructions,
     unread_discussion,
     serviceCounts,
   ] = await Promise.all([
@@ -170,6 +191,7 @@ async function getOfficeHubCounts(userId) {
     countOfficeChangesRequested(userId),
     countUnreadSharedFiles(userId, prefs),
     countUnreadInstructions(userId, prefs),
+    countUnreadChefInstructions(userId, prefs),
     countUnreadDiscussion(userId, {}, prefs),
     getOfficeServiceActionCounts(userId),
   ]);
@@ -179,6 +201,7 @@ async function getOfficeHubCounts(userId) {
     changes_requested_rapports,
     unread_shared_files,
     unread_instructions,
+    unread_chef_instructions,
     unread_discussion,
     services_action_count,
   };
@@ -269,12 +292,26 @@ async function getWaliHubCounts(user) {
       : await findByPublicId(User, userId);
     if (row) await maybeRunDailyCalendarScan(row);
   }
-  const [inbox_pending, office_users_pending, unread_discussion] = await Promise.all([
+  const [
+    inbox_pending,
+    office_users_pending,
+    unread_discussion,
+    unread_shared_files,
+    unread_chef_instructions,
+  ] = await Promise.all([
     countWaliInboxPending(),
     countWaliOfficeUsersWithPending(),
     countUnreadDiscussion(userId, { forWali: true }, prefs),
+    countUnreadSharedFiles(userId, prefs),
+    countUnreadChefInstructions(userId, prefs),
   ]);
-  return { inbox_pending, office_users_pending, unread_discussion };
+  return {
+    inbox_pending,
+    office_users_pending,
+    unread_discussion,
+    unread_shared_files,
+    unread_chef_instructions,
+  };
 }
 
 async function countChefDeletePending() {
@@ -317,6 +354,7 @@ async function getChefHubCounts(user) {
     unread_discussion,
     unread_shared_files,
     delete_pending,
+    unread_chef_instructions: 0,
   };
 }
 

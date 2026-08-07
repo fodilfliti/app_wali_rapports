@@ -8,6 +8,7 @@ import {
   RapportTitleField,
   patchRapportTitle,
 } from "../components/RapportTitleField";
+import { RapportCreatedBy } from "../components/RapportCreatedBy";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
 import { RapportOfficeStatusBanner } from "../components/RapportOfficeStatusBanner";
 import { OfficeRapportDeleteControls } from "../components/RapportDeleteControls";
@@ -368,12 +369,15 @@ export function OfficeCommuneBulkEditorPage({ token }: Props) {
   return (
     <div className="page communeBulkEditorPage">
       <div className="pageHeader row compact">
-        <RapportTitleField
-          title={title}
-          onChange={setTitle}
-          editable={editable}
-          fallback={t("bulkEntry")}
-        />
+        <div className="pageHeaderTitleBlock">
+          <RapportTitleField
+            title={title}
+            onChange={setTitle}
+            editable={editable}
+            fallback={t("bulkEntry")}
+          />
+          <RapportCreatedBy user={workspace?.rapport?.createdByUser} />
+        </div>
         <div className="pageHeaderActions">
           {workspace?.rapport?.id ? (
             <RapportVersionHeaderActions

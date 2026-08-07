@@ -94,11 +94,18 @@ import {
 import {
   ChefInstructionDetailPage,
   ChefInstructionsPage,
+  ChefAuthoredInstructionsPage,
+  ChefAuthoredInstructionDetailPage,
+  ChefInstructionCreatePage,
   OfficeInstructionDetailPage,
   OfficeInstructionsPage,
+  OfficeChefInstructionsPage,
+  OfficeChefInstructionDetailPage,
   WaliInstructionCreatePage,
   WaliInstructionDetailPage,
   WaliInstructionsPage,
+  WaliChefInstructionsPage,
+  WaliChefInstructionDetailPage,
 } from "./pages/InstructionPages";
 import { GuideVideosPage } from "./pages/GuideVideosPage";
 import { ENABLE_GUIDE_VIDEOS } from "./config/features";
@@ -583,6 +590,14 @@ function AppShell() {
                 element={<OfficeInstructionDetailPage token={token} />}
               />
               <Route
+                path="/cabinet/chef-instructions"
+                element={<OfficeChefInstructionsPage token={token} />}
+              />
+              <Route
+                path="/cabinet/chef-instructions/:id"
+                element={<OfficeChefInstructionDetailPage token={token} />}
+              />
+              <Route
                 path="/cabinet/shared"
                 element={<OfficeSharedFilesPage token={token} />}
               />
@@ -623,7 +638,7 @@ function AppShell() {
               />
               <Route
                 path="/governor/shared/:id"
-                element={<WaliBroadcastDetailPage token={token} />}
+                element={<WaliBroadcastDetailPage token={token} hub="wali" />}
               />
               <Route
                 path="/governor/office-users"
@@ -662,6 +677,14 @@ function AppShell() {
                 element={<WaliInstructionDetailPage token={token} />}
               />
               <Route
+                path="/governor/chef-instructions"
+                element={<WaliChefInstructionsPage token={token} />}
+              />
+              <Route
+                path="/governor/chef-instructions/:id"
+                element={<WaliChefInstructionDetailPage token={token} />}
+              />
+              <Route
                 path="/governor/rapports"
                 element={<WaliRapportsInboxPage token={token} />}
               />
@@ -697,12 +720,28 @@ function AppShell() {
                 element={<ChefInstructionDetailPage token={token} />}
               />
               <Route
+                path="/chief/chef-instructions"
+                element={<ChefAuthoredInstructionsPage token={token} />}
+              />
+              <Route
+                path="/chief/chef-instructions/new"
+                element={<ChefInstructionCreatePage token={token} />}
+              />
+              <Route
+                path="/chief/chef-instructions/:id"
+                element={<ChefAuthoredInstructionDetailPage token={token} />}
+              />
+              <Route
                 path="/chief/shared"
                 element={<OfficeSharedFilesPage token={token} audience="chef" />}
               />
               <Route
+                path="/chief/shared/new"
+                element={<WaliBroadcastCreatePage token={token} hub="chef" />}
+              />
+              <Route
                 path="/chief/shared/:id"
-                element={<OfficeSharedFileDetailPage token={token} audience="chef" />}
+                element={<WaliBroadcastDetailPage token={token} hub="chef" />}
               />
               {ENABLE_GUIDE_VIDEOS ? (
                 <Route

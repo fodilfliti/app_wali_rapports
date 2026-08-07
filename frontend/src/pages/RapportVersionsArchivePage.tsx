@@ -5,6 +5,9 @@ import type { EntityIdParam } from "../api";
 import * as api from "../api";
 import { BackButton } from "../components/BackButton";
 import type { RapportVersionRow } from "../components/RapportVersionsList";
+import {
+  createdByDisplayName,
+} from "../components/RapportCreatedBy";
 import { useSnackbar } from "../snackbar/SnackbarContext";
 import { RapportVersionDetail } from "./RapportVersionViewPage";
 import {
@@ -69,6 +72,7 @@ export function RapportVersionsArchivePanel({
           const openEditor =
             isCurrent && isDraft && editableRapport && !wali && !chef;
           const href = openEditor ? previewPath : viewPath(v.id);
+          const creator = createdByDisplayName(v.createdByUser, t);
 
           return (
             <li key={v.id}>
@@ -83,6 +87,11 @@ export function RapportVersionsArchivePanel({
                   <span className="rapportVersionCardDate">
                     {dateLabel || t("statusDraft")}
                   </span>
+                  {creator ? (
+                    <span className="muted small rapportVersionCardCreator">
+                      {t("versionCreatedBy", { name: creator })}
+                    </span>
+                  ) : null}
                   <span className="rapportVersionCardTags">
                     {isDraft ? (
                       <span className="rapportVersionTag rapportVersionTag--draft">

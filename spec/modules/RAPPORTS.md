@@ -100,7 +100,9 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 - Snapshot for versioned content; **`data_json`** holds tables/blocks/commune rows.
 
-- **`version_number`**, **`submitted_at`**, archive for graphs.
+- **`version_number`**, **`submitted_at`**, `created_by_user_id`, archive for graphs.
+
+- **Creator visibility (UI):** live rapport view (all hubs) shows the **rapport** creator name (`created_by_user_id` → `createdByUser`). Version archive list, inline version picker, and version detail show the **version** creator name. Soft-deleted users → role label (same rule as discussion authors — see `ORGANIZATION.md`).
 
 #### `wali_responses`
 

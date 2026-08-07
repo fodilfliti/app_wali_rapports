@@ -12,6 +12,7 @@ module.exports = (sequelize) =>
       rapport_uuid: { type: DataTypes.UUID, allowNull: true },
       broadcast_id: { type: DataTypes.BIGINT, allowNull: true },
       instruction_id: { type: DataTypes.BIGINT, allowNull: true },
+      chef_instruction_id: { type: DataTypes.BIGINT, allowNull: true },
       wali_response_id: { type: DataTypes.BIGINT, allowNull: true },
       chef_response_id: { type: DataTypes.BIGINT, allowNull: true },
       comment_id: { type: DataTypes.BIGINT, allowNull: true },

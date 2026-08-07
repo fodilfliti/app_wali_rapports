@@ -241,5 +241,62 @@ module.exports = {
         },
       ],
     },
+    {
+      username: "mehadji.houria",
+      name: "مهاجي حورية",
+      job_title: "رئيس المهندسين في السكن و العمران",
+      services: [
+        {
+          slug: "svc-mehadji-projets",
+          name_ar: "متابعة المشاريع",
+          name_fr: "Suivi des projets",
+        },
+      ],
+    },
+    {
+      username: "benkhouane.amina",
+      name: "بن خوان أمينة",
+      job_title: "مهندس دولة للإدارة الإقليمية في التسيير التقني والحضري",
+      services: [
+        { slug: "svc-benkhouane-education", name_ar: "التربية", name_fr: "Éducation" },
+      ],
+    },
+    {
+      username: "sayeh.mohamedamine",
+      name: "سايح محمد أمين",
+      job_title: "مهندس دولة للإدارة الإقليمية في التسيير التقني والحضري",
+      services: [
+        { slug: "svc-sayeh-environnement", name_ar: "البيئة", name_fr: "Environnement" },
+      ],
+    },
+    {
+      username: "boubaker.mohamed",
+      name: "بوبكر محمد",
+      job_title: "متصرف محلل",
+      services: [
+        { slug: "svc-boubaker-media", name_ar: "خلية الإعلام", name_fr: "Cellule média" },
+      ],
+    },
+    {
+      username: "abdelmoula.malika",
+      name: "عبد المولى مليكة",
+      job_title: "متصرف رئيسي",
+      services: [
+        { slug: "svc-abdelmoula-agriculture", name_ar: "الفلاحة", name_fr: "Agriculture" },
+      ],
+    },
+    {
+      username: "baakak.ali",
+      name: "بعكاك علي",
+      job_title: "متصرف مستشار",
+      services: [
+        { slug: "svc-baakak-habitat", name_ar: "السكن", name_fr: "Habitat" },
+        {
+          slug: "svc-baakak-travaux-publics",
+          name_ar: "الأشغال العمومية",
+          name_fr: "Travaux publics",
+        },
+      ],
+    },
   ],
 };

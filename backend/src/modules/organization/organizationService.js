@@ -514,6 +514,8 @@ async function softDeleteUser(id, actor, req) {
     await WebPushSubscription.destroy({ where: { user_id: userId }, transaction });
     await WaliBroadcastRecipient.destroy({ where: { user_id: userId }, transaction });
     await WaliInstructionRecipient.destroy({ where: { user_id: userId }, transaction });
+    const { ChefInstructionRecipient } = require("../../db");
+    await ChefInstructionRecipient.destroy({ where: { user_id: userId }, transaction });
   });
   await revokeAllForUser(userId);
   await audit(

@@ -29,7 +29,7 @@ Extend the existing in-app `notifications` system with **Web Push** (browser / p
 | Bypass resubmit → `submitted` | Chef info + active Wali | `rapportResubmittedBypass` + `rapportPendingWali` |
 | Chef/Wali respond | All active `OFFICE_USER` with a grant on the rapport’s service (`SERVICE_SHARING.md`); fallback owner/creator | `chef*` / `wali*` |
 | Discussion comment | Fanout per `RAPPORT_DISCUSSION.md` + other **`manage`** grantees on the service | `rapportComment` |
-| Instruction / broadcast | Recipients | `waliInstruction` / `waliBroadcast*` |
+| Instruction / broadcast | Office recipients (+ **Wali** for `chefInstruction`) | `waliInstruction` / `chefInstruction` / `waliBroadcast*` |
 | Calendar today / tomorrow | Active Wali + Chef (same visibility as hub calendar) | `calendarToday` / `calendarTomorrow` |
 
 Disabled preference types are **not inserted**, **not pushed**, and **hidden** from notification lists / hub unread for that type.
@@ -44,6 +44,7 @@ Disabled preference types are **not inserted**, **not pushed**, and **hidden** f
 | `rapport_feedback` | Chef/Wali decision notes to office |
 | `discussion` | `rapportComment` |
 | `instructions` | `waliInstruction` |
+| `chef_instructions` | `chefInstruction` |
 | `broadcasts` | `waliBroadcast`, `waliBroadcastReminder` |
 | `calendar` | `calendarToday`, `calendarTomorrow` |
 
@@ -111,6 +112,8 @@ Hub-counts endpoints keep their paths; calendar day-scan is a side effect.
   1. **All devices** (`push_enabled`) — allow Web Push delivery to any subscribed endpoint for this account. Turning **off** stops delivery everywhere and unsubscribes **this** browser only (other devices keep their rows until dead-endpoint cleanup; no push is sent while the pref is off).
   2. **This device** — subscribe / unsubscribe the **current** browser only (permission prompt + `POST/DELETE /auth/push/subscribe`). Requires master `enabled` and `push_enabled`. Does **not** toggle other devices.
 - Soft-fail if permission denied on this-device enable
+- **Auto-heal on this-device enable:** if a local `PushManager` subscription exists but keys are incomplete, or `subscribe()` fails, unsubscribe the local sub and try a fresh `pushManager.subscribe` with the current VAPID key before giving up
+- **Granted-but-broken:** `Notification.permission === 'granted'` only means the site may show notifications. Push can still fail (`AbortError` / `NotAllowedError`, broken SW, stale sub, OS/Chrome quiet settings). When permission is granted (or denied) but Push still cannot be activated, open a **recovery dialog** with AR/FR steps to reset site notification permission in the browser (lock icon / Site settings → Notifications → Reset or Allow), then retry the this-device toggle. The app **cannot** reset Chrome permission itself
 - On login / app load: if permission is already `granted` **and** a local `PushManager` subscription already exists, refresh/upsert it; **never** create a new subscription without an explicit this-device enable
 - Service worker: `push` + `notificationclick` → deep-link (inbox, calendar, discussion, shared, instructions)
 - While tab open: SW may postMessage → `hub-counts-refresh` (no poll)

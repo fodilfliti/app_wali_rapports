@@ -28,6 +28,8 @@ Examples (builders, not literals in new code):
 - Chef inbox: `/chief/inbox`
 - Wali inbox: `/governor/inbox`
 - Office submit API: `POST /api/cabinet/rapports/:id/submit`
+- Shared files: `/cabinet|chief|governor/shared` (same pool; Chef + Wali create)
+- Wali instructions: `…/instructions` — Chef instructions (separate): `…/chef-instructions`
 
 ## Liste (`commune_list`) path segment
 

@@ -24,6 +24,7 @@ import {
 import type { TableMeta } from "../utils/tableLayout";
 import { versionsListPath } from "../utils/rapportVersionsNav";
 import { RapportExportButtons } from "../components/ExportPdfButton";
+import { RapportCreatedBy } from "../components/RapportCreatedBy";
 import {
   CommuneListVersionView,
   type VersionEntityMeta,
@@ -438,7 +439,7 @@ export function RapportVersionDetail({
   return (
     <div className="page rapportVersionViewPage">
       <div className="pageHeader row compact">
-        <div>
+        <div className="pageHeaderTitleBlock">
           <h1>{rapport?.title || t("viewVersion")}</h1>
           {version ? (
             <p className="muted small rapportVersionViewMeta">
@@ -448,6 +449,10 @@ export function RapportVersionDetail({
                 : ` — ${t("statusDraft")}`}
             </p>
           ) : null}
+          <RapportCreatedBy
+            user={version?.createdByUser}
+            labelKey="versionCreatedBy"
+          />
         </div>
         <div className="pageHeaderActions">
           <span className="badge badge-submitted">{t("accessView")}</span>

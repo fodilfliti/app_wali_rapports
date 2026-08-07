@@ -11,6 +11,7 @@ import {
   BroadcastReadProgress,
   BroadcastRecipientsPanel,
   SharedBroadcastListCard,
+  SharedUploaderTag,
 } from '../components/BroadcastSharedUi'
 import { TablePagination } from '../components/TablePagination'
 import { QueryListShell } from '../components/QueryListShell'
@@ -28,6 +29,7 @@ import { asEntityId } from '../utils/entityIds'
 import { paths } from '@wali/routes'
 
 type Props = { token: string }
+type ShareHub = 'wali' | 'chef'
 
 export function WaliBroadcastsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
@@ -62,7 +64,10 @@ export function WaliBroadcastsPage({ token }: Props) {
                 message={message || undefined}
                 file={b.file}
                 createdAt={b.created_at}
+                createdByRole={b.created_by?.role}
+                readAt={b.read_at}
                 stats={b.stats}
+                showUnreadBadge={b.created_by?.role === 'CHEF_CABINET'}
               />
             )
           })}
@@ -74,7 +79,7 @@ export function WaliBroadcastsPage({ token }: Props) {
   )
 }
 
-export function WaliBroadcastCreatePage({ token }: Props) {
+export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?: ShareHub }) {
   const { t } = useTranslation()
   const snack = useSnackbar()
   const navigate = useNavigate()
@@ -94,10 +99,13 @@ export function WaliBroadcastCreatePage({ token }: Props) {
   const [uploadPercent, setUploadPercent] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [userPage, setUserPage] = useState(1)
+  const listPath = paths.hub.path(hub, 'shared')
+  const allUsersLabel = hub === 'chef' ? t('allOfficeUsersAndWali') : t('allOfficeUsers')
 
   useEffect(() => {
-    api.listWaliShareUsers(token).then((r) => setUsers(r.users)).catch(() => {})
-  }, [token])
+    const load = hub === 'chef' ? api.listChefShareUsers : api.listWaliShareUsers
+    load(token).then((r) => setUsers(r.users)).catch(() => {})
+  }, [token, hub])
 
   const filteredUsers = users.filter((u) => {
     const q = userSearch.trim().toLowerCase()
@@ -142,7 +150,8 @@ export function WaliBroadcastCreatePage({ token }: Props) {
       setCompressing(false)
       setUploading(true)
       setUploadPercent(0)
-      const res = await api.uploadWaliFile(token, prepared, {
+      const upload = hub === 'chef' ? api.uploadChefFile : api.uploadWaliFile
+      const res = await upload(token, prepared, {
         onProgress: (p) => setUploadPercent(p.percent),
       })
       setUploadedFileId(res.file.id)
@@ -176,7 +185,7 @@ export function WaliBroadcastCreatePage({ token }: Props) {
     }
     try {
       const titles = bilingualPairForSave(titleAr, titleFr)
-      await api.createWaliBroadcast(token, {
+      const body = {
         all_users: allUsers,
         recipient_user_ids: allUsers ? [] : selected,
         title_ar: titles.ar,
@@ -185,10 +194,15 @@ export function WaliBroadcastCreatePage({ token }: Props) {
         message_fr: message,
         allow_comments: allowComments,
         uploaded_file_id: uploadedFileId,
-      })
+      }
+      if (hub === 'chef') {
+        await api.createChefBroadcast(token, body)
+      } else {
+        await api.createWaliBroadcast(token, body)
+      }
       await invalidate({ broadcasts: true, hubCounts: true })
       snack.show(t('save'), 'success')
-      navigate(paths.hub.path('wali', 'shared'))
+      navigate(listPath)
     } catch {
       snack.show(t('errorGeneric'), 'error')
     }
@@ -198,7 +212,7 @@ export function WaliBroadcastCreatePage({ token }: Props) {
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('shareFile')}</h1>
-        <BackButton to={paths.hub.path('wali', 'shared')} fallbackTo={paths.hub.path('wali', 'shared')} />
+        <BackButton to={listPath} fallbackTo={listPath} />
       </div>
       <div className="card formStack">
         <label className="formField">
@@ -245,7 +259,7 @@ export function WaliBroadcastCreatePage({ token }: Props) {
                 if (e.target.checked) setSelected([])
               }}
             />
-            <span>{t('allOfficeUsers')}</span>
+            <span>{allUsersLabel}</span>
           </label>
           {!allUsers ? (
             <div className="recipientPanel">
@@ -309,11 +323,12 @@ export function WaliBroadcastCreatePage({ token }: Props) {
   )
 }
 
-export function WaliBroadcastDetailPage({ token }: Props) {
+export function WaliBroadcastDetailPage({ token, hub = 'wali' }: Props & { hub?: ShareHub }) {
   const { id } = useParams()
   const bid = asEntityId(id)
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const invalidate = useInvalidateAppQueries()
   const [b, setB] = useState<any>(null)
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [loadErrorKey, setLoadErrorKey] = useState('errorGeneric')
@@ -321,7 +336,8 @@ export function WaliBroadcastDetailPage({ token }: Props) {
   const [recipientPage, setRecipientPage] = useState(1)
   const [commentPage, setCommentPage] = useState(1)
   const [postingComment, setPostingComment] = useState(false)
-  const sharedList = paths.hub.path('wali', 'shared')
+  const sharedList = paths.hub.path(hub, 'shared')
+  const isCreatorView = hub === 'wali' || hub === 'chef'
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!bid) {
@@ -332,9 +348,28 @@ export function WaliBroadcastDetailPage({ token }: Props) {
     }
     if (!opts?.silent) setLoadState('loading')
     try {
-      const res = await api.getWaliBroadcast(token, bid)
+      const res =
+        hub === 'chef'
+          ? await api.getChefBroadcast(token, bid)
+          : await api.getWaliBroadcast(token, bid)
       setB(res.broadcast)
       setLoadState('ready')
+      const fromOther =
+        (hub === 'wali' && res.broadcast.created_by?.role === 'CHEF_CABINET') ||
+        (hub === 'chef' && res.broadcast.created_by?.role === 'WALI')
+      if (fromOther && res.broadcast.read_at == null) {
+        if (hub === 'chef') {
+          await api.markChefBroadcastRead(token, bid)
+        } else {
+          await api.markWaliBroadcastRead(token, bid)
+        }
+        await invalidate({ hubCounts: hub === 'chef' ? 'chef' : 'wali', broadcasts: true })
+        const refreshed =
+          hub === 'chef'
+            ? await api.getChefBroadcast(token, bid)
+            : await api.getWaliBroadcast(token, bid)
+        setB(refreshed.broadcast)
+      }
     } catch (e) {
       if (opts?.silent) {
         snack.show(t('errorGeneric'), 'error')
@@ -348,7 +383,7 @@ export function WaliBroadcastDetailPage({ token }: Props) {
         setLoadErrorKey('errorGeneric')
       }
     }
-  }, [token, bid, snack, t])
+  }, [token, bid, hub, invalidate, snack, t])
 
   useEffect(() => {
     void load()
@@ -358,7 +393,10 @@ export function WaliBroadcastDetailPage({ token }: Props) {
 
   async function remind() {
     try {
-      const r = await api.remindBroadcastUnread(token, bid!)
+      const r =
+        hub === 'chef'
+          ? await api.remindChefBroadcastUnread(token, bid!)
+          : await api.remindBroadcastUnread(token, bid!)
       snack.show(`${t('remindUnread')}: ${r.reminded}`, 'success')
     } catch {
       snack.show(t('errorGeneric'), 'error')
@@ -369,7 +407,10 @@ export function WaliBroadcastDetailPage({ token }: Props) {
     if (!comment.trim() || postingComment || !bid) return
     setPostingComment(true)
     try {
-      const res = await api.addWaliBroadcastComment(token, bid, comment)
+      const res =
+        hub === 'chef'
+          ? await api.addChefBroadcastComment(token, bid, comment)
+          : await api.addWaliBroadcastComment(token, bid, comment)
       setComment('')
       if (res.broadcast) {
         setB(res.broadcast)
@@ -415,30 +456,36 @@ export function WaliBroadcastDetailPage({ token }: Props) {
   const pagedComments = paginateSlice(comments, commentPage, DEFAULT_PAGE_SIZE)
   const title = pickBilingualText(b.title_ar, b.title_fr, i18n.language)
   const message = pickBilingualText(b.message_ar, b.message_fr, i18n.language)
+  const showRemind = isCreatorView && b.stats != null
 
   return (
     <div className="page">
       <div className="pageHeader row">
         <h1>{title}</h1>
-        <button type="button" className="btn btn-secondary" onClick={remind}>
-          {t('remindUnread')}
-        </button>
+        {showRemind ? (
+          <button type="button" className="btn btn-secondary" onClick={remind}>
+            {t('remindUnread')}
+          </button>
+        ) : null}
         <BackButton to={sharedList} fallbackTo={sharedList} />
       </div>
       <div className="card broadcastDetailCard">
         <div className="broadcastDetailSection broadcastDetailHero">
+          <SharedUploaderTag role={b.created_by?.role} className="broadcastDetailUploaderTag" />
           {message ? <p className="broadcastDetailMessage">{message}</p> : null}
           {b.file ? <BroadcastFileCard file={b.file} href={fileUrlStr} /> : null}
-          <BroadcastReadProgress read={b.stats?.read} total={b.stats?.total} />
+          {b.stats ? <BroadcastReadProgress read={b.stats?.read} total={b.stats?.total} /> : null}
         </div>
 
-        <BroadcastRecipientsPanel
-          recipients={recipients}
-          pagedRecipients={pagedRecipients}
-          recipientPage={recipientPage}
-          total={recipients.length}
-          onPageChange={setRecipientPage}
-        />
+        {recipients.length ? (
+          <BroadcastRecipientsPanel
+            recipients={recipients}
+            pagedRecipients={pagedRecipients}
+            recipientPage={recipientPage}
+            total={recipients.length}
+            onPageChange={setRecipientPage}
+          />
+        ) : null}
 
         {b.allow_comments ? (
           <div className="broadcastDetailSection">
@@ -505,7 +552,7 @@ export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFile
   const { t, i18n } = useTranslation()
   const [page, setPage] = useState(1)
   const base = sharedBasePath(audience)
-  const hub = audience === 'chef' ? '/chief' : '/cabinet'
+  const hub = audience === 'chef' ? paths.hub.home('chef') : paths.hub.home('office')
   const listQuery = useBroadcastsListQuery(token, audience)
   const rows = listQuery.data ?? []
   const isInitialLoading = listQuery.isLoading && listQuery.data === undefined
@@ -516,6 +563,11 @@ export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFile
     <div className="page">
       <div className="pageHeader row">
         <h1>{t('navSharedFiles')}</h1>
+        {audience === 'chef' ? (
+          <Link className="btn btn-primary" to={paths.hub.path('chef', 'shared', 'new')}>
+            {t('shareFile')}
+          </Link>
+        ) : null}
         <BackButton to={hub} fallbackTo={hub} />
       </div>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
@@ -525,6 +577,7 @@ export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFile
           {pagedRows.map((b) => {
             const title = pickBilingualText(b.title_ar, b.title_fr, i18n.language)
             const message = pickBilingualText(b.message_ar, b.message_fr, i18n.language)
+            const isOwnChef = audience === 'chef' && b.created_by?.role === 'CHEF_CABINET'
             return (
               <SharedBroadcastListCard
                 key={b.id}
@@ -533,8 +586,10 @@ export function OfficeSharedFilesPage({ token, audience = 'office' }: SharedFile
                 message={message || undefined}
                 file={b.file}
                 createdAt={b.created_at}
+                createdByRole={b.created_by?.role}
                 readAt={b.read_at}
-                showUnreadBadge
+                stats={b.stats}
+                showUnreadBadge={!isOwnChef}
               />
             )
           })}
@@ -647,6 +702,7 @@ export function OfficeSharedFileDetailPage({ token, audience = 'office' }: Share
       </div>
       <div className="card broadcastDetailCard">
         <div className="broadcastDetailSection broadcastDetailHero">
+          <SharedUploaderTag role={b.created_by?.role} className="broadcastDetailUploaderTag" />
           {message ? <p className="broadcastDetailMessage">{message}</p> : null}
           {b.file ? <BroadcastFileCard file={b.file} href={fileUrlStr} /> : null}
         </div>

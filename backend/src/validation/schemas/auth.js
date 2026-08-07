@@ -19,6 +19,7 @@ const notificationPrefsSchema = z.object({
   rapport_feedback: z.boolean().optional(),
   discussion: z.boolean().optional(),
   instructions: z.boolean().optional(),
+  chef_instructions: z.boolean().optional(),
   broadcasts: z.boolean().optional(),
   calendar: z.boolean().optional(),
 });

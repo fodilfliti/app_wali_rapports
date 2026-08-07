@@ -7,6 +7,7 @@ import {
   hasLocalPushSubscription,
   pushSupported,
   removePushSubscription,
+  type PushEnsureStatus,
 } from '../utils/webPush'
 
 type PrefKey = keyof api.NotificationPreferences
@@ -23,6 +24,7 @@ const TYPE_KEYS: PrefKey[] = [
   'rapport_feedback',
   'discussion',
   'instructions',
+  'chef_instructions',
   'broadcasts',
   'calendar',
 ]
@@ -95,6 +97,53 @@ function SwitchCard({
   )
 }
 
+type RecoveryDialogProps = {
+  open: boolean
+  busy?: boolean
+  onClose: () => void
+  onRetry: () => void
+}
+
+function PushRecoveryDialog({ open, busy, onClose, onRetry }: RecoveryDialogProps) {
+  const { t } = useTranslation()
+  if (!open) return null
+
+  return (
+    <div className="modalOverlay" role="presentation" onClick={onClose}>
+      <div
+        className="modalCard confirmActionModal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notifPushRecoveryTitle"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="notifPushRecoveryTitle" className="confirmActionModalTitle">
+          {t('notifPushRecoveryTitle')}
+        </h2>
+        <p className="muted confirmActionModalMessage">{t('notifPushRecoveryBody')}</p>
+        <ol className="notifPushRecoverySteps">
+          <li>{t('notifPushRecoveryStepsDesktop')}</li>
+          <li>{t('notifPushRecoveryStepsAndroid')}</li>
+        </ol>
+        <div className="modalActions confirmActionModalActions">
+          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
+            {t('notifPushRecoveryGotIt')}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onRetry}
+            disabled={busy}
+            aria-busy={busy || undefined}
+          >
+            {busy ? t('loading') : t('notifPushRecoveryRetry')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function NotificationSettingsModal({ token, open, user, onClose }: Props) {
   const { t } = useTranslation()
   const snack = useSnackbar()
@@ -106,10 +155,14 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
   const [devicePermission, setDevicePermission] = useState<NotificationPermission | 'unsupported'>(
     'default',
   )
+  const [needsBrowserReset, setNeedsBrowserReset] = useState(false)
+  const [recoveryOpen, setRecoveryOpen] = useState(false)
 
   const showCalendar = user.role === 'WALI' || user.role === 'CHEF_CABINET'
   const showInstructions = user.role === 'OFFICE_USER'
-  const showBroadcasts = user.role === 'OFFICE_USER' || user.role === 'CHEF_CABINET'
+  const showChefInstructions = user.role === 'OFFICE_USER' || user.role === 'WALI'
+  const showBroadcasts =
+    user.role === 'OFFICE_USER' || user.role === 'CHEF_CABINET' || user.role === 'WALI'
   const showInbox = user.role === 'WALI' || user.role === 'CHEF_CABINET'
   const showFeedback = user.role === 'OFFICE_USER'
   const supported = pushSupported()
@@ -127,6 +180,8 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
   useEffect(() => {
     if (!open) return
     setLoading(true)
+    setNeedsBrowserReset(false)
+    setRecoveryOpen(false)
     void refreshThisDeviceState()
     api
       .getNotificationPreferences(token)
@@ -160,6 +215,48 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
     }
   }
 
+  function applyEnableResult(status: PushEnsureStatus) {
+    if (typeof Notification !== 'undefined') setDevicePermission(Notification.permission)
+
+    if (status === 'denied') {
+      snack.show(t('notifPushDenied'), 'error')
+      setDevicePermission('denied')
+      setThisDeviceSubscribed(false)
+      setNeedsBrowserReset(true)
+      setRecoveryOpen(true)
+      return
+    }
+    if (status === 'unsupported') {
+      snack.show(t('notifPushUnsupported'), 'error')
+      setDevicePermission('unsupported')
+      setThisDeviceSubscribed(false)
+      setNeedsBrowserReset(false)
+      return
+    }
+    if (status === 'granted') {
+      setThisDeviceSubscribed(true)
+      setDevicePermission('granted')
+      setNeedsBrowserReset(false)
+      setRecoveryOpen(false)
+      snack.show(t('notifPushThisEnabled'), 'success')
+      return
+    }
+    if (status === 'needs_browser_reset') {
+      setThisDeviceSubscribed(false)
+      setNeedsBrowserReset(true)
+      setRecoveryOpen(true)
+      return
+    }
+    if (status === 'unavailable') {
+      setThisDeviceSubscribed(false)
+      snack.show(t('notifPushUnavailable'), 'error')
+      return
+    }
+    // default (prompt dismissed)
+    setThisDeviceSubscribed(false)
+    snack.show(t('notifPushDenied'), 'error')
+  }
+
   /** Account-wide push delivery (`push_enabled`). Off also unsubscribes this browser. */
   async function togglePushAllDevices(on: boolean) {
     setPushBusy(true)
@@ -185,31 +282,28 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
     setPushBusy(true)
     try {
       if (on) {
-        const result = await ensurePushSubscription(token)
-        if (typeof Notification !== 'undefined') setDevicePermission(Notification.permission)
-        if (result === 'denied') {
-          snack.show(t('notifPushDenied'), 'error')
-          setDevicePermission('denied')
-          setThisDeviceSubscribed(false)
-        } else if (result === 'unsupported') {
-          snack.show(t('notifPushUnsupported'), 'error')
-          setDevicePermission('unsupported')
-          setThisDeviceSubscribed(false)
-        } else if (result === 'granted') {
-          setThisDeviceSubscribed(true)
-          setDevicePermission('granted')
-          snack.show(t('notifPushThisEnabled'), 'success')
-        } else {
-          setThisDeviceSubscribed(false)
-          snack.show(t('notifPushDenied'), 'error')
-        }
+        const { status } = await ensurePushSubscription(token)
+        applyEnableResult(status)
       } else {
         await removePushSubscription(token)
         setThisDeviceSubscribed(false)
+        setNeedsBrowserReset(false)
         snack.show(t('notifPushThisDisabled'), 'success')
       }
     } catch {
-      snack.show(t('errorGeneric'), 'error')
+      snack.show(t('notifPushUnavailable'), 'error')
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
+  async function retryThisDeviceEnable() {
+    setPushBusy(true)
+    try {
+      const { status } = await ensurePushSubscription(token)
+      applyEnableResult(status)
+    } catch {
+      snack.show(t('notifPushUnavailable'), 'error')
     } finally {
       setPushBusy(false)
     }
@@ -218,6 +312,7 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
   function typeVisible(key: PrefKey) {
     if (key === 'calendar') return showCalendar
     if (key === 'instructions') return showInstructions
+    if (key === 'chef_instructions') return showChefInstructions
     if (key === 'broadcasts') return showBroadcasts
     if (key === 'rapport_inbox') return showInbox
     if (key === 'rapport_feedback') return showFeedback
@@ -232,7 +327,7 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
 
   function thisDeviceStatusLabel() {
     if (!supported || devicePermission === 'unsupported') return t('notifStatusUnsupported')
-    if (devicePermission === 'denied') return t('notifStatusDenied')
+    if (devicePermission === 'denied' || needsBrowserReset) return t('notifStatusNeedsReset')
     if (prefs?.push_enabled && prefs.enabled && thisDeviceSubscribed && devicePermission === 'granted') {
       return t('notifStatusOn')
     }
@@ -331,6 +426,13 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
           </button>
         </div>
       </div>
+
+      <PushRecoveryDialog
+        open={recoveryOpen}
+        busy={pushBusy}
+        onClose={() => setRecoveryOpen(false)}
+        onRetry={() => void retryThisDeviceEnable()}
+      />
     </div>
   )
 }

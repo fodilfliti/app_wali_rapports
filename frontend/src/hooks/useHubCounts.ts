@@ -4,19 +4,12 @@ import * as api from '../api'
 import { CACHE } from '../query/cachePolicy'
 import { queryKeys } from '../query/queryKeys'
 
-const emptyOfficeCounts: api.OfficeHubCounts = {
-  unread_notifications: 0,
-  changes_requested_rapports: 0,
-  unread_shared_files: 0,
-  unread_instructions: 0,
-  unread_discussion: 0,
-  services_action_count: 0,
-}
-
 const emptyWaliCounts: api.WaliHubCounts = {
   inbox_pending: 0,
   office_users_pending: 0,
   unread_discussion: 0,
+  unread_shared_files: 0,
+  unread_chef_instructions: 0,
 }
 
 const emptyChefCounts: api.ChefHubCounts = {
@@ -25,6 +18,17 @@ const emptyChefCounts: api.ChefHubCounts = {
   unread_discussion: 0,
   unread_shared_files: 0,
   delete_pending: 0,
+  unread_chef_instructions: 0,
+}
+
+const emptyOfficeCounts: api.OfficeHubCounts = {
+  unread_notifications: 0,
+  changes_requested_rapports: 0,
+  unread_shared_files: 0,
+  unread_instructions: 0,
+  unread_chef_instructions: 0,
+  unread_discussion: 0,
+  services_action_count: 0,
 }
 
 export function useOfficeHubCounts(token: string) {

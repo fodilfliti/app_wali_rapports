@@ -68,6 +68,37 @@ function buildVersionPublicIdMap(versions, currentVersion) {
   return map;
 }
 
+/** Nested creator payload for rapport / version UI (soft-delete → role label on FE). */
+const CREATED_BY_USER_ATTRS = [
+  "id",
+  "uuid",
+  "name",
+  "username",
+  "role",
+  "deleted_at",
+];
+
+function mapCreatedByUser(user) {
+  if (!user) return user;
+  const raw = user.toJSON ? user.toJSON() : user;
+  const deleted = Boolean(raw.deleted_at);
+  const out = withPublicId(raw);
+  return {
+    id: out.id,
+    name: deleted ? null : out.name ?? null,
+    username: deleted ? null : out.username ?? null,
+    role: out.role,
+    is_deleted: deleted,
+  };
+}
+
+function mapVersionPublicIds(version) {
+  if (!version) return version;
+  const out = withPublicId(version.toJSON ? version.toJSON() : version);
+  if (out.createdByUser) out.createdByUser = mapCreatedByUser(out.createdByUser);
+  return out;
+}
+
 function mapResponsePublicIds(resp, versionIdMap, rapportPublicId) {
   if (!resp) return resp;
   const raw = resp.toJSON ? resp.toJSON() : { ...resp };
@@ -77,7 +108,7 @@ function mapResponsePublicIds(resp, versionIdMap, rapportPublicId) {
     const mapped = versionIdMap.get(Number(out.rapport_version_id));
     if (mapped != null) out.rapport_version_id = mapped;
   }
-  if (out.createdByUser) out.createdByUser = withPublicId(out.createdByUser);
+  if (out.createdByUser) out.createdByUser = mapCreatedByUser(out.createdByUser);
   return out;
 }
 
@@ -97,11 +128,11 @@ function applyPublicIdsToRapport(plain) {
   } else if (out.rapport_type_uuid) {
     out.rapport_type_id = String(out.rapport_type_uuid);
   }
-  if (plain.currentVersion) out.currentVersion = withPublicId(plain.currentVersion);
+  if (plain.currentVersion) out.currentVersion = mapVersionPublicIds(plain.currentVersion);
   if (Array.isArray(plain.versions)) {
-    out.versions = plain.versions.map(withPublicId);
+    out.versions = plain.versions.map(mapVersionPublicIds);
   }
-  if (out.createdByUser) out.createdByUser = withPublicId(out.createdByUser);
+  if (out.createdByUser) out.createdByUser = mapCreatedByUser(out.createdByUser);
   if (Array.isArray(plain.waliResponses)) {
     out.waliResponses = plain.waliResponses.map((r) =>
       mapResponsePublicIds(r, versionIdMap, rapportPublicId),
@@ -709,7 +740,7 @@ async function listRapports(query, opts = {}) {
     {
       model: User,
       as: "createdByUser",
-      attributes: ["id", "uuid", "name", "username"],
+      attributes: CREATED_BY_USER_ATTRS,
     },
   ];
   if (importable) {
@@ -1076,20 +1107,54 @@ async function assertVisibleToChef(rapportOrId) {
   return rapport;
 }
 
+const versionCreatedByInclude = {
+  model: User,
+  as: "createdByUser",
+  attributes: CREATED_BY_USER_ATTRS,
+};
+
 async function getRapportDetail(id, versionId = null) {
   const rapport = await loadRapport(id, {
     include: [
       { model: Service, as: "service" },
       { model: RapportType, as: "rapportType" },
-      { model: RapportVersion, as: "currentVersion" },
-      { model: RapportVersion, as: "versions" },
+      {
+        model: RapportVersion,
+        as: "currentVersion",
+        // Own include object — do not share with `versions` (Sequelize join-order bug).
+        include: [
+          {
+            model: User,
+            as: "createdByUser",
+            attributes: CREATED_BY_USER_ATTRS,
+          },
+        ],
+      },
+      {
+        model: RapportVersion,
+        as: "versions",
+        // hasMany + nested belongsTo must be separate or PG errors:
+        // missing FROM-clause entry for table "versions"
+        separate: true,
+        include: [
+          {
+            model: User,
+            as: "createdByUser",
+            attributes: CREATED_BY_USER_ATTRS,
+          },
+        ],
+      },
       {
         model: WaliResponse,
         as: "waliResponses",
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
+          {
+            model: User,
+            as: "createdByUser",
+            attributes: CREATED_BY_USER_ATTRS,
+          },
         ],
       },
       {
@@ -1098,10 +1163,18 @@ async function getRapportDetail(id, versionId = null) {
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
+          {
+            model: User,
+            as: "createdByUser",
+            attributes: CREATED_BY_USER_ATTRS,
+          },
         ],
       },
-      { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
+      {
+        model: User,
+        as: "createdByUser",
+        attributes: CREATED_BY_USER_ATTRS,
+      },
     ],
   });
   if (!rapport) {
@@ -1117,6 +1190,7 @@ async function getRapportDetail(id, versionId = null) {
     const requestedVersion = numericVersionId
       ? await RapportVersion.findOne({
           where: { id: numericVersionId, rapport_id: numericId },
+          include: [versionCreatedByInclude],
         })
       : null;
     if (requestedVersion) {
@@ -1155,10 +1229,11 @@ async function applyReviewerDisplayVersion(plain) {
       submitted_at: { [Op.ne]: null },
     },
     order: [["version_number", "DESC"]],
+    include: [versionCreatedByInclude],
   });
   if (!latest) return plain;
 
-  plain.currentVersion = withPublicId(latest.toJSON ? latest.toJSON() : latest);
+  plain.currentVersion = mapVersionPublicIds(latest);
   plain.reviewer_display_version_id = publicId(latest);
   return plain;
 }
@@ -2105,8 +2180,9 @@ async function listRapportVersions(rapportId) {
       "created_at",
       "created_by_user_id",
     ],
+    include: [versionCreatedByInclude],
   });
-  return withPublicIds(versions.map((v) => (v.toJSON ? v.toJSON() : v)));
+  return versions.map((v) => mapVersionPublicIds(v));
 }
 
 async function getRapportVersion(rapportId, versionId) {
@@ -2125,14 +2201,18 @@ async function getRapportVersion(rapportId, versionId) {
   const version = await RapportVersion.findOne({
     where: { id: numericVersionId, rapport_id: rapport.id },
     include: [
-      { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
+      versionCreatedByInclude,
       {
         model: WaliResponse,
         as: "waliResponses",
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
+          {
+            model: User,
+            as: "createdByUser",
+            attributes: CREATED_BY_USER_ATTRS,
+          },
         ],
       },
       {
@@ -2141,7 +2221,11 @@ async function getRapportVersion(rapportId, versionId) {
         separate: true,
         order: [["created_at", "DESC"]],
         include: [
-          { model: User, as: "createdByUser", attributes: ["id", "uuid", "name"] },
+          {
+            model: User,
+            as: "createdByUser",
+            attributes: CREATED_BY_USER_ATTRS,
+          },
         ],
       },
     ],
@@ -2157,8 +2241,7 @@ async function getRapportVersion(rapportId, versionId) {
   });
   const plain = version.toJSON ? version.toJSON() : version;
   const versionIdMap = buildVersionPublicIdMap([plain], null);
-  const out = withPublicId(plain);
-  if (out.createdByUser) out.createdByUser = withPublicId(out.createdByUser);
+  const out = mapVersionPublicIds(plain);
   if (Array.isArray(plain.waliResponses)) {
     out.waliResponses = plain.waliResponses.map((r) =>
       mapResponsePublicIds(r, versionIdMap, null),
@@ -2276,6 +2359,19 @@ async function markNotificationRead(id, userId) {
       {
         where: {
           instruction_id: n.instruction_id,
+          user_id: userId,
+          read_at: null,
+        },
+      },
+    );
+  }
+  if (n.chef_instruction_id) {
+    const { ChefInstructionRecipient } = require("../../db");
+    await ChefInstructionRecipient.update(
+      { read_at: now },
+      {
+        where: {
+          instruction_id: n.chef_instruction_id,
           user_id: userId,
           read_at: null,
         },

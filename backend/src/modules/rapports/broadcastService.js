@@ -7,7 +7,7 @@ const {
   User,
   Notification
 } = require("../../db");
-const { saveUploadedFile, serializeFile, multerFileInput } = require("../../services/uploadService");
+const { saveUploadedFile, serializeFile } = require("../../services/uploadService");
 const { audit } = require("../../services/audit");
 const { hasBilingualText } = require("../../validation/bilingual");
 const { notifyUsers } = require("../notifications/notifyService");
@@ -19,8 +19,20 @@ const {
   withPublicId,
 } = require("../access/idResolver");
 
+function creatorFromRow(b) {
+  const u = b.createdByUser;
+  if (!u) return null;
+  const json = u.toJSON ? u.toJSON() : u;
+  return {
+    id: publicId(json) || json.uuid || json.id,
+    name: json.name || null,
+    role: json.role || null,
+  };
+}
+
 function serializeBroadcast(row, extras = {}) {
   const b = row.toJSON ? row.toJSON() : row;
+  const created_by = extras.created_by !== undefined ? extras.created_by : creatorFromRow(b);
   return {
     id: publicId(b),
     title_ar: b.title_ar,
@@ -30,6 +42,7 @@ function serializeBroadcast(row, extras = {}) {
     allow_comments: b.allow_comments,
     created_at: b.created_at,
     created_by_user_id: b.created_by_user_id,
+    created_by,
     file: b.file ? serializeFile(b.file) : extras.file || null,
     recipients: extras.recipients,
     comments: extras.comments,
@@ -38,47 +51,80 @@ function serializeBroadcast(row, extras = {}) {
   };
 }
 
-const BROADCAST_RECIPIENT_ROLES = ["OFFICE_USER", "CHEF_CABINET"];
+const CREATOR_INCLUDE = [
+  { model: UploadedFile, as: "file" },
+  { model: User, as: "createdByUser", attributes: ["id", "uuid", "name", "role"] },
+];
 
-function isBroadcastRecipientRole(role) {
-  return BROADCAST_RECIPIENT_ROLES.includes(role);
+function recipientRolesForCreator(actorRole) {
+  if (actorRole === "CHEF_CABINET") return ["OFFICE_USER", "WALI"];
+  return ["OFFICE_USER", "CHEF_CABINET"];
 }
 
-async function listOfficeUsers() {
+function canViewBroadcastAsPrivileged(actor, broadcast) {
+  if (!actor) return false;
+  if (actor.role === "ADMIN" || actor.role === "WALI") return true;
+  if (Number(broadcast.created_by_user_id) === Number(actor.id)) return true;
+  return false;
+}
+
+async function listShareRecipients(actor) {
+  const roles = recipientRolesForCreator(actor?.role || "WALI");
   const users = await User.findAll({
-    where: { role: { [Op.in]: BROADCAST_RECIPIENT_ROLES }, is_blocked: false, deleted_at: null },
+    where: { role: { [Op.in]: roles }, is_blocked: false, deleted_at: null },
     attributes: ["id", "uuid", "name", "username", "role"],
     order: [["name", "ASC"]]
   });
-  return users.map((u) => withPublicId(u));
+  return users
+    .filter((u) => Number(u.id) !== Number(actor?.id))
+    .map((u) => withPublicId(u));
 }
 
-async function resolveRecipientIds(body) {
+/** @deprecated use listShareRecipients(actor) */
+async function listOfficeUsers() {
+  return listShareRecipients({ role: "WALI", id: null });
+}
+
+async function resolveRecipientIds(body, actor) {
+  const roles = recipientRolesForCreator(actor?.role || "WALI");
   if (body.all_users) {
     const users = await User.findAll({
-      where: { role: { [Op.in]: BROADCAST_RECIPIENT_ROLES }, is_blocked: false, deleted_at: null },
+      where: { role: { [Op.in]: roles }, is_blocked: false, deleted_at: null },
       attributes: ["id"],
     });
-    return users.map((u) => u.id);
+    return users.map((u) => u.id).filter((id) => Number(id) !== Number(actor.id));
   }
   const requested = body.recipient_user_ids || [];
   if (!requested.length) return [];
   const numericIds = [];
   for (const raw of requested) {
     const nid = await resolveNumericId(User, raw);
-    if (nid) numericIds.push(nid);
+    if (nid && Number(nid) !== Number(actor.id)) numericIds.push(nid);
   }
   if (!numericIds.length) return [];
   const users = await User.findAll({
     where: {
       id: { [Op.in]: numericIds },
-      role: { [Op.in]: BROADCAST_RECIPIENT_ROLES },
+      role: { [Op.in]: roles },
       is_blocked: false,
       deleted_at: null,
     },
     attributes: ["id"]
   });
   return users.map((u) => u.id);
+}
+
+function broadcastPushCopy(actorRole) {
+  if (actorRole === "CHEF_CABINET") {
+    return {
+      body_ar: "شارك رئيس الديوان ملفاً جديداً.",
+      body_fr: "Le chef de cabinet a partagé un fichier.",
+    };
+  }
+  return {
+    body_ar: "شارك الوالي ملفاً جديداً.",
+    body_fr: "Le wali a partagé un fichier.",
+  };
 }
 
 async function createBroadcast({ fileInput, body }, actor, req) {
@@ -114,7 +160,7 @@ async function createBroadcast({ fileInput, body }, actor, req) {
     throw err;
   }
 
-  const recipientIds = await resolveRecipientIds(body);
+  const recipientIds = await resolveRecipientIds(body, actor);
   if (!recipientIds.length) {
     const err = new Error("No recipients");
     err.status = 400;
@@ -140,10 +186,13 @@ async function createBroadcast({ fileInput, body }, actor, req) {
     recipientIds.map((user_id) => ({ broadcast_id: broadcast.id, user_id }))
   );
 
+  const push = broadcastPushCopy(actor.role);
   await notifyUsers({
     userIds: recipientIds,
     broadcast_id: broadcast.id,
+    broadcast_public_id: broadcast.uuid || null,
     message_key: "waliBroadcast",
+    push,
   });
 
   await audit(actor.id, "WALI_BROADCAST_CREATE", { broadcast_id: broadcast.id }, { req });
@@ -156,7 +205,7 @@ async function getRecipientRow(broadcastId, userId) {
 
 async function resolveBroadcastOrThrow(broadcastId) {
   const broadcast = await findByPublicId(WaliBroadcast, broadcastId, {
-    include: [{ model: UploadedFile, as: "file" }]
+    include: CREATOR_INCLUDE
   });
   if (!broadcast) {
     const err = new Error("Not found");
@@ -172,7 +221,7 @@ async function getBroadcastDetail(broadcastId, actor) {
 
   const recipients = await WaliBroadcastRecipient.findAll({
     where: { broadcast_id: numericId },
-    include: [{ model: User, as: "user", attributes: ["id", "uuid", "name", "username"] }],
+    include: [{ model: User, as: "user", attributes: ["id", "uuid", "name", "username", "role"] }],
     order: [["id", "ASC"]]
   });
 
@@ -188,15 +237,12 @@ async function getBroadcastDetail(broadcastId, actor) {
     unread: recipients.filter((r) => !r.read_at).length
   };
 
-  let readAt = null;
-  if (isBroadcastRecipientRole(actor.role)) {
-    const mine = recipients.find((r) => Number(r.user_id) === Number(actor.id));
-    if (!mine) {
-      const err = new Error("Forbidden");
-      err.status = 403;
-      throw err;
-    }
-    readAt = mine.read_at || null;
+  const mine = recipients.find((r) => Number(r.user_id) === Number(actor.id));
+  const privileged = canViewBroadcastAsPrivileged(actor, broadcast);
+  if (!privileged && !mine) {
+    const err = new Error("Forbidden");
+    err.status = 403;
+    throw err;
   }
 
   return serializeBroadcast(broadcast, {
@@ -211,26 +257,30 @@ async function getBroadcastDetail(broadcastId, actor) {
       user: c.user ? withPublicId(c.user) : null
     })),
     stats,
-    read_at: readAt
+    read_at: mine ? mine.read_at || null : null
   });
 }
 
-async function listForWali() {
+async function listForWali(actor) {
   const rows = await WaliBroadcast.findAll({
     order: [["created_at", "DESC"]],
     limit: 100,
-    include: [{ model: UploadedFile, as: "file" }]
+    include: CREATOR_INCLUDE
   });
   const out = [];
   for (const row of rows) {
     const recipients = await WaliBroadcastRecipient.findAll({ where: { broadcast_id: row.id } });
+    const mine = actor
+      ? recipients.find((r) => Number(r.user_id) === Number(actor.id))
+      : null;
     out.push(
       serializeBroadcast(row, {
         stats: {
           total: recipients.length,
           read: recipients.filter((r) => r.read_at).length,
           unread: recipients.filter((r) => !r.read_at).length
-        }
+        },
+        read_at: mine ? mine.read_at || null : null
       })
     );
   }
@@ -245,17 +295,67 @@ async function listForOfficeUser(userId) {
       {
         model: WaliBroadcast,
         as: "broadcast",
-        include: [{ model: UploadedFile, as: "file" }]
+        include: CREATOR_INCLUDE
       }
     ]
   });
-  return recipientRows.map((r) =>
-    serializeBroadcast(r.broadcast, { read_at: r.read_at })
+  return recipientRows
+    .filter((r) => r.broadcast)
+    .map((r) => serializeBroadcast(r.broadcast, { read_at: r.read_at }));
+}
+
+/** Chef: broadcasts they created plus those received. */
+async function listForChef(userId) {
+  const [created, received] = await Promise.all([
+    WaliBroadcast.findAll({
+      where: { created_by_user_id: userId },
+      order: [["created_at", "DESC"]],
+      limit: 100,
+      include: CREATOR_INCLUDE
+    }),
+    WaliBroadcastRecipient.findAll({
+      where: { user_id: userId },
+      order: [["created_at", "DESC"]],
+      include: [
+        {
+          model: WaliBroadcast,
+          as: "broadcast",
+          include: CREATOR_INCLUDE
+        }
+      ]
+    }),
+  ]);
+
+  const byId = new Map();
+  for (const row of created) {
+    const recipients = await WaliBroadcastRecipient.findAll({ where: { broadcast_id: row.id } });
+    byId.set(Number(row.id), serializeBroadcast(row, {
+      stats: {
+        total: recipients.length,
+        read: recipients.filter((r) => r.read_at).length,
+        unread: recipients.filter((r) => !r.read_at).length
+      },
+      read_at: null
+    }));
+  }
+  for (const r of received) {
+    if (!r.broadcast) continue;
+    const id = Number(r.broadcast.id);
+    if (byId.has(id)) {
+      const existing = byId.get(id);
+      existing.read_at = r.read_at;
+      continue;
+    }
+    byId.set(id, serializeBroadcast(r.broadcast, { read_at: r.read_at }));
+  }
+
+  return [...byId.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 }
 
 async function markBroadcastRead(broadcastId, actor) {
-  const broadcast = await findByPublicId(WaliBroadcast, broadcastId, { attributes: ["id"] });
+  const broadcast = await findByPublicId(WaliBroadcast, broadcastId, { attributes: ["id", "uuid"] });
   if (!broadcast) {
     const err = new Error("Not found");
     err.status = 404;
@@ -289,7 +389,7 @@ async function addComment(broadcastId, bodyText, actor) {
     err.status = 403;
     throw err;
   }
-  if (isBroadcastRecipientRole(actor.role)) {
+  if (!canViewBroadcastAsPrivileged(actor, broadcast)) {
     const rec = await getRecipientRow(broadcast.id, actor.id);
     if (!rec) {
       const err = new Error("Forbidden");
@@ -334,6 +434,7 @@ async function notifyUnreadRecipients(broadcastId, actor) {
       await notifyUsers({
         userIds: [r.user_id],
         broadcast_id: broadcast.id,
+        broadcast_public_id: broadcast.uuid || null,
         message_key: "waliBroadcastReminder",
       });
     }
@@ -346,8 +447,10 @@ module.exports = {
   getBroadcastDetail,
   listForWali,
   listForOfficeUser,
+  listForChef,
   markBroadcastRead,
   addComment,
   notifyUnreadRecipients,
-  listOfficeUsers
+  listOfficeUsers,
+  listShareRecipients,
 };

@@ -31,6 +31,7 @@ const OFFICE_TILES: HubTileDef[] = [
   { id: 'notifications', to: '/cabinet/notifications', actionKeys: ['hub.office.notifications'] },
   { id: 'shared', to: '/cabinet/shared', actionKeys: ['hub.office.shared'] },
   { id: 'instructions', to: '/cabinet/instructions', actionKeys: ['hub.office.instructions'] },
+  { id: 'chef_instructions', to: '/cabinet/chef-instructions', actionKeys: ['hub.office.chef_instructions'] },
 ];
 
 const WALI_TILES: HubTileDef[] = [
@@ -40,6 +41,7 @@ const WALI_TILES: HubTileDef[] = [
   { id: 'calendar', to: '/governor/calendar', actionKeys: ['hub.wali.calendar'] },
   { id: 'shared', to: '/governor/shared', actionKeys: ['hub.wali.shared'] },
   { id: 'instructions', to: '/governor/instructions', actionKeys: ['hub.wali.instructions'] },
+  { id: 'chef_instructions', to: '/governor/chef-instructions', actionKeys: ['hub.wali.chef_instructions'] },
 ];
 
 const CHEF_TILES: HubTileDef[] = [
@@ -53,6 +55,7 @@ const CHEF_TILES: HubTileDef[] = [
   { id: 'discussion', to: '/chief/rapports?view=discussion', actionKeys: ['hub.chef.discussion'] },
   { id: 'calendar', to: '/chief/calendar', actionKeys: ['hub.chef.calendar'] },
   { id: 'instructions', to: '/chief/instructions', actionKeys: ['hub.chef.instructions'] },
+  { id: 'chef_instructions', to: '/chief/chef-instructions', actionKeys: ['hub.chef.chef_instructions'] },
   { id: 'shared', to: '/chief/shared', actionKeys: ['hub.chef.shared'] },
 ];
 

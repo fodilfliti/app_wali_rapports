@@ -1236,6 +1236,28 @@ officeRouter.get("/instructions/:id", async (req, res, next) => {
   }
 });
 
+const chefInstructionService = require("../modules/rapports/chefInstructionService");
+
+officeRouter.get("/chef-instructions", async (req, res, next) => {
+  try {
+    res.json(await chefInstructionService.listForOffice(req.user.id, req.query));
+  } catch (e) {
+    next(e);
+  }
+});
+
+officeRouter.get("/chef-instructions/:id", async (req, res, next) => {
+  try {
+    res.json({
+      instruction: await chefInstructionService.getInstruction(req.params.id, {
+        userId: req.user.id,
+      }),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 officeRouter.get("/guide-videos", async (req, res, next) => {
   try {
     res.json(await guideVideoService.listGuideVideos(req.query, req.user.role));

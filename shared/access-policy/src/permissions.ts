@@ -67,6 +67,7 @@ export const ACTION_REQUIREMENTS: Partial<Record<ActionKey, ActionRequirement>> 
   'hub.office.notifications': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
   'hub.office.shared': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
   'hub.office.instructions': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.chef_instructions': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
   'hub.office.guide': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
   // Wali hub
   'hub.wali.office_users': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
@@ -75,6 +76,7 @@ export const ACTION_REQUIREMENTS: Partial<Record<ActionKey, ActionRequirement>> 
   'hub.wali.calendar': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.wali.shared': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.wali.instructions': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
+  'hub.wali.chef_instructions': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.wali.guide': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   // Chef hub
   'hub.chef.office_users': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
@@ -83,6 +85,7 @@ export const ACTION_REQUIREMENTS: Partial<Record<ActionKey, ActionRequirement>> 
   'hub.chef.discussion': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.chef.calendar': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.chef.instructions': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
+  'hub.chef.chef_instructions': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.chef.shared': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.chef.guide': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   // Rapport actions
@@ -111,7 +114,10 @@ export const ACTION_REQUIREMENTS: Partial<Record<ActionKey, ActionRequirement>> 
   'rapports.instructions.view': { roles: ['OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
   'rapports.instructions.create': { roles: ['WALI'] },
   'rapports.instructions.delete': { roles: ['WALI'] },
-  'broadcast.create': { roles: ['WALI'] },
+  'rapports.chef_instructions.view': { roles: ['OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
+  'rapports.chef_instructions.create': { roles: ['CHEF_CABINET'] },
+  'rapports.chef_instructions.delete': { roles: ['CHEF_CABINET'] },
+  'broadcast.create': { roles: ['WALI', 'CHEF_CABINET'] },
 };
 
 /** Rank access levels for comparison. */

@@ -213,6 +213,7 @@ export type NotificationPreferences = {
   rapport_feedback: boolean
   discussion: boolean
   instructions: boolean
+  chef_instructions: boolean
   broadcasts: boolean
   calendar: boolean
 }
@@ -805,19 +806,12 @@ export function listOfficeNotifications(token: string, unreadOnly = false) {
   });
 }
 
-export type OfficeHubCounts = {
-  unread_notifications: number;
-  changes_requested_rapports: number;
-  unread_shared_files: number;
-  unread_instructions: number;
-  unread_discussion: number;
-  services_action_count: number;
-};
-
 export type WaliHubCounts = {
   inbox_pending: number;
   office_users_pending: number;
   unread_discussion: number;
+  unread_shared_files?: number;
+  unread_chef_instructions?: number;
 };
 
 export type ChefHubCounts = {
@@ -826,6 +820,17 @@ export type ChefHubCounts = {
   unread_discussion: number;
   unread_shared_files: number;
   delete_pending: number;
+  unread_chef_instructions?: number;
+};
+
+export type OfficeHubCounts = {
+  unread_notifications: number;
+  changes_requested_rapports: number;
+  unread_shared_files: number;
+  unread_instructions: number;
+  unread_chef_instructions?: number;
+  unread_discussion: number;
+  services_action_count: number;
 };
 
 export function getOfficeHubCounts(token: string) {
@@ -1662,6 +1667,18 @@ export function uploadWaliFile(token: string, file: File, opts: UploadOptions = 
   );
 }
 
+export function uploadChefFile(token: string, file: File, opts: UploadOptions = {}) {
+  return uploadFormData<{ file: any }>(
+    "/chief/uploads",
+    () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return fd;
+    },
+    { ...opts, token, method: "POST" },
+  );
+}
+
 export function getRapportMediaFiles(token: string, rapportId: EntityIdParam) {
   return request<{ files: Record<string, any> }>(
     `/cabinet/rapports/${rapportId}/media`,
@@ -1725,6 +1742,10 @@ export function listWaliShareUsers(token: string) {
   return request<{ users: any[] }>("/governor/office-users-for-share", { token });
 }
 
+export function listChefShareUsers(token: string) {
+  return request<{ users: any[] }>("/chief/office-users-for-share", { token });
+}
+
 export function createWaliBroadcast(
   token: string,
   body: Record<string, unknown>,
@@ -1750,6 +1771,38 @@ export function createWaliBroadcast(
   });
 }
 
+export function createChefBroadcast(
+  token: string,
+  body: Record<string, unknown>,
+  file?: File | null,
+  opts: UploadOptions = {},
+) {
+  if (file) {
+    return uploadFormData<{ broadcast: any }>(
+      "/chief/broadcasts",
+      () => {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("payload", JSON.stringify(body));
+        return fd;
+      },
+      { ...opts, token, method: "POST" },
+    );
+  }
+  return request<{ broadcast: any }>("/chief/broadcasts", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function markWaliBroadcastRead(token: string, id: EntityIdParam) {
+  return request<{ broadcast: any }>(`/governor/broadcasts/${id}/read`, {
+    method: "POST",
+    token,
+  });
+}
+
 export function addWaliBroadcastComment(
   token: string,
   id: EntityIdParam,
@@ -1764,6 +1817,13 @@ export function addWaliBroadcastComment(
 
 export function remindBroadcastUnread(token: string, id: EntityIdParam) {
   return request<{ reminded: number }>(`/governor/broadcasts/${id}/remind`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function remindChefBroadcastUnread(token: string, id: EntityIdParam) {
+  return request<{ reminded: number }>(`/chief/broadcasts/${id}/remind`, {
     method: "POST",
     token,
   });
@@ -1904,6 +1964,93 @@ export function listChefInstructions(
 
 export function getChefInstruction(token: string, id: EntityIdParam) {
   return request<{ instruction: any }>(`/chief/instructions/${id}`, { token });
+}
+
+export function listChefAuthoredInstructions(
+  token: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
+    `/chief/chef-instructions?${q}`,
+    { token },
+  );
+}
+
+export function getChefAuthoredInstruction(token: string, id: EntityIdParam) {
+  return request<{ instruction: any }>(`/chief/chef-instructions/${id}`, { token });
+}
+
+export function deleteChefInstruction(token: string, id: EntityIdParam) {
+  return request<{ ok: boolean; id: EntityIdParam }>(`/chief/chef-instructions/${id}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function createChefInstruction(
+  token: string,
+  body: Record<string, unknown>,
+  files: File[] = [],
+  opts: UploadOptions = {},
+) {
+  if (files.length) {
+    return uploadFormData<{ instruction: any }>(
+      "/chief/chef-instructions",
+      () => {
+        const fd = new FormData();
+        for (const file of files) fd.append("files", file);
+        fd.append("payload", JSON.stringify(body));
+        return fd;
+      },
+      { ...opts, token, method: "POST" },
+    );
+  }
+  return request<{ instruction: any }>("/chief/chef-instructions", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export function listChefInstructionOfficeUsers(token: string) {
+  return request<{ users: any[] }>("/chief/chef-instructions-office-users", { token });
+}
+
+export function listOfficeChefInstructions(
+  token: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
+    `/cabinet/chef-instructions?${q}`,
+    { token },
+  );
+}
+
+export function getOfficeChefInstruction(token: string, id: EntityIdParam) {
+  return request<{ instruction: any }>(`/cabinet/chef-instructions/${id}`, { token });
+}
+
+export function listWaliChefInstructions(
+  token: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
+  return request<{ instructions: any[]; total: number; page: number; pageSize: number }>(
+    `/governor/chef-instructions?${q}`,
+    { token },
+  );
+}
+
+export function getWaliChefInstruction(token: string, id: EntityIdParam) {
+  return request<{ instruction: any }>(`/governor/chef-instructions/${id}`, { token });
 }
 
 export type RapportExportOpts = {

@@ -9,6 +9,7 @@ import {
   RapportTitleField,
   patchRapportTitle,
 } from "../components/RapportTitleField";
+import { RapportCreatedBy } from "../components/RapportCreatedBy";
 import { TablePagination } from "../components/TablePagination";
 import { WaliResponsesSection } from "../components/WaliResponsesSection";
 import type { ReviewResponseRow } from "../components/WaliResponsesSection";
@@ -399,12 +400,15 @@ export function OfficeCommuneListPage({ token }: Props) {
   return (
     <div className="page communeHubPage">
       <div className="pageHeader row compact">
-        <RapportTitleField
-          title={title}
-          onChange={setTitle}
-          editable={!!editable}
-          fallback={label}
-        />
+        <div className="pageHeaderTitleBlock">
+          <RapportTitleField
+            title={title}
+            onChange={setTitle}
+            editable={!!editable}
+            fallback={label}
+          />
+          <RapportCreatedBy user={workspace?.rapport?.createdByUser} />
+        </div>
         <div className="pageHeaderActions">
           {workspace?.rapport?.id ? (
             <RapportVersionHeaderActions

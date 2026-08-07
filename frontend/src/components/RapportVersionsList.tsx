@@ -2,18 +2,23 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TablePagination } from "./TablePagination";
 import { DEFAULT_PAGE_SIZE, paginateSlice } from "../utils/pagination";
+import {
+  createdByDisplayName,
+  type CreatedByUser,
+} from "./RapportCreatedBy";
 
 export type RapportVersionRow = {
-  id: number;
+  id: number | string;
   version_number: number;
   submitted_at?: string | null;
+  createdByUser?: CreatedByUser | null;
 };
 
 type Props = {
   versions: RapportVersionRow[];
-  liveCurrentVersionId?: number | null;
-  selectedVersionId?: number | null;
-  onSelectVersion: (versionId: number) => void;
+  liveCurrentVersionId?: number | string | null;
+  selectedVersionId?: number | string | null;
+  onSelectVersion: (versionId: number | string) => void;
   onBackToCurrent: () => void;
   onClose?: () => void;
 };
@@ -45,24 +50,36 @@ export function RapportVersionsList({
         ) : null}
       </div>
       <ul className="versionList">
-        {paged.map((v) => (
-          <li key={v.id}>
-            <button
-              type="button"
-              className={`btn btn-ghost versionListBtn${v.id === activeId ? " active" : ""}`}
-              onClick={() => {
-                if (v.id === liveCurrentVersionId) onBackToCurrent();
-                else onSelectVersion(v.id);
-              }}
-            >
-              v{v.version_number} —{" "}
-              {v.submitted_at
-                ? new Date(v.submitted_at).toLocaleString()
-                : t("statusDraft")}
-              {v.id === liveCurrentVersionId ? ` (${t("current")})` : ""}
-            </button>
-          </li>
-        ))}
+        {paged.map((v) => {
+          const creator = createdByDisplayName(v.createdByUser, t);
+          return (
+            <li key={v.id}>
+              <button
+                type="button"
+                className={`btn btn-ghost versionListBtn${String(v.id) === String(activeId) ? " active" : ""}`}
+                onClick={() => {
+                  if (String(v.id) === String(liveCurrentVersionId)) onBackToCurrent();
+                  else onSelectVersion(v.id);
+                }}
+              >
+                <span className="versionListBtnMain">
+                  v{v.version_number} —{" "}
+                  {v.submitted_at
+                    ? new Date(v.submitted_at).toLocaleString()
+                    : t("statusDraft")}
+                  {String(v.id) === String(liveCurrentVersionId)
+                    ? ` (${t("current")})`
+                    : ""}
+                </span>
+                {creator ? (
+                  <span className="muted small versionListCreator">
+                    {t("versionCreatedBy", { name: creator })}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
       </ul>
       <TablePagination
         page={page}

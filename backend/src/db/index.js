@@ -33,6 +33,9 @@ const WaliBroadcastComment = require("./models/WaliBroadcastComment")(sequelize)
 const WaliInstruction = require("./models/WaliInstruction")(sequelize);
 const WaliInstructionFile = require("./models/WaliInstructionFile")(sequelize);
 const WaliInstructionRecipient = require("./models/WaliInstructionRecipient")(sequelize);
+const ChefInstruction = require("./models/ChefInstruction")(sequelize);
+const ChefInstructionFile = require("./models/ChefInstructionFile")(sequelize);
+const ChefInstructionRecipient = require("./models/ChefInstructionRecipient")(sequelize);
 const RapportComment = require("./models/RapportComment")(sequelize);
 const GuideVideo = require("./models/GuideVideo")(sequelize);
 const RefreshToken = require("./models/RefreshToken")(sequelize);
@@ -173,6 +176,17 @@ WaliInstructionRecipient.belongsTo(WaliInstruction, { foreignKey: "instruction_i
 User.hasMany(WaliInstructionRecipient, { foreignKey: "user_id", as: "instructionRecipients" });
 WaliInstructionRecipient.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
+User.hasMany(ChefInstruction, { foreignKey: "created_by_user_id", as: "chefInstructions" });
+ChefInstruction.belongsTo(User, { foreignKey: "created_by_user_id", as: "createdByUser" });
+ChefInstruction.hasMany(ChefInstructionFile, { foreignKey: "instruction_id", as: "files" });
+ChefInstructionFile.belongsTo(ChefInstruction, { foreignKey: "instruction_id", as: "instruction" });
+ChefInstructionFile.belongsTo(UploadedFile, { foreignKey: "uploaded_file_id", as: "file" });
+UploadedFile.hasMany(ChefInstructionFile, { foreignKey: "uploaded_file_id", as: "chefInstructionFiles" });
+ChefInstruction.hasMany(ChefInstructionRecipient, { foreignKey: "instruction_id", as: "recipients" });
+ChefInstructionRecipient.belongsTo(ChefInstruction, { foreignKey: "instruction_id", as: "instruction" });
+User.hasMany(ChefInstructionRecipient, { foreignKey: "user_id", as: "chefInstructionRecipients" });
+ChefInstructionRecipient.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
 Rapport.hasMany(RapportComment, { foreignKey: "rapport_id", as: "comments" });
 RapportComment.belongsTo(Rapport, { foreignKey: "rapport_id", as: "rapport" });
 User.hasMany(RapportComment, { foreignKey: "author_user_id", as: "rapportComments" });
@@ -224,6 +238,9 @@ module.exports = {
   WaliInstruction,
   WaliInstructionFile,
   WaliInstructionRecipient,
+  ChefInstruction,
+  ChefInstructionFile,
+  ChefInstructionRecipient,
   RapportComment,
   GuideVideo,
   RefreshToken,

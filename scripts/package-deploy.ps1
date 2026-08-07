@@ -15,7 +15,8 @@
   Skips: node_modules, env files, demo/dev/test seed scripts,
          local storage, docs, tests, old archives.
   Includes prod cabinet seeds only: seed-prod-bootstrap, seed-prod-ensure,
-         load-env, lib/prodCabinetUsers, data/prodBootstrapInventory.
+         ensure-fiche-lecture, ensure-super-admin, load-env,
+         lib/prodCabinetUsers, lib/ensureSuperAdmin, data/prodBootstrapInventory.
 
 .EXAMPLE
   .\scripts\package-deploy.ps1
@@ -138,13 +139,16 @@ foreach ($pkg in @("access-policy", "routes")) {
 }
 
 # Whitelist prod cabinet scripts only (wipe once + safe ensure).
+# seed-prod-ensure requires lib/ensureSuperAdmin — keep in sync or ensure fails MODULE_NOT_FOUND.
 $ProdScriptFiles = @(
   "scripts\load-env.js",
   "scripts\seed-prod-bootstrap.js",
   "scripts\seed-prod-ensure.js",
   "scripts\ensure-fiche-lecture-types.js",
+  "scripts\ensure-super-admin.js",
   "scripts\regenerate-credentials-handout-pdf.js",
   "scripts\lib\prodCabinetUsers.js",
+  "scripts\lib\ensureSuperAdmin.js",
   "scripts\data\prodBootstrapInventory.js"
 )
 foreach ($rel in $ProdScriptFiles) {

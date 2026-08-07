@@ -170,6 +170,24 @@ export function BroadcastRecipientsPanel({
   )
 }
 
+export function SharedUploaderTag({
+  role,
+  className,
+}: {
+  role?: string | null
+  className?: string
+}) {
+  const { t } = useTranslation()
+  if (role !== 'WALI' && role !== 'CHEF_CABINET') return null
+  const label = role === 'CHEF_CABINET' ? t('roleChefCabinet') : t('roleWali')
+  const kind = role === 'CHEF_CABINET' ? 'chef' : 'wali'
+  return (
+    <span className={`sharedUploaderTag sharedUploaderTag--${kind}${className ? ` ${className}` : ''}`}>
+      {label}
+    </span>
+  )
+}
+
 export function SharedBroadcastListCard({
   to,
   title,
@@ -179,6 +197,7 @@ export function SharedBroadcastListCard({
   readAt,
   stats,
   showUnreadBadge,
+  createdByRole,
 }: {
   to: string
   title: string
@@ -188,6 +207,7 @@ export function SharedBroadcastListCard({
   readAt?: string | null
   stats?: { read?: number; total?: number }
   showUnreadBadge?: boolean
+  createdByRole?: string | null
 }) {
   const { t, i18n } = useTranslation()
   const isUnread = showUnreadBadge ? !readAt : false
@@ -204,6 +224,9 @@ export function SharedBroadcastListCard({
         <div className="sharedFileCardTitleRow">
           <h2 className="sharedFileCardTitle">{title}</h2>
           {isUnread ? <span className="badge badge-submitted">{t('unread')}</span> : null}
+        </div>
+        <div className="sharedFileCardTags">
+          <SharedUploaderTag role={createdByRole} />
         </div>
         {message ? <p className="sharedFileCardMessage muted">{message}</p> : null}
         {file?.original_name ? (

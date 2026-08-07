@@ -341,7 +341,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
-      res.json({ broadcasts: await broadcastService.listForWali() });
+      res.json({ broadcasts: await broadcastService.listForWali(req.user) });
     } catch (e) {
       next(e);
     }
@@ -360,6 +360,23 @@ waliRouter.get(
         ),
       });
     } catch (e) {
+      next(e);
+    }
+  },
+);
+
+waliRouter.post(
+  "/broadcasts/:id/read",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      const broadcast = await broadcastService.markBroadcastRead(
+        req.params.id,
+        req.user,
+      );
+      res.json({ broadcast });
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
       next(e);
     }
   },
@@ -462,7 +479,7 @@ waliRouter.get(
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
-      const users = await broadcastService.listOfficeUsers();
+      const users = await broadcastService.listShareRecipients(req.user);
       res.json({ users });
     } catch (e) {
       next(e);
@@ -533,6 +550,37 @@ waliRouter.post(
       res.status(201).json({ instruction });
     } catch (e) {
       if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+const chefInstructionService = require("../modules/rapports/chefInstructionService");
+
+waliRouter.get(
+  "/chef-instructions",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      res.json(await chefInstructionService.listForWali(req.query));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+waliRouter.get(
+  "/chef-instructions/:id",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      res.json({
+        instruction: await chefInstructionService.getInstruction(req.params.id, {
+          asWali: true,
+          userId: req.user.id,
+        }),
+      });
+    } catch (e) {
       next(e);
     }
   },

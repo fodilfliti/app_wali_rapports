@@ -110,10 +110,11 @@ async function canAccessUploadedFile(user, file) {
   // Broadcasts
   const broadcast = await WaliBroadcast.findOne({
     where: { uploaded_file_id: file.id },
-    attributes: ["id"],
+    attributes: ["id", "created_by_user_id"],
   });
   if (broadcast) {
     if (user.role === "WALI" || user.role === "ADMIN") return true;
+    if (Number(broadcast.created_by_user_id) === Number(user.id)) return true;
     const hit = await WaliBroadcastRecipient.findOne({
       where: { broadcast_id: broadcast.id, user_id: user.id },
       attributes: ["id"],
@@ -131,6 +132,24 @@ async function canAccessUploadedFile(user, file) {
     if (user.role === "CHEF_CABINET") return true; // Chef read-only instructions
     const rec = await WaliInstructionRecipient.findOne({
       where: { instruction_id: link.instruction_id, user_id: user.id },
+      attributes: ["id"],
+    });
+    return Boolean(rec);
+  }
+
+  const {
+    ChefInstructionFile,
+    ChefInstructionRecipient,
+  } = require("../db");
+  const chefLink = await ChefInstructionFile.findOne({
+    where: { uploaded_file_id: file.id },
+    attributes: ["instruction_id"],
+  });
+  if (chefLink) {
+    if (user.role === "CHEF_CABINET" || user.role === "ADMIN") return true;
+    if (user.role === "WALI") return true; // Wali read-only Chef instructions
+    const rec = await ChefInstructionRecipient.findOne({
+      where: { instruction_id: chefLink.instruction_id, user_id: user.id },
       attributes: ["id"],
     });
     return Boolean(rec);

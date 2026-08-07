@@ -99,6 +99,43 @@ Admin UI folder create is gated by frontend `ENABLE_SERVICE_FOLDERS` (default of
 - الهيئة الوطنية لحماية و ترقية الطفولة
 - العملية التضامنية لشهر رمضان
 
+### mehadji.houria — مهاجي حورية
+
+رئيس المهندسين في السكن و العمران
+
+- متابعة المشاريع
+
+### benkhouane.amina — بن خوان أمينة
+
+مهندس دولة للإدارة الإقليمية في التسيير التقني والحضري
+
+- التربية
+
+### sayeh.mohamedamine — سايح محمد أمين
+
+مهندس دولة للإدارة الإقليمية في التسيير التقني والحضري
+
+- البيئة
+
+### boubaker.mohamed — بوبكر محمد
+
+متصرف محلل
+
+- خلية الإعلام
+
+### abdelmoula.malika — عبد المولى مليكة
+
+متصرف رئيسي
+
+- الفلاحة
+
+### baakak.ali — بعكاك علي
+
+متصرف مستشار
+
+- السكن
+- الأشغال العمومية
+
 ## Credentials files (generated at run)
 
 Excel for admin ops; **one PDF** for printing (exactly **1 page per user**).
@@ -199,11 +236,11 @@ npm run db:seed-prod-bootstrap
 Idempotent: creates missing users, root leaf services, and `manage` grants; skips existing usernames/slugs; never changes existing passwords.
 
 1. Append people/services to [`prodBootstrapInventory.js`](../../backend/scripts/data/prodBootstrapInventory.js) and this doc.
-2. Deploy the updated inventory file (or full API package).
+2. Deploy the **full API** package to `~/wali-api/` (keep `.env`) — not inventory alone. `seed-prod-ensure` also needs `scripts/lib/ensureSuperAdmin.js` and `scripts/lib/prodCabinetUsers.js` (see `DEPLOY.md` § Add cabinet users). Prefer `.\scripts\package-deploy.ps1` → `wali-api.zip`, or replace the whole API tree.
 3. Run:
 
 ```bash
-cd backend
+cd ~/wali-api   # or backend locally
 npm run db:seed-prod-ensure
 ```
 

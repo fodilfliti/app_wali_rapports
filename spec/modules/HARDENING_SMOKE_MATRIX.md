@@ -48,4 +48,15 @@ Log in with each role; mark pass/fail.
 | Excel only where allowed (`table_grid` / `commune_list` table) | pass (UI menu + BE `canExportExcel`) |
 | Wali response export block only `fiche_lecture` | pass (PDF/Word via `canShowWaliResponseExportBlock`) |
 
+## Shared files & instructions
+
+| Check | OFFICE | CHEF | WALI |
+|-------|--------|------|------|
+| Shared files hub; uploader label (والي / رئيس الديوان) | pass | pass | pass |
+| Chef create shared (`/chief/shared/new`) → office + Wali notif | — | pass | pass (recipient) |
+| Wali create shared → office + Chef | pass | pass | pass |
+| Wali instructions create / Chef RO / office recipients | pass | pass | pass |
+| Chef instructions create (`/chief/chef-instructions`) / Wali RO / office recipients | pass | pass | pass |
+| Separate hub tiles + unread counters | pass | pass | pass |
+
 When all pass, tick P7 in `PLATFORM_HARDENING_PLAN.md`.

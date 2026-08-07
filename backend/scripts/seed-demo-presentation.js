@@ -42,6 +42,8 @@ const {
   WaliBroadcastComment,
   WaliInstruction,
   WaliInstructionRecipient,
+  ChefInstruction,
+  ChefInstructionRecipient,
   GuideVideo,
 } = require("../src/db");
 const {
@@ -89,6 +91,9 @@ async function clearAllDomain() {
     "wali_instruction_recipients",
     "wali_instruction_files",
     "wali_instructions",
+    "chef_instruction_recipients",
+    "chef_instruction_files",
+    "chef_instructions",
     "guide_videos",
     "rapport_comments",
     "chef_responses",
@@ -107,7 +112,11 @@ async function clearAllDomain() {
     "audit_logs",
   ];
   for (const table of tables) {
-    await sequelize.query(`DELETE FROM ${table}`);
+    try {
+      await sequelize.query(`DELETE FROM ${table}`);
+    } catch (e) {
+      if (!/does not exist|Unknown table/i.test(String(e.message || e))) throw e;
+    }
   }
 
   // Detach users from departments, then drop org tree.
@@ -1590,6 +1599,37 @@ async function seedDemo() {
     created_at: now,
   });
 
+  // --- Chef instructions ---
+  const chefInstr = await ChefInstruction.create({
+    title_ar: "تعليمة رئيس الديوان — تنسيق الإرسال",
+    title_fr: "Instruction chef — coordination des envois",
+    body_ar: "قبل إرسال أي تقرير للوالي، راجعوا اكتمال البيانات والمرفقات.",
+    body_fr: "Avant envoi au wali, vérifier la complétude des données et pièces.",
+    created_by_user_id: chef.id,
+    created_at: dayAgo,
+    updated_at: dayAgo,
+  });
+  for (const uid of [office.id, officeView.id]) {
+    await ChefInstructionRecipient.create({
+      instruction_id: chefInstr.id,
+      user_id: uid,
+      read_at: null,
+      created_at: dayAgo,
+    });
+    await Notification.create({
+      user_id: uid,
+      chef_instruction_id: chefInstr.id,
+      message_key: "chefInstruction",
+      created_at: dayAgo,
+    });
+  }
+  await Notification.create({
+    user_id: wali.id,
+    chef_instruction_id: chefInstr.id,
+    message_key: "chefInstruction",
+    created_at: dayAgo,
+  });
+
   // --- Broadcast (office + chef) ---
   const imageFiles = listUploadFiles([".png", ".jpg", ".jpeg"]);
   const videoFiles = listUploadFiles([".mp4", ".webm", ".mov"]);
@@ -1637,6 +1677,42 @@ async function seedDemo() {
       body_text: "تم الاستلام — شكراً.",
       created_at: now,
     });
+
+    // Chef-uploaded shared file → office + wali
+    const chefBroadcastFile = await registerUploadedFile({
+      storageKey: `${stem}-chef`,
+      originalName: `chef-${img.name}`,
+      mimeType: img.name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg",
+      sizeBytes: img.size,
+      mediaKind: "image",
+      uploadedByUserId: chef.id,
+    });
+    await chefBroadcastFile.update({ storage_rel_path: `uploads/${img.name}` });
+    const chefBroadcast = await WaliBroadcast.create({
+      uploaded_file_id: chefBroadcastFile.id,
+      title_ar: "مشاركة من رئيس الديوان",
+      title_fr: "Partage du chef de cabinet",
+      message_ar: "ملف مشترك من رئيس الديوان للاطلاع.",
+      message_fr: "Fichier partagé par le chef de cabinet.",
+      allow_comments: true,
+      created_by_user_id: chef.id,
+      created_at: now,
+    });
+    for (const uid of [office.id, wali.id]) {
+      await WaliBroadcastRecipient.create({
+        broadcast_id: chefBroadcast.id,
+        user_id: uid,
+        read_at: null,
+        created_at: now,
+      });
+      await Notification.create({
+        user_id: uid,
+        broadcast_id: chefBroadcast.id,
+        message_key: "waliBroadcast",
+        created_at: now,
+      });
+    }
+
     broadcastSeeded = true;
   } else {
     console.warn("No image in storage/uploads — skipped Wali broadcast seed.");
@@ -1709,7 +1785,7 @@ async function seedDemo() {
   console.log("\nAlso seeded:");
   console.log("  • Liste targets: commune + daira + direction + changed_entity_keys");
   console.log("  • Soft-hide: daira 1351, commune 1344, direction DIR03, type barrages_archive_hidden");
-  console.log("  • Instructions (all + office1) | Broadcast office+chef:", broadcastSeeded ? "yes" : "no");
+  console.log("  • Instructions wali + chef | Broadcast wali+chef:", broadcastSeeded ? "yes" : "no");
   console.log("  • Guide videos:", guideCount);
   console.log("  • Discussion comments + unread notifs (office / chef / wali)");
   console.log("\nDemo script tips:");

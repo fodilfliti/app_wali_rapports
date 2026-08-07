@@ -50,6 +50,7 @@ const HUB_TILE_TITLE_KEYS: Record<string, string> = {
   notifications: 'navNotifications',
   shared: 'navSharedFiles',
   instructions: 'navWaliInstructions',
+  chef_instructions: 'navChefInstructions',
   office_users: 'navOfficeUsers',
   inbox: 'navInbox',
   delete_requested: 'statusGroupDeleteRequested',
@@ -70,6 +71,7 @@ const HUB_TILE_ICONS: Record<string, HubIconName> = {
   notifications: 'notifications',
   shared: 'shared',
   instructions: 'document',
+  chef_instructions: 'document',
   office_users: 'officeUsers',
   inbox: 'inbox',
   delete_requested: 'inbox',
@@ -102,6 +104,8 @@ function officeHubTileExtras(tile: HubTileDef, counts: OfficeHubCounts, t: TFunc
       return { badge: <HubCountBadge count={counts.unread_shared_files} /> }
     case 'instructions':
       return { badge: <HubCountBadge count={counts.unread_instructions} /> }
+    case 'chef_instructions':
+      return { badge: <HubCountBadge count={counts.unread_chef_instructions || 0} /> }
     default:
       return {}
   }
@@ -124,6 +128,10 @@ function waliHubTileExtras(tile: HubTileDef, counts: WaliHubCounts, t: TFunction
         badge: <HubCountBadge count={counts.unread_discussion || 0} />,
         subtitle: t('discussionInboxHintShort'),
       }
+    case 'shared':
+      return { badge: <HubCountBadge count={counts.unread_shared_files || 0} /> }
+    case 'chef_instructions':
+      return { badge: <HubCountBadge count={counts.unread_chef_instructions || 0} /> }
     default:
       return {}
   }
@@ -155,6 +163,8 @@ function chefHubTileExtras(tile: HubTileDef, counts: ChefHubCounts, t: TFunction
       }
     case 'shared':
       return { badge: <HubCountBadge count={counts.unread_shared_files || 0} /> }
+    case 'chef_instructions':
+      return { badge: <HubCountBadge count={counts.unread_chef_instructions || 0} /> }
     default:
       return {}
   }

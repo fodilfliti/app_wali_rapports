@@ -4,13 +4,13 @@ Hosting: **DZSecurity** ([dzsecurity.com](https://www.dzsecurity.com/ar/)) → *
 
 Last known production target:
 
-| Item | Value |
-| ---- | ----- |
-| Domain | `https://cabinet.wilaya-tlemcen.dz` |
-| Frontend | SPA files in `public_html/` |
-| Backend | Node app in `~/wali-api/` mounted at `/api` |
-| Files | `~/wali-storage/` (uploads, exports, PDF) |
-| DB | PostgreSQL on cPanel (Unix socket) |
+| Item     | Value                                       |
+| -------- | ------------------------------------------- |
+| Domain   | `https://cabinet.wilaya-tlemcen.dz`         |
+| Frontend | SPA files in `public_html/`                 |
+| Backend  | Node app in `~/wali-api/` mounted at `/api` |
+| Files    | `~/wali-storage/` (uploads, exports, PDF)   |
+| DB       | PostgreSQL on cPanel (Unix socket)          |
 
 Env templates (do not commit real secrets):
 
@@ -23,22 +23,29 @@ Env templates (do not commit real secrets):
 
 When you say **“package deploy”** (or similar), build + zip **only** what File Manager needs.
 
+```bash
+npm run deploy
+```
+
+Same as:
+
 ```powershell
 .\scripts\package-deploy.ps1
 ```
 
 Output in `deploy-out/` (gitignored):
 
-| Zip | Upload to | Contains | Never included (keep your server copies) |
-| --- | --------- | -------- | ---------------------------------------- |
-| `wali-frontend-public_html.zip` | extract **into** `public_html/` | `dist/` assets only | `.htaccess`, env, `src/`, `node_modules` |
-| `wali-api.zip` | extract **into** `~/wali-api/` | `src/`, `config/`, `package*.json`, `.sequelizerc`, **`shared/*/dist`** (access-policy + routes) | `.env`, env examples, demo seed scripts, `node_modules`, `storage/` |
+| Zip                             | Upload to                       | Contains                                                                                                                                         | Never included (keep your server copies)                                         |
+| ------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `wali-frontend-public_html.zip` | extract **into** `public_html/` | `dist/` assets only                                                                                                                              | `.htaccess`, env, `src/`, `node_modules`                                         |
+| `wali-api.zip`                  | extract **into** `~/wali-api/`  | `src/`, `config/`, `package*.json`, `.sequelizerc`, **`shared/*/dist`**, prod scripts (`seed-prod-ensure`, inventory, `lib/ensureSuperAdmin`, …) | `.env`, env examples, **demo/dev/test** seed scripts, `node_modules`, `storage/` |
 
 After upload:
 
 1. Frontend: unzip into `public_html` — your existing `.htaccess` is left alone.
 2. Backend: unzip into `wali-api` — your existing `.env` is left alone → cPanel **Run NPM Install** → **Restart** → `npm run db:migrate` if new migrations (under `src/db/migrations`, not `scripts/`).
 3. Confirm `~/wali-api/shared/access-policy/dist/index.js` and `~/wali-api/shared/routes/dist/index.js` exist after unzip (bundled by `package-deploy.ps1`).
+4. Confirm prod ensure helpers exist: `~/wali-api/scripts/seed-prod-ensure.js`, `scripts/data/prodBootstrapInventory.js`, `scripts/lib/ensureSuperAdmin.js`, `scripts/lib/prodCabinetUsers.js`.
 
 `deploy/public_html.htaccess` is a first-version **reference only** — never upload it over the cPanel `.htaccess`.
 
@@ -103,8 +110,9 @@ Required on server:
 - `config/`
 - `.sequelizerc`
 - `.env` (create once on server; **never** overwrite from a zip)
+- Prod cabinet scripts (from zip or full API copy): `scripts/seed-prod-ensure.js`, `scripts/seed-prod-bootstrap.js`, `scripts/data/prodBootstrapInventory.js`, `scripts/lib/prodCabinetUsers.js`, `scripts/lib/ensureSuperAdmin.js`, `scripts/load-env.js`, `scripts/ensure-fiche-lecture-types.js`, `scripts/ensure-super-admin.js`
 
-Not uploaded on redeploy: `backend/scripts/` (seed-dev / demo / test helpers — local only).
+**Not** uploaded by `package-deploy.ps1`: demo/dev/test helpers (`seed-demo*`, `seed-dev`, `seed-test-fixtures`, `seedCabinetHeroes`, …). If you replace the **whole** `~/wali-api/` tree from a local backend copy, keep those out of production or leave them unused — never run demo/test seeds on prod.
 
 ### 4. Setup Node.js App (cPanel)
 
@@ -155,19 +163,36 @@ npm run db:seed-dev
 
 #### DB scripts — production safety
 
-| Command | Safe on prod? | Notes |
-| ------- | ------------- | ----- |
-| `npm run db:migrate` | Yes | Schema only — run when new migrations ship |
-| `npm run db:seed-dev` | Yes (once / as needed) | Does **not** wipe data; inserts dairas/municipalities if empty; creates/updates admin |
-| `npm run db:seed-test` | **No** | `DELETE FROM` services, rapports, versions, notifications, broadcasts, etc. |
-| `npm run db:seed-demo` | **No** | Same wipe as test seed, plus deletes **departments** |
-| `npm run db:seed-prod-bootstrap` | **Once only** (after backup) | Wipes **office/wali/chef data** (rapports incl. fiche docs, other schemas, non-admin users, services…) then loads cabinet + **fiche_lecture type per leaf**. **Keeps** guide videos (+ files), ADMIN, org reference. |
-| `npm run db:seed-prod-ensure` | **Safe ongoing** | Adds missing users/services/grants from the same inventory; never deletes or resets passwords. Plain `npm run …` (passes `--confirm`). New passwords only in `credentials-added-*.xlsx` / printable `credentials-added-*.pdf` (1 page/user). Also ensures fiche_lecture on inventory leaves. |
-| `npm run db:ensure-fiche-lecture` | **Safe** | Creates missing `fiche_lecture` types on all leaf services only. No wipe, no users. |
-| `npm run db:seed-demo-cabinet` | **Dev only** | Fills cabinet bootstrap services with presentation data; refuses when `NODE_ENV=production` |
-| `npm run db:migrate:undo` / `db:migrate:undo:all` | **No** | Rolls back migrations; can drop tables / remove seed rows |
+| Command                                           | Safe on prod?                | Notes                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run db:migrate`                              | Yes                          | Schema only — run when new migrations ship                                                                                                                                                                                                                                                   |
+| `npm run db:seed-dev`                             | Yes (once / as needed)       | Does **not** wipe data; inserts dairas/municipalities if empty; creates/updates admin                                                                                                                                                                                                        |
+| `npm run db:seed-test`                            | **No**                       | `DELETE FROM` services, rapports, versions, notifications, broadcasts, etc.                                                                                                                                                                                                                  |
+| `npm run db:seed-demo`                            | **No**                       | Same wipe as test seed, plus deletes **departments**                                                                                                                                                                                                                                         |
+| `npm run db:seed-prod-bootstrap`                  | **Once only** (after backup) | Wipes **office/wali/chef data** (rapports incl. fiche docs, other schemas, non-admin users, services…) then loads cabinet + **fiche_lecture type per leaf**. **Keeps** guide videos (+ files), ADMIN, org reference.                                                                         |
+| `npm run db:seed-prod-ensure`                     | **Safe ongoing**             | Adds missing users/services/grants from the same inventory; never deletes or resets passwords. Plain `npm run …` (passes `--confirm`). New passwords only in `credentials-added-*.xlsx` / printable `credentials-added-*.pdf` (1 page/user). Also ensures fiche_lecture on inventory leaves. |
+| `npm run db:ensure-fiche-lecture`                 | **Safe**                     | Creates missing `fiche_lecture` types on all leaf services only. No wipe, no users.                                                                                                                                                                                                          |
+| `npm run db:seed-demo-cabinet`                    | **Dev only**                 | Fills cabinet bootstrap services with presentation data; refuses when `NODE_ENV=production`                                                                                                                                                                                                  |
+| `npm run db:migrate:undo` / `db:migrate:undo:all` | **No**                       | Rolls back migrations; can drop tables / remove seed rows                                                                                                                                                                                                                                    |
 
-**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `npm run db:seed-prod-bootstrap` once (keeps guide videos; wipes office/wali/chef data including schemas) — credentials under **`backend/private/bootstrap/`** (outside `FILE_STORAGE_ROOT`; never served via `/files`). For later people/services: edit inventory, then `npm run db:seed-prod-ensure` (no wipe). If credential sheets were ever under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords` once (quarantines sheets + rotates those users’ passwords into a new private Excel).
+**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `npm run db:seed-prod-bootstrap` once (keeps guide videos; wipes office/wali/chef data including schemas) — credentials under **`backend/private/bootstrap/`** (outside `FILE_STORAGE_ROOT`; never served via `/files`). For later people/services: deploy updated API (inventory + ensure scripts), then `npm run db:seed-prod-ensure` (no wipe). If credential sheets were ever under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords` once (quarantines sheets + rotates those users’ passwords into a new private Excel).
+
+#### Add cabinet users / services (safe) — after API upload
+
+Do **not** upload only `prodBootstrapInventory.js` if the server is missing helpers — `seed-prod-ensure` will crash with `Cannot find module './lib/ensureSuperAdmin'`.
+
+1. Deploy the **full** API package (or replace `~/wali-api/` while **keeping** `.env` and `node_modules` / re-run NPM Install). Prefer `wali-api.zip` from `package-deploy.ps1`, or sync backend including the prod script whitelist above.
+2. Keep server `.env` (do not overwrite).
+3. **Restart** Node.js App.
+4. If new migrations: `cd ~/wali-api && npm run db:migrate`
+5. Add missing people/services from inventory:
+
+   ```bash
+   cd ~/wali-api
+   npm run db:seed-prod-ensure
+   ```
+
+6. Download / print only `~/wali-api/private/bootstrap/credentials-added-*.pdf` (and `.xlsx` for ops). Existing users keep their passwords.
 
 ### 6. Frontend build (on your PC)
 
@@ -193,7 +218,7 @@ First-time only: ensure React Router fallback + leave `/api` alone (see commente
 
 ### Backend change
 
-1. Upload changed files under `~/wali-api/` (or `git pull`).
+1. Upload / unzip into `~/wali-api/` (**keep** `.env`). Full-folder replace is fine if you preserve `.env` (and preferably re-run NPM Install after a clean tree).
 2. If `package.json` changed: **Run NPM Install** again.
 3. If migrations added:
 
@@ -201,8 +226,14 @@ First-time only: ensure React Router fallback + leave `/api` alone (see commente
    cd ~/wali-api && npm run db:migrate
    ```
 
-4. **Restart** Node.js App in cPanel.
-5. Smoke test: `https://YOUR_DOMAIN/api/health`
+4. If `prodBootstrapInventory.js` (or ensure scripts) changed — add missing users/services:
+
+   ```bash
+   cd ~/wali-api && npm run db:seed-prod-ensure
+   ```
+
+5. **Restart** Node.js App in cPanel.
+6. Smoke test: `https://YOUR_DOMAIN/api/health`
 
 ### Frontend change
 
@@ -236,28 +267,28 @@ Frontend uses relative `VITE_API_URL=/api` so API calls stay same-origin (no COR
 
 ## Verify after deploy
 
-| Check | Expected |
-| ----- | -------- |
-| `GET /api/health` | OK / healthy JSON |
-| Open site root | Login page (Arabic RTL) |
-| Login with seeded admin | Dashboard |
-| Upload a file in a rapport | File under `~/wali-storage/uploads/` |
-| Hard refresh deep link e.g. `/office/...` | Still SPA (`.htaccess` works) |
+| Check                                     | Expected                             |
+| ----------------------------------------- | ------------------------------------ |
+| `GET /api/health`                         | OK / healthy JSON                    |
+| Open site root                            | Login page (Arabic RTL)              |
+| Login with seeded admin                   | Dashboard                            |
+| Upload a file in a rapport                | File under `~/wali-storage/uploads/` |
+| Hard refresh deep link e.g. `/office/...` | Still SPA (`.htaccess` works)        |
 
 ---
 
 ## Common failures
 
-| Symptom | Likely cause |
-| ------- | ------------ |
-| Site loads, API 404 | Node app URL not set to `/api`, or app not started |
-| `database_connection_failed` in stderr | Wrong `DATABASE_URL` / socket; fix `PGSOCKETDIR` |
-| CORS errors | `CORS_ORIGIN` must match exact site origin (`https://…`) |
-| Blank page on refresh of a route | Missing SPA `.htaccess` |
-| Uploads fail | `FILE_STORAGE_ROOT` missing or not writable |
-| Upload fails at ~50–100 MB | LiteSpeed/proxy **max request body** smaller than app limit — ask host or reduce video size client-side |
-| Upload timeout on slow mobile | Node/proxy idle timeout — prefer client compression; retry once (built into frontend) |
-| Migrate works but app has no env | Env only in `.env` — also set in Node.js App UI |
+| Symptom                                | Likely cause                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Site loads, API 404                    | Node app URL not set to `/api`, or app not started                                                      |
+| `database_connection_failed` in stderr | Wrong `DATABASE_URL` / socket; fix `PGSOCKETDIR`                                                        |
+| CORS errors                            | `CORS_ORIGIN` must match exact site origin (`https://…`)                                                |
+| Blank page on refresh of a route       | Missing SPA `.htaccess`                                                                                 |
+| Uploads fail                           | `FILE_STORAGE_ROOT` missing or not writable                                                             |
+| Upload fails at ~50–100 MB             | LiteSpeed/proxy **max request body** smaller than app limit — ask host or reduce video size client-side |
+| Upload timeout on slow mobile          | Node/proxy idle timeout — prefer client compression; retry once (built into frontend)                   |
+| Migrate works but app has no env       | Env only in `.env` — also set in Node.js App UI                                                         |
 
 ---
 
@@ -265,12 +296,12 @@ Frontend uses relative `VITE_API_URL=/api` so API calls stay same-origin (no COR
 
 Large uploads (guide videos up to 100 MB) can fail **before Node** if the reverse proxy rejects the body size or times out.
 
-| Check | Action |
-| ----- | ------ |
-| Proxy max body | If uploads fail with 413/502 and nothing in Node logs, ask DZSecurity to raise LiteSpeed `max_request_body` (or equivalent) above 100 MB |
-| Disk quota | Monitor `~/wali-storage/uploads/` growth |
-| Node timeout | If uploads stall then fail, increase app/proxy read timeout for `/api` |
-| Server tools (optional) | SSH/cPanel terminal — see if native helpers exist before enabling server-side transcode |
+| Check                   | Action                                                                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Proxy max body          | If uploads fail with 413/502 and nothing in Node logs, ask DZSecurity to raise LiteSpeed `max_request_body` (or equivalent) above 100 MB |
+| Disk quota              | Monitor `~/wali-storage/uploads/` growth                                                                                                 |
+| Node timeout            | If uploads stall then fail, increase app/proxy read timeout for `/api`                                                                   |
+| Server tools (optional) | SSH/cPanel terminal — see if native helpers exist before enabling server-side transcode                                                  |
 
 ```bash
 cd ~/wali-api
@@ -304,3 +335,4 @@ Client-side: images are compressed in-browser before POST; optional video re-enc
 2. **Setup Node.js App** on `/api` → startup `src/server.js` → env + restart.
 3. **Postgres** + `npm run db:migrate` (+ seed once).
 4. **Build frontend** locally with `VITE_API_URL=/api` → upload `dist/` only (never overwrite cPanel `.htaccess` / `.env`).
+5. **New cabinet people:** deploy full API (incl. `scripts/lib/ensureSuperAdmin.js` + inventory) → `npm run db:seed-prod-ensure` → hand out `credentials-added-*.pdf`.

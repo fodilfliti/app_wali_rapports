@@ -3,13 +3,13 @@
 ### Purpose & constraints
 
 - Fourth account role: **`CHEF_CABINET`** (UI: **رئيس الديوان**).
-- Same review tools as Wali (inbox, navigation tree, respond, calendar, exports, versions) **except** cannot create Wali instructions or broadcasts.
+- Same review tools as Wali (inbox, navigation tree, respond, calendar, exports, versions). May create **shared broadcasts** (same pool as Wali) and **Chef instructions** (separate channel). Cannot create Wali instructions.
 - First-line validator: office submissions go to Chef before Wali can see them (unless gate is bypassed after a Wali change request).
 - Hub paths: live segment `/chief/*` (hub key `chef`) — `ROUTES.md`. UI/BE gates via `can*` / `assertCan` — `ACCESS_PROFILES.md`. Workflow levels: `WORKFLOW_TREE.md`.
 
 ### Roles & rules
 
-- **CHEF_CABINET**: `/chief/*` routes; inbox for `pending_chef`; respond → accept / changes_requested (رفض أو طلب تعديل); **delete requests** (`delete_requested_at`) → approve / reject; read-only instructions list; **recipient** of Wali broadcasts (`/chief/shared`, included in share picker and “all”).
+- **CHEF_CABINET**: `/chief/*` routes; inbox for `pending_chef`; respond → accept / changes_requested (رفض أو طلب تعديل); **delete requests** (`delete_requested_at`) → approve / reject; read-only **Wali** instructions (`/chief/instructions`); create/delete **Chef** instructions (`/chief/chef-instructions` — `CHEF_INSTRUCTIONS.md`); create + receive **shared files** (`/chief/shared`, `broadcast.create`).
 - **OFFICE_USER**: submit → `pending_chef` when `chef_gate = required`; editable when `draft` or `changes_requested`. May **return to draft** while `pending_chef` | `submitted` | `under_review` (Éditeur / `manage`, confirm UI) — clears current version `submitted_at` and current-version chef remarks, resets `chef_gate = required`, removes from Chef inbox until re-send; older-version history kept; blocked after Wali accept/view — see **`RAPPORTS.md`** § Office recall. May **delete** or **request delete** per **`RAPPORTS.md`** § Office delete (confirm dialog: instant vs Chef approval).
 - **WALI**: inbox excludes `pending_chef`; sees rapport only after Chef accept or on bypass resubmit.
 - **ADMIN**: may use chef/wali hub routes for support.
@@ -56,19 +56,24 @@ Office delete: any chef/wali response → delete_requested → Chef approve (res
 | `POST` | `/chief/rapports/:id/respond` | Chef decision (also gated by `assertVisibleToChef`) |
 | `POST` | `/chief/rapports/:id/delete-decision` | `{ decision: "approved" \| "rejected" }`; approve → restore previous version or destroy if sole v1 |
 | `GET` | `/chief/office-users` | Same tree as Wali |
-| `GET` | `/chief/instructions` | Read-only list |
-| `GET` | `/chief/instructions/:id` | Detail |
-| `GET` | `/chief/broadcasts` | Shared-files inbox (recipient) |
+| `GET` | `/chief/instructions` | Read-only Wali instructions |
+| `GET` | `/chief/instructions/:id` | Wali instruction detail |
+| `GET/POST/DELETE` | `/chief/chef-instructions` (+ `/:id`) | Chef instructions CRUD — `CHEF_INSTRUCTIONS.md` |
+| `GET` | `/chief/broadcasts` | Shared-files list (created + received) |
+| `POST` | `/chief/broadcasts` | Create shared broadcast |
+| `POST` | `/chief/uploads` | Pre-upload for broadcast/Chef instruction |
+| `GET` | `/chief/office-users-for-share` | Recipient picker (office + Wali) |
 | `GET` | `/chief/broadcasts/:id` | Broadcast detail |
 | `POST` | `/chief/broadcasts/:id/read` | Mark read |
 | `POST` | `/chief/broadcasts/:id/comments` | Comment if allowed |
 
 ### UI/UX
 
-- Hub label **رئيس الديوان**; nav mirrors Wali minus instruction/broadcast create.
-- Hub tile **ملفات مشتركة** → `/chief/shared` (same UX as office shared inbox); unread via `unread_shared_files`.
+- Hub label **رئيس الديوان**; nav mirrors Wali including shared create and Chef-instructions create; Wali-instructions tile stays read-only.
+- Hub tile **ملفات مشتركة** → `/chief/shared` (create + inbox); unread via `unread_shared_files`. Cards/details show uploader (والي / رئيس الديوان).
+- Hub tile **تعليمات رئيس الديوان** → `/chief/chef-instructions`; separate from **تعليمات السيد الوالي**.
 - Hub / filter: **طلبات الحذف** (`delete_pending` count + `status_group=delete_requested`) for office delete requests.
-- Included in Wali broadcast recipient picker and “all” sends — see `MEDIA_CALENDAR_WALI_SHARING.md`.
+- Included in Wali broadcast recipient picker and “all” sends; Chef uploads notify Wali — see `MEDIA_CALENDAR_WALI_SHARING.md`.
 - Rapport bottom: **ملاحظات رئيس الديوان** then **ملاحظات الوالي**, then **مناقشة التقرير** (see `RAPPORT_DISCUSSION.md`).
 - Never show enum `CHEF_CABINET` in UI.
 

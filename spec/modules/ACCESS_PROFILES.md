@@ -47,17 +47,17 @@ Source of truth: `shared/access-policy/src/actions.ts`. Grouped:
 **Hub (admin):** `hub.admin.municipalities` | `dairas` | `directions` | `users` | `rapports` | `services` | `schemas` | `guide`  
 (`hub.admin.access` exists for API/policy but the **الوصول** hub tile is hidden.)
 
-**Hub (office):** `hub.office.services` | `rapports` | `discussion` | `notifications` | `shared` | `instructions` | `guide`
+**Hub (office):** `hub.office.services` | `rapports` | `discussion` | `notifications` | `shared` | `instructions` | `chef_instructions` | `guide`
 
-**Hub (wali):** `hub.wali.office_users` | `inbox` | `discussion` | `calendar` | `shared` | `instructions` | `guide`
+**Hub (wali):** `hub.wali.office_users` | `inbox` | `discussion` | `calendar` | `shared` | `instructions` | `chef_instructions` | `guide`
 
-**Hub (chef):** `hub.chef.office_users` | `inbox` | `delete_requested` | `discussion` | `calendar` | `instructions` | `shared` | `guide`
+**Hub (chef):** `hub.chef.office_users` | `inbox` | `delete_requested` | `discussion` | `calendar` | `instructions` | `chef_instructions` | `shared` | `guide`
 
 **Rapport lifecycle:** `rapport.view` | `edit` | `submit` | `return_to_draft` | `start_new_version` | `show_version_archive` | `export_excel` | `show_wali_response_export` | `respond` | `comment` | `delete` | `finish` | `discussion.view`
 
 **Organization:** `organization.municipalities.view|manage` | `organization.users.view|manage` | `organization.access_roles.manage`
 
-**Inbox / instructions / broadcast:** `rapports.inbox.view|respond` | `rapports.instructions.view|create|delete` | `broadcast.create`
+**Inbox / instructions / broadcast:** `rapports.inbox.view|respond` | `rapports.instructions.view|create|delete` | `rapports.chef_instructions.view|create|delete` | `broadcast.create` (Wali + Chef)
 
 Bridge table: `ACTION_REQUIREMENTS` in `shared/access-policy/src/permissions.ts` (role gate ± catalog key ± `minAccessLevel`). Evaluate via `canAction` / FE `can(action)`.
 
@@ -98,6 +98,9 @@ Product detail: `RAPPORTS.md`, `RAPPORT_SERVICE_TYPES.md`, `PLATFORM_HARDENING_P
 - `rapports.instructions.view` (office / chef / wali)
 - `rapports.instructions.create` (wali only)
 - `rapports.instructions.delete` (wali only; cascades notifications)
+- `rapports.chef_instructions.view` (office / chef / wali)
+- `rapports.chef_instructions.create` (chef only)
+- `rapports.chef_instructions.delete` (chef only; cascades notifications)
 
 Scope mapping:
 
@@ -116,7 +119,7 @@ System templates (seeded):
 - `ADMIN_FULL` — admin scope, all manage
 - `OFFICE_STANDARD` — office scope, investissement manage + others view
 - `WALI_STANDARD` — wali scope, inbox view + respond + instructions create
-- `CHEF_STANDARD` — chef scope, inbox view + respond + instructions view (no create)
+- `CHEF_STANDARD` — chef scope, inbox view + respond + Wali-instructions view (no create) + Chef-instructions create + broadcast create
 
 ### API endpoints
 

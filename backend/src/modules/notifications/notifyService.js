@@ -1,5 +1,5 @@
 const { Op } = require("sequelize");
-const { Notification, User, Rapport, WaliBroadcast, WaliInstruction } = require("../../db");
+const { Notification, User, Rapport, WaliBroadcast, WaliInstruction, ChefInstruction } = require("../../db");
 const {
   prefTypeForMessageKey,
 } = require("../rapports/notificationKeys");
@@ -25,6 +25,13 @@ async function resolveInstructionPublicId(instructionId) {
   if (instructionId == null || instructionId === "") return null;
   if (isUuid(String(instructionId))) return String(instructionId);
   const row = await WaliInstruction.findByPk(instructionId, { attributes: ["id", "uuid"] });
+  return row ? publicId(row) : String(instructionId);
+}
+
+async function resolveChefInstructionPublicId(instructionId) {
+  if (instructionId == null || instructionId === "") return null;
+  if (isUuid(String(instructionId))) return String(instructionId);
+  const row = await ChefInstruction.findByPk(instructionId, { attributes: ["id", "uuid"] });
   return row ? publicId(row) : String(instructionId);
 }
 
@@ -145,6 +152,16 @@ const PUSH_COPY = {
     url: (p) =>
       p.instruction_id ? `/cabinet/instructions/${p.instruction_id}` : "/cabinet/instructions",
   },
+  chefInstruction: {
+    title_ar: "تعليمات رئيس الديوان",
+    title_fr: "Instructions du chef de cabinet",
+    body_ar: "وصلك تعليم جديد من رئيس الديوان.",
+    body_fr: "Nouvelle instruction du chef de cabinet.",
+    url: (p) =>
+      p.chef_instruction_id
+        ? `/cabinet/chef-instructions/${p.chef_instruction_id}`
+        : "/cabinet/chef-instructions",
+  },
   waliBroadcast: {
     title_ar: "ملف مشترك",
     title_fr: "Fichier partagé",
@@ -194,7 +211,7 @@ function buildPushPayload(messageKey, fields, overrides = {}) {
     body_ar: overrides.body_ar || copy.body_ar,
     body_fr: overrides.body_fr || copy.body_fr,
     url: overrides.url || urlFn(fields),
-    tag: overrides.tag || `${messageKey}-${fields.rapport_id || fields.calendar_event_id || fields.broadcast_id || fields.instruction_id || "x"}`,
+    tag: overrides.tag || `${messageKey}-${fields.rapport_id || fields.calendar_event_id || fields.broadcast_id || fields.instruction_id || fields.chef_instruction_id || "x"}`,
     message_key: messageKey,
     // Prefer public UUID so FE routes / discussion refresh match API ids.
     rapport_id:
@@ -214,6 +231,12 @@ function buildPushPayload(messageKey, fields, overrides = {}) {
         ? String(fields.instruction_public_id)
         : fields.instruction_id != null
           ? String(fields.instruction_id)
+          : null,
+    chef_instruction_id:
+      fields.chef_instruction_public_id != null
+        ? String(fields.chef_instruction_public_id)
+        : fields.chef_instruction_id != null
+          ? String(fields.chef_instruction_id)
           : null,
   };
 }
@@ -261,6 +284,7 @@ async function notifyUsers(opts) {
     rapport_id: opts.rapport_id ?? null,
     broadcast_id: opts.broadcast_id ?? null,
     instruction_id: opts.instruction_id ?? null,
+    chef_instruction_id: opts.chef_instruction_id ?? null,
     wali_response_id: opts.wali_response_id ?? null,
     chef_response_id: opts.chef_response_id ?? null,
     comment_id: opts.comment_id ?? null,
@@ -310,11 +334,13 @@ async function notifyUsers(opts) {
     });
 
   if (pushUserIds.length) {
-    const [rapportPublicId, broadcastPublicId, instructionPublicId] = await Promise.all([
-      resolveRapportPublicId(base.rapport_id),
-      resolveBroadcastPublicId(base.broadcast_id),
-      resolveInstructionPublicId(base.instruction_id),
-    ]);
+    const [rapportPublicId, broadcastPublicId, instructionPublicId, chefInstructionPublicId] =
+      await Promise.all([
+        resolveRapportPublicId(base.rapport_id),
+        resolveBroadcastPublicId(base.broadcast_id),
+        resolveInstructionPublicId(base.instruction_id),
+        resolveChefInstructionPublicId(base.chef_instruction_id),
+      ]);
     const payload = buildPushPayload(
       message_key,
       {
@@ -325,6 +351,8 @@ async function notifyUsers(opts) {
         broadcast_public_id: broadcastPublicId,
         instruction_id: instructionPublicId,
         instruction_public_id: instructionPublicId,
+        chef_instruction_id: chefInstructionPublicId,
+        chef_instruction_public_id: chefInstructionPublicId,
       },
       opts.push || {},
     );
@@ -334,6 +362,7 @@ async function notifyUsers(opts) {
         rapport_id: rapportPublicId,
         broadcast_id: broadcastPublicId,
         instruction_id: instructionPublicId,
+        chef_instruction_id: chefInstructionPublicId,
       }).catch(() => {});
     });
   }

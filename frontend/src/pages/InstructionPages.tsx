@@ -26,6 +26,8 @@ import { asEntityId } from '../utils/entityIds'
 type Props = { token: string }
 
 type InstructionAudience = 'office' | 'wali' | 'chef'
+/** wali = تعليمات السيد الوالي; chef = تعليمات رئيس الديوان */
+type InstructionChannel = 'wali' | 'chef'
 
 function instructionTitle(row: any, locale: string) {
   return pickBilingualText(row.title_ar, row.title_fr, locale)
@@ -71,7 +73,17 @@ function InstructionFilesList({ files }: { files: any[] }) {
   )
 }
 
-async function fetchInstruction(audience: InstructionAudience, token: string, id: EntityIdParam) {
+async function fetchInstruction(
+  audience: InstructionAudience,
+  channel: InstructionChannel,
+  token: string,
+  id: EntityIdParam,
+) {
+  if (channel === 'chef') {
+    if (audience === 'office') return api.getOfficeChefInstruction(token, id)
+    if (audience === 'wali') return api.getWaliChefInstruction(token, id)
+    return api.getChefAuthoredInstruction(token, id)
+  }
   if (audience === 'office') return api.getOfficeInstruction(token, id)
   if (audience === 'chef') return api.getChefInstruction(token, id)
   return api.getWaliInstruction(token, id)
@@ -80,12 +92,14 @@ async function fetchInstruction(audience: InstructionAudience, token: string, id
 function InstructionViewModal({
   token,
   audience,
+  channel = 'wali',
   instructionId,
   onClose,
   onDeleted,
 }: {
   token: string
   audience: InstructionAudience
+  channel?: InstructionChannel
   instructionId: EntityIdParam
   onClose: () => void
   onDeleted?: () => void
@@ -96,13 +110,18 @@ function InstructionViewModal({
   const [loading, setLoading] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const canDelete = audience === 'wali'
+  const canDelete =
+    (channel === 'wali' && audience === 'wali') ||
+    (channel === 'chef' && audience === 'chef')
+  const showRecipients =
+    (channel === 'wali' && audience === 'wali') ||
+    (channel === 'chef' && audience === 'chef')
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setRow(null)
-    fetchInstruction(audience, token, instructionId)
+    fetchInstruction(audience, channel, token, instructionId)
       .then((r) => {
         if (cancelled) return
         setRow(r.instruction)
@@ -117,13 +136,17 @@ function InstructionViewModal({
     return () => {
       cancelled = true
     }
-  }, [token, instructionId, audience])
+  }, [token, instructionId, audience, channel])
 
   async function confirmDeleteInstruction() {
     if (!canDelete) return
     setDeleting(true)
     try {
-      await api.deleteWaliInstruction(token, instructionId)
+      if (channel === 'chef') {
+        await api.deleteChefInstruction(token, instructionId)
+      } else {
+        await api.deleteWaliInstruction(token, instructionId)
+      }
       snack.show(t('deleteInstructionDone'), 'success')
       setConfirmDelete(false)
       onDeleted?.()
@@ -187,7 +210,7 @@ function InstructionViewModal({
                   <p className="muted">{t('instructionNoBody')}</p>
                 )}
                 <InstructionFilesList files={row.files || []} />
-                {audience === 'wali' && row.recipients?.length ? (
+                {showRecipients && row.recipients?.length ? (
                   <div className="instructionRecipientsBlock">
                     <h3>{t('instructionRecipients')}</h3>
                     <p className="muted small">
@@ -698,3 +721,461 @@ export function ChefInstructionsPage({ token }: Props) {
 export function ChefInstructionDetailPage(_props: Props) {
   return <InstructionDetailRedirect listPath="/chief/instructions" />
 }
+
+export function ChefAuthoredInstructionsPage({ token }: Props) {
+  const { t, i18n } = useTranslation()
+  const invalidate = useInvalidateAppQueries()
+  const [page, setPage] = useState(1)
+  const { openId, setOpenId } = useOpenInstructionFromState()
+  const listQuery = useInstructionsListQuery(token, 'chef_authored', {
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+  })
+  const rows = listQuery.data?.instructions ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
+
+  async function refreshAfterDelete() {
+    await invalidate({ instructions: true, hubCounts: true })
+    notifyHubCountsRefresh()
+  }
+
+  return (
+    <div className="page instructionsPage">
+      <div className="pageHeader row">
+        <h1>{t('navChefInstructions')}</h1>
+        <Link className="btn btn-primary" to="/chief/chef-instructions/new">
+          {t('createInstruction')}
+        </Link>
+        <BackButton fallbackTo="/chief" />
+      </div>
+      <p className="muted small instructionsListHint">{t('chefInstructionsListHint')}</p>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
+        <div className="card instructionsListCard">
+          {!rows.length && !isInitialLoading ? (
+            <p className="muted instructionsEmpty">{t('chefInstructionsEmpty')}</p>
+          ) : null}
+          <ul className="instructionsList">
+            {rows.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  className="instructionListItem"
+                  onClick={() => setOpenId(row.id)}
+                >
+                  <span className="instructionListTitle">{instructionTitle(row, i18n.language)}</span>
+                  <span className="instructionListMeta muted small">
+                    {formatInstructionDate(row.created_at, i18n.language)}
+                  </span>
+                  {instructionBody(row, i18n.language) ? (
+                    <span className="instructionListPreview muted small">
+                      {instructionBody(row, i18n.language)}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
+
+      {openId ? (
+        <InstructionViewModal
+          token={token}
+          audience="chef"
+          channel="chef"
+          instructionId={openId}
+          onClose={() => setOpenId(null)}
+          onDeleted={() => {
+            void refreshAfterDelete()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+export function ChefInstructionCreatePage({ token }: Props) {
+  const { t } = useTranslation()
+  const snack = useSnackbar()
+  const navigate = useNavigate()
+  const invalidate = useInvalidateAppQueries()
+  const [users, setUsers] = useState<any[]>([])
+  const [allUsers, setAllUsers] = useState(true)
+  const [selected, setSelected] = useState<EntityIdParam[]>([])
+  const [userSearch, setUserSearch] = useState('')
+  const [titleAr, setTitleAr] = useState('')
+  const [titleFr, setTitleFr] = useState('')
+  const [bodyAr, setBodyAr] = useState('')
+  const [bodyFr, setBodyFr] = useState('')
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: EntityIdParam; name: string }[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const perFileProgressRef = useRef<number[]>([])
+  const [userPage, setUserPage] = useState(1)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.listChefInstructionOfficeUsers(token).then((r) => setUsers(r.users || [])).catch(() => {})
+  }, [token])
+
+  const filteredUsers = users.filter((u) => {
+    const q = userSearch.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(u.name || '').toLowerCase().includes(q) ||
+      String(u.username || '').toLowerCase().includes(q)
+    )
+  })
+
+  useEffect(() => {
+    setUserPage(1)
+  }, [userSearch])
+
+  const pagedUsers = paginateSlice(filteredUsers, userPage, DEFAULT_PAGE_SIZE)
+
+  function toggleUser(userId: EntityIdParam, enabled: boolean) {
+    const key = String(userId)
+    setSelected((prev) =>
+      enabled
+        ? [...new Set([...prev.map(String), key])]
+        : prev.filter((id) => String(id) !== key),
+    )
+  }
+
+  async function handleFilesPick(list: FileList | null) {
+    if (!list?.length) return
+    setUploadError(null)
+    const raw = Array.from(list)
+    const totalFiles = raw.length
+    perFileProgressRef.current = new Array(totalFiles).fill(0)
+    try {
+      setCompressing(true)
+      setUploadPercent(0)
+      const prepared = await Promise.all(
+        raw.map((file) => prepareFileForUpload(file, { onCompressing: () => setCompressing(true) })),
+      )
+      setCompressing(false)
+      setUploading(true)
+      setUploadPercent(0)
+      const results = await runUploadQueue(
+        prepared.map((file, fileIndex) => async () => {
+          const res = await api.uploadChefFile(token, file, {
+            onProgress: (p) => {
+              perFileProgressRef.current[fileIndex] = p.percent
+              setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+            },
+          })
+          perFileProgressRef.current[fileIndex] = 100
+          setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+          return { id: res.file.id, name: res.file.original_name }
+        }),
+        3,
+      )
+      setUploadedFiles((prev) => [...prev, ...results])
+      setUploadPercent(100)
+    } catch (e) {
+      if (e instanceof MediaUploadError) {
+        setUploadError(t(e.key, e.params))
+      } else {
+        setUploadError(t('mediaUploadFailed'))
+      }
+    } finally {
+      setUploading(false)
+      setCompressing(false)
+    }
+  }
+
+  async function submit() {
+    if (uploading || compressing) return
+    if (!hasBilingualText(titleAr, titleFr)) {
+      snack.show(t('bilingualLabelRequired'), 'error')
+      return
+    }
+    if (!allUsers && selected.length === 0) {
+      snack.show(t('shareRecipientsRequired'), 'error')
+      return
+    }
+    setSaving(true)
+    try {
+      const titles = bilingualPairForSave(titleAr, titleFr)
+      await api.createChefInstruction(token, {
+        title_ar: titles.ar,
+        title_fr: titles.fr,
+        body_ar: bodyAr.trim() || null,
+        body_fr: bodyFr.trim() || null,
+        all_office: allUsers,
+        recipient_ids: allUsers ? [] : selected,
+        uploaded_file_ids: uploadedFiles.map((f) => f.id),
+      })
+      await invalidate({ instructions: true, hubCounts: true })
+      snack.show(t('save'), 'success')
+      navigate('/chief/chef-instructions')
+    } catch {
+      snack.show(t('errorGeneric'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="page">
+      <div className="pageHeader row">
+        <h1>{t('createInstruction')}</h1>
+        <BackButton fallbackTo="/chief/chef-instructions" />
+      </div>
+      <div className="card formStack">
+        <label className="formField">
+          <span>{t('rapportTitle')} (AR)</span>
+          <input value={titleAr} dir="rtl" onChange={(e) => setTitleAr(e.target.value)} />
+        </label>
+        {ENABLE_FR_VALUE_INPUTS ? (
+          <label className="formField">
+            <span>{t('rapportTitle')} (FR)</span>
+            <input value={titleFr} onChange={(e) => setTitleFr(e.target.value)} />
+          </label>
+        ) : null}
+        <label className="formField">
+          <span>{t('instructionBody')} (AR)</span>
+          <textarea value={bodyAr} dir="rtl" rows={5} onChange={(e) => setBodyAr(e.target.value)} />
+        </label>
+        {ENABLE_FR_VALUE_INPUTS ? (
+          <label className="formField">
+            <span>{t('instructionBody')} (FR)</span>
+            <textarea value={bodyFr} rows={5} onChange={(e) => setBodyFr(e.target.value)} />
+          </label>
+        ) : null}
+        <label className="formField">
+          <span>{t('instructionAttachments')}</span>
+          <input
+            type="file"
+            multiple
+            disabled={uploading || compressing}
+            onChange={(e) => {
+              void handleFilesPick(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          {uploadedFiles.length ? (
+            <ul className="muted small">
+              {uploadedFiles.map((f) => (
+                <li key={String(f.id)}>{f.name}</li>
+              ))}
+            </ul>
+          ) : null}
+          {compressing ? <p className="muted small">{t('mediaCompressing')}</p> : null}
+          {uploading && !compressing ? (
+            <UploadProgressBar percent={uploadPercent} label={t('mediaUploadProgress', { percent: uploadPercent })} />
+          ) : null}
+          {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
+        </label>
+        <label className="formCheck">
+          <input type="checkbox" checked={allUsers} onChange={(e) => setAllUsers(e.target.checked)} />
+          <span>{t('allOfficeUsersOnly')}</span>
+        </label>
+        {!allUsers ? (
+          <>
+            <input
+              type="search"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder={t('shareSearchUsers')}
+            />
+            <div className="recipientList">
+              {pagedUsers.map((u) => (
+                <label key={String(u.id)} className="formCheck">
+                  <input
+                    type="checkbox"
+                    checked={selected.some((id) => String(id) === String(u.id))}
+                    onChange={(e) => toggleUser(String(u.id), e.target.checked)}
+                  />
+                  {u.name || u.username}
+                </label>
+              ))}
+            </div>
+            <TablePagination page={userPage} total={filteredUsers.length} onPageChange={setUserPage} />
+          </>
+        ) : null}
+        <div className="modalActions">
+          <BusyButton type="button" className="btn btn-primary" onClick={submit} busy={saving} busyLabel={t('saving')}>
+            {t('save')}
+          </BusyButton>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ChefAuthoredInstructionDetailPage(_props: Props) {
+  return <InstructionDetailRedirect listPath="/chief/chef-instructions" />
+}
+
+export function OfficeChefInstructionsPage({ token }: Props) {
+  const { t, i18n } = useTranslation()
+  const { counts, refresh } = useOfficeHubCounts(token)
+  const invalidate = useInvalidateAppQueries()
+  const [page, setPage] = useState(1)
+  const { openId, setOpenId } = useOpenInstructionFromState()
+  const listQuery = useInstructionsListQuery(token, 'office_chef', {
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+  })
+  const rows = listQuery.data?.instructions ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
+
+  useEffect(() => {
+    refresh()
+  }, [refresh, rows.length])
+
+  async function closeModal() {
+    setOpenId(null)
+    await invalidate({ hubCounts: 'office', instructions: true })
+    refresh()
+  }
+
+  return (
+    <div className="page instructionsPage">
+      <div className="pageHeader row">
+        <div className="notificationPageHeading">
+          <h1>{t('navChefInstructions')}</h1>
+          {(counts.unread_chef_instructions || 0) > 0 ? (
+            <p className="muted small">{t('unread')}: {counts.unread_chef_instructions}</p>
+          ) : null}
+        </div>
+        <BackButton fallbackTo="/cabinet" />
+      </div>
+      <p className="muted small instructionsListHint">{t('chefInstructionsListHintOffice')}</p>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
+        <div className="card instructionsListCard">
+          {!rows.length && !isInitialLoading ? <p className="muted instructionsEmpty">{t('noResults')}</p> : null}
+          <ul className="instructionsList">
+            {rows.map((row) => (
+              <li key={row.id} className={row.read_at ? 'instructionListRow read' : 'instructionListRow unread'}>
+                <button
+                  type="button"
+                  className="instructionListItem"
+                  onClick={() => setOpenId(row.id)}
+                >
+                  <span className="instructionListTitleRow">
+                    <span className="instructionListTitle">{instructionTitle(row, i18n.language)}</span>
+                    {!row.read_at ? (
+                      <span className="badge badge-submitted">{t('unread')}</span>
+                    ) : null}
+                  </span>
+                  <span className="instructionListMeta muted small">
+                    {formatInstructionDate(row.created_at, i18n.language)}
+                  </span>
+                  {instructionBody(row, i18n.language) ? (
+                    <span className="instructionListPreview muted small">
+                      {instructionBody(row, i18n.language)}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
+
+      {openId ? (
+        <InstructionViewModal
+          token={token}
+          audience="office"
+          channel="chef"
+          instructionId={openId}
+          onClose={() => {
+            void closeModal()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+export function OfficeChefInstructionDetailPage(_props: Props) {
+  return <InstructionDetailRedirect listPath="/cabinet/chef-instructions" />
+}
+
+export function WaliChefInstructionsPage({ token }: Props) {
+  const { t, i18n } = useTranslation()
+  const invalidate = useInvalidateAppQueries()
+  const [page, setPage] = useState(1)
+  const { openId, setOpenId } = useOpenInstructionFromState()
+  const listQuery = useInstructionsListQuery(token, 'wali_chef', {
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+  })
+  const rows = listQuery.data?.instructions ?? []
+  const total = listQuery.data?.total ?? 0
+  const isInitialLoading = listQuery.isLoading && !listQuery.data
+  const isRefreshing = listQuery.isFetching && !listQuery.isLoading
+
+  async function closeModal() {
+    setOpenId(null)
+    await invalidate({ hubCounts: 'wali', instructions: true })
+    notifyHubCountsRefresh()
+  }
+
+  return (
+    <div className="page instructionsPage">
+      <div className="pageHeader row">
+        <h1>{t('navChefInstructions')}</h1>
+        <BackButton fallbackTo="/governor" />
+      </div>
+      <p className="muted small instructionsListHint">{t('chefInstructionsListHintWali')}</p>
+      <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
+        <div className="card instructionsListCard">
+          {!rows.length && !isInitialLoading ? (
+            <p className="muted instructionsEmpty">{t('chefInstructionsEmpty')}</p>
+          ) : null}
+          <ul className="instructionsList">
+            {rows.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  className="instructionListItem"
+                  onClick={() => setOpenId(row.id)}
+                >
+                  <span className="instructionListTitle">{instructionTitle(row, i18n.language)}</span>
+                  <span className="instructionListMeta muted small">
+                    {formatInstructionDate(row.created_at, i18n.language)}
+                  </span>
+                  {instructionBody(row, i18n.language) ? (
+                    <span className="instructionListPreview muted small">
+                      {instructionBody(row, i18n.language)}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <TablePagination page={page} total={total} onPageChange={setPage} />
+      </QueryListShell>
+
+      {openId ? (
+        <InstructionViewModal
+          token={token}
+          audience="wali"
+          channel="chef"
+          instructionId={openId}
+          onClose={() => {
+            void closeModal()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+export function WaliChefInstructionDetailPage(_props: Props) {
+  return <InstructionDetailRedirect listPath="/governor/chef-instructions" />
+}
+

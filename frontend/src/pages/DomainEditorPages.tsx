@@ -59,6 +59,7 @@ import {
   RapportTitleField,
   patchRapportTitle,
 } from "../components/RapportTitleField";
+import { RapportCreatedBy } from "../components/RapportCreatedBy";
 import { TablePagination } from "../components/TablePagination";
 import { DEFAULT_PAGE_SIZE } from "../utils/pagination";
 import { ArchiveVersionsLink, ChefArchiveVersionsLink, WaliArchiveVersionsLink } from "./RapportVersionsArchivePage";
@@ -480,12 +481,15 @@ export function OfficeTableGridPage({ token }: Props) {
   return (
     <div className="page">
       <div className="pageHeader row compact">
-        <RapportTitleField
-          title={title}
-          onChange={setTitle}
-          editable={!!isEditable}
-          fallback={pageTitle}
-        />
+        <div className="pageHeaderTitleBlock">
+          <RapportTitleField
+            title={title}
+            onChange={setTitle}
+            editable={!!isEditable}
+            fallback={pageTitle}
+          />
+          <RapportCreatedBy user={workspace?.rapport?.createdByUser} />
+        </div>
         {isEditable ? (
           <>
             <BusyButton
@@ -1576,16 +1580,19 @@ export function OfficeDocumentEditorPage({ token }: Props) {
   return (
     <div className="page">
       <div className="pageHeader row compact">
-        <RapportTitleField
-          title={title}
-          onChange={setTitle}
-          editable={!!editable}
-          fallback={
-            newDraftMeta?.rapportType
-              ? localizedRapportTypeName(newDraftMeta.rapportType, i18n.language)
-              : t("navRapports")
-          }
-        />
+        <div className="pageHeaderTitleBlock">
+          <RapportTitleField
+            title={title}
+            onChange={setTitle}
+            editable={!!editable}
+            fallback={
+              newDraftMeta?.rapportType
+                ? localizedRapportTypeName(newDraftMeta.rapportType, i18n.language)
+                : t("navRapports")
+            }
+          />
+          <RapportCreatedBy user={rapport?.createdByUser} />
+        </div>
         {!canEdit ? <span className="badge">{t("accessView")}</span> : null}
         {rid ? (
           <RapportVersionHeaderActions
@@ -1893,7 +1900,10 @@ export function WaliRapportViewPage({
   return (
     <div className="page">
       <div className="pageHeader row">
-        <h1>{view?.rapport?.title || t("navInbox")}</h1>
+        <div className="pageHeaderTitleBlock">
+          <h1>{view?.rapport?.title || t("navInbox")}</h1>
+          <RapportCreatedBy user={view?.rapport?.createdByUser} />
+        </div>
         <div className="pageHeaderActions">
           {supportsRapportVersionArchive(
             view?.rapport?.rapportType,

@@ -9,6 +9,7 @@
     "restart:back": "node scripts/restart-back.js",
     "kill": "node scripts/kill-all.js",
     "build:shared": "npm run build --prefix shared/access-policy && npm run build --prefix shared/routes",
+    "deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/package-deploy.ps1",
     "migrate": "cd backend && npm run db:migrate",
     "migrate:undo": "cd backend && npm run db:migrate:undo",
     "migrate:undo:all": "cd backend && npm run db:migrate:undo:all",

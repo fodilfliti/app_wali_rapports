@@ -12,6 +12,7 @@ import {
   RapportTitleField,
   patchRapportTitle,
 } from "../components/RapportTitleField";
+import { RapportCreatedBy } from "../components/RapportCreatedBy";
 import { RichDocumentEditor } from "../components/RichDocumentEditor";
 import { TableMergeToolbar, TableWorkspace } from "../components/TableGridView";
 import { RapportVersionHeaderActions } from "../components/RapportVersionHeaderActions";
@@ -374,6 +375,7 @@ export function OfficeCommuneEditorPage({ token }: Props) {
             fallback={communeName || t("navRapports")}
           />
           <p className="muted small communeEditorCommuneLabel">{communeName}</p>
+          <RapportCreatedBy user={workspace?.rapport?.createdByUser} />
         </div>
         <div className="pageHeaderActions">
           {rapportId ? (

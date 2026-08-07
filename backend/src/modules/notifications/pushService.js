@@ -36,9 +36,22 @@ function deepLinkForRole(role, meta = {}) {
       ? `/cabinet/instructions/${meta.instruction_id}`
       : "/cabinet/instructions";
   }
+  if (key === "chefInstruction") {
+    if (role === "WALI") {
+      return meta.chef_instruction_id
+        ? `/governor/chef-instructions/${meta.chef_instruction_id}`
+        : "/governor/chef-instructions";
+    }
+    return meta.chef_instruction_id
+      ? `/cabinet/chef-instructions/${meta.chef_instruction_id}`
+      : "/cabinet/chef-instructions";
+  }
   if (key === "waliBroadcast" || key === "waliBroadcastReminder") {
     if (role === "CHEF_CABINET") {
       return meta.broadcast_id ? `/chief/shared/${meta.broadcast_id}` : "/chief/shared";
+    }
+    if (role === "WALI") {
+      return meta.broadcast_id ? `/governor/shared/${meta.broadcast_id}` : "/governor/shared";
     }
     return meta.broadcast_id ? `/cabinet/shared/${meta.broadcast_id}` : "/cabinet/shared";
   }

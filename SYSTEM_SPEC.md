@@ -26,6 +26,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
   - **Media, calendar events & Wali sharing (image/video, calendars, broadcast)**: `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`
   - **Chef Cabinet (رئيس الديوان — first validator)**: `spec/modules/CHEF_CABINET.md`
   - **Wali instructions (تعليمات السيد الوالي)**: `spec/modules/WALI_INSTRUCTIONS.md`
+  - **Chef instructions (تعليمات رئيس الديوان)**: `spec/modules/CHEF_INSTRUCTIONS.md`
   - **Rapport discussion (مناقشة التقرير)**: `spec/modules/RAPPORT_DISCUSSION.md`
   - **Guide videos (فيديوهات الدليل)**: `spec/modules/GUIDE_VIDEOS.md`
   - **Authentication & sessions (access JWT + refresh cookie)**: `spec/modules/AUTH.md`
@@ -43,6 +44,8 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Version archive + Wali notifications:** old versions for graphs/history; office notified on Wali note — `RAPPORT_SERVICE_TYPES.md`, `RAPPORTS.md`.
 - **Chef gate:** first submit goes to رئيس الديوان; after Wali demands changes, resubmit skips Chef (info notif only) — `CHEF_CABINET.md`.
 - **Wali instructions:** title + body + files to all/selected office users; Chef read-only — `WALI_INSTRUCTIONS.md`.
+- **Chef instructions:** parallel channel; Chef create/delete; office recipients; Wali read-only — `CHEF_INSTRUCTIONS.md`.
+- **Shared files:** Wali **and** Chef upload to same broadcast pool; symmetric recipients; uploader label on cards — `MEDIA_CALENDAR_WALI_SHARING.md`.
 - **Rapport discussion:** non-live comment thread after first Envoyer (office / Chef / Wali); **discussion inbox** (New / All) on office, Chef, and Wali hubs — `RAPPORT_DISCUSSION.md`.
 
 ### Cross-cutting updates (2026-06)

@@ -20,6 +20,7 @@ export type ActionKey =
   | 'hub.office.notifications'
   | 'hub.office.shared'
   | 'hub.office.instructions'
+  | 'hub.office.chef_instructions'
   | 'hub.office.guide'
   // —— Hub tiles (wali) ——
   | 'hub.wali.office_users'
@@ -28,6 +29,7 @@ export type ActionKey =
   | 'hub.wali.calendar'
   | 'hub.wali.shared'
   | 'hub.wali.instructions'
+  | 'hub.wali.chef_instructions'
   | 'hub.wali.guide'
   // —— Hub tiles (chef) ——
   | 'hub.chef.office_users'
@@ -36,6 +38,7 @@ export type ActionKey =
   | 'hub.chef.discussion'
   | 'hub.chef.calendar'
   | 'hub.chef.instructions'
+  | 'hub.chef.chef_instructions'
   | 'hub.chef.shared'
   | 'hub.chef.guide'
   // —— Rapport lifecycle ——
@@ -64,5 +67,8 @@ export type ActionKey =
   | 'rapports.instructions.view'
   | 'rapports.instructions.create'
   | 'rapports.instructions.delete'
+  | 'rapports.chef_instructions.view'
+  | 'rapports.chef_instructions.create'
+  | 'rapports.chef_instructions.delete'
   // —— Broadcasts ——
   | 'broadcast.create';

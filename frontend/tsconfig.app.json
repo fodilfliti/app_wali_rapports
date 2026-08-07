@@ -17,7 +17,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "baseUrl": ".",
     "paths": {
       "@wali/access-policy": ["../shared/access-policy/src/index.ts"],
       "@wali/access-policy/*": ["../shared/access-policy/src/*"],

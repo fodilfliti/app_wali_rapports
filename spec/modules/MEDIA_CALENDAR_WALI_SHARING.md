@@ -81,11 +81,24 @@ Table `rapport_views`
 
 Recorded when Wali opens a rapport. Exposed to Wali on rapport detail. Unique index on `(rapport_id, user_id)`.
 
-### Wali broadcasts
+### Shared broadcasts (Wali + Chef)
 
-Wali uploads a file and shares with all eligible recipients or selected users.
+Wali **or** Chef uploads a file into the **same** shared pool (`wali_broadcasts` table name kept) and shares with eligible recipients.
 
-**Recipients:** non-blocked `OFFICE_USER` **and** `CHEF_CABINET`. The recipient picker (`GET /governor/office-users-for-share`) and “all users” create both include Chef. Chef cannot create broadcasts; they receive via `/chief/broadcasts` / UI `/chief/shared`.
+**Who can create:** `WALI` and `CHEF_CABINET` (`broadcast.create`). UI: `/governor/shared` and `/chief/shared` (create via `/…/shared/new`).
+
+**Recipients (by creator):**
+
+| Creator | Eligible recipients |
+| ------- | ------------------- |
+| Wali / Admin | non-blocked `OFFICE_USER` **and** `CHEF_CABINET` |
+| Chef | non-blocked `OFFICE_USER` **and** `WALI` (exclude self) |
+
+Pickers: `GET /governor/office-users-for-share` (Wali) and `GET /chief/office-users-for-share` (Chef). “All users” uses the same role set for that creator.
+
+**Uploader display:** API serializes `created_by: { id, name, role }`. Cards and detail show UI labels **والي** / **رئيس الديوان** (never raw enums).
+
+**Wali as recipient:** when Chef uploads, Wali is a recipient — hub `unread_shared_files` counts unread recipient rows; mark-read on open. Wali list still shows **all** broadcasts (creator + received).
 
 Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 
@@ -98,7 +111,7 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 | `title_ar`, `title_fr` | STRING(200) | Title |
 | `message_ar`, `message_fr` | TEXT | Description |
 | `allow_comments` | BOOLEAN | Allow comments toggle |
-| `created_by_user_id` | UUID (public) / internal FK (Wali) |
+| `created_by_user_id` | UUID (public) / internal FK (Wali or Chef) |
 | `created_at` | DATE | Timestamp |
 
 #### `wali_broadcast_recipients`
@@ -121,7 +134,9 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 | `body_text` | TEXT | Comment body |
 | `created_at` | DATE | Timestamp |
 
-**Notifications wiring:** Sharing a broadcast creates notifications for recipients with `message_key = 'waliBroadcast'`, `broadcast_id` pointing to the broadcast record, and a `null` `rapport_id` (which is nullable in the database). Recipients who have not opened receive reminder notifications.
+**Notifications wiring:** Sharing a broadcast creates notifications for recipients with `message_key = 'waliBroadcast'`, `broadcast_id` pointing to the broadcast record, and a `null` `rapport_id` (which is nullable in the database). Copy is **role-aware** (from Wali vs from Chef). Recipients who have not opened receive reminder notifications (`waliBroadcastReminder`). Pref type remains `broadcasts`. Deep links: office `/cabinet/shared/…`, Chef `/chief/shared/…`, Wali `/governor/shared/…`.
+
+**File ACL:** creator **or** recipient **or** Wali/Admin support access.
 
 ### API summary
 
@@ -129,14 +144,19 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 | ------ | ---- | ---- |
 | POST | `/cabinet/rapports/:id/uploads` | Office upload (multipart `file`) |
 | POST | `/governor/uploads` | Wali pre-upload (multipart `file`) → `{ file }` for broadcast/instruction create with `uploaded_file_id` / `uploaded_file_ids` |
+| POST | `/chief/uploads` | Chef pre-upload (same shape) |
 | GET/PATCH | `/cabinet/rapports/:id/calendar-events` | List / replace events |
 | GET | `/governor/calendar` | Events in date range |
 | GET | `/governor/rapports/:id/views` | Who viewed rapport |
-| POST | `/governor/broadcasts` | Create broadcast |
-| GET | `/governor/broadcasts` | Wali list + read stats |
+| POST | `/governor/broadcasts` | Wali create broadcast |
+| GET | `/governor/broadcasts` | Wali list + read stats (all) |
+| POST | `/governor/broadcasts/:id/read` | Wali mark read when recipient |
+| GET | `/governor/office-users-for-share` | Wali recipient picker |
+| POST | `/chief/broadcasts` | Chef create broadcast |
+| GET | `/chief/office-users-for-share` | Chef recipient picker |
 | GET | `/cabinet/broadcasts` | Office inbox |
 | POST | `/cabinet/broadcasts/:id/read` | Mark read |
-| GET | `/chief/broadcasts` | Chef recipient inbox |
+| GET | `/chief/broadcasts` | Chef list (created + received) |
 | GET | `/chief/broadcasts/:id` | Chef detail |
 | POST | `/chief/broadcasts/:id/read` | Chef mark read |
 | POST | `/*/broadcasts/:id/comments` | Add comment |

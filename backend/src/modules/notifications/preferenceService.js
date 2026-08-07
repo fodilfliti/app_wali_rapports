@@ -10,6 +10,7 @@ function serializePrefs(row) {
     rapport_feedback: row.rapport_feedback !== false,
     discussion: row.discussion !== false,
     instructions: row.instructions !== false,
+    chef_instructions: row.chef_instructions !== false,
     broadcasts: row.broadcasts !== false,
     calendar: row.calendar !== false,
   };
