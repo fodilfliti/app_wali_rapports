@@ -368,6 +368,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
   const [uploading, setUploading] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const perFileProgressRef = useRef<number[]>([])
   const [userPage, setUserPage] = useState(1)
@@ -413,6 +414,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
     try {
       setCompressing(true)
       setUploadPercent(0)
+      setUploadPhase('uploading')
       const prepared = await Promise.all(
         raw.map((file) => prepareFileForUpload(file, { onCompressing: () => setCompressing(true) })),
       )
@@ -425,6 +427,8 @@ export function WaliInstructionCreatePage({ token }: Props) {
             onProgress: (p) => {
               perFileProgressRef.current[fileIndex] = p.percent
               setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+              if (p.phase === 'scanning') setUploadPhase('scanning')
+              else setUploadPhase('uploading')
             },
           })
           perFileProgressRef.current[fileIndex] = 100
@@ -444,6 +448,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
     } finally {
       setUploading(false)
       setCompressing(false)
+      setUploadPhase('uploading')
     }
   }
 
@@ -523,10 +528,13 @@ export function WaliInstructionCreatePage({ token }: Props) {
           {compressing || uploading ? (
             <UploadProgressBar
               percent={compressing ? 0 : uploadPercent}
+              phase={compressing ? 'uploading' : uploadPhase}
               label={
                 compressing
                   ? t('mediaCompressing')
-                  : t('mediaUploadProgress', { percent: uploadPercent })
+                  : uploadPhase === 'scanning'
+                    ? t('mediaScanning')
+                    : t('mediaUploadProgress', { percent: uploadPercent })
               }
             />
           ) : null}
@@ -814,6 +822,7 @@ export function ChefInstructionCreatePage({ token }: Props) {
   const [uploading, setUploading] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const perFileProgressRef = useRef<number[]>([])
   const [userPage, setUserPage] = useState(1)
@@ -856,6 +865,7 @@ export function ChefInstructionCreatePage({ token }: Props) {
     try {
       setCompressing(true)
       setUploadPercent(0)
+      setUploadPhase('uploading')
       const prepared = await Promise.all(
         raw.map((file) => prepareFileForUpload(file, { onCompressing: () => setCompressing(true) })),
       )
@@ -868,6 +878,8 @@ export function ChefInstructionCreatePage({ token }: Props) {
             onProgress: (p) => {
               perFileProgressRef.current[fileIndex] = p.percent
               setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+              if (p.phase === 'scanning') setUploadPhase('scanning')
+              else setUploadPhase('uploading')
             },
           })
           perFileProgressRef.current[fileIndex] = 100
@@ -887,6 +899,7 @@ export function ChefInstructionCreatePage({ token }: Props) {
     } finally {
       setUploading(false)
       setCompressing(false)
+      setUploadPhase('uploading')
     }
   }
 
@@ -969,7 +982,15 @@ export function ChefInstructionCreatePage({ token }: Props) {
           ) : null}
           {compressing ? <p className="muted small">{t('mediaCompressing')}</p> : null}
           {uploading && !compressing ? (
-            <UploadProgressBar percent={uploadPercent} label={t('mediaUploadProgress', { percent: uploadPercent })} />
+            <UploadProgressBar
+              percent={uploadPercent}
+              phase={uploadPhase}
+              label={
+                uploadPhase === 'scanning'
+                  ? t('mediaScanning')
+                  : t('mediaUploadProgress', { percent: uploadPercent })
+              }
+            />
           ) : null}
           {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
         </label>

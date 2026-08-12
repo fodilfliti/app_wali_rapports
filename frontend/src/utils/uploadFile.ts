@@ -4,10 +4,14 @@ import { ApiError } from './apiError'
 
 const API_BASE = getApiBase()
 
+/** Bytes still transferring vs server-side verify (magic bytes + antivirus). */
+export type UploadPhase = 'uploading' | 'scanning'
+
 export type UploadProgress = {
   loaded: number
   total: number
   percent: number
+  phase: UploadPhase
 }
 
 export type UploadOptions = {
@@ -67,10 +71,29 @@ function uploadOnce<T>(
     xhr.withCredentials = true
     if (opts.token) xhr.setRequestHeader('Authorization', `Bearer ${opts.token}`)
 
+    let lastLoaded = 0
+    let lastTotal = 0
+
     xhr.upload.onprogress = (ev) => {
-      if (!ev.lengthComputable || !opts.onProgress) return
-      const percent = ev.total > 0 ? Math.round((ev.loaded / ev.total) * 100) : 0
-      opts.onProgress({ loaded: ev.loaded, total: ev.total, percent })
+      if (!opts.onProgress) return
+      if (ev.lengthComputable) {
+        lastLoaded = ev.loaded
+        lastTotal = ev.total
+        const percent = ev.total > 0 ? Math.round((ev.loaded / ev.total) * 100) : 0
+        opts.onProgress({ loaded: ev.loaded, total: ev.total, percent, phase: 'uploading' })
+      }
+    }
+
+    // Body fully sent; server may still validate + scan before responding.
+    xhr.upload.onload = () => {
+      if (!opts.onProgress) return
+      const total = lastTotal > 0 ? lastTotal : lastLoaded
+      opts.onProgress({
+        loaded: lastLoaded || total,
+        total: total || lastLoaded,
+        percent: 100,
+        phase: 'scanning',
+      })
     }
 
     xhr.onload = () => {

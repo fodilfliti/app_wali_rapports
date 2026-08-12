@@ -292,6 +292,7 @@ Shared classes live in `frontend/src/App.css` (`.btn`, `.btn-sm`, `.btn-lg` + co
 - **Media upload** (rich text / media blocks / guide videos / Wali shares): disable **media pick** controls while a file is in flight (rich-text formatting toolbar stays usable). States:
   - `mediaCompressing` — client-side image resize/WebP (or optional video prep when `ENABLE_CLIENT_VIDEO_TRANSCODE`).
   - `mediaUploading` — bytes transferring; show **byte-level percentage** (`mediaUploadProgress`, e.g. `45%`) via XHR progress — required for inline editor image/video inserts, not file-count only.
+  - `mediaScanning` — after bytes reach 100%, server still validating (magic bytes) + antivirus (ClamAV). Show **indeterminate** progress (pulse bar, no fake %). Label via `mediaScanning` until the HTTP response arrives. Trigger: XHR `upload.onload` → progress `phase: 'scanning'`.
   - Controls re-enable after success, failure, or upload timeout/abort (failed uploads must not leave pick buttons disabled).
 - **Client image compression:** all image upload entry points call `prepareFileForUpload` (max 1920px, WebP/JPEG ladder, 10 MB cap) before POST — attachments, rich-text inline images, Wali instruction/broadcast images.
 - **Multi-file:** parallel upload queue (concurrency 3) for rich-text multi-select and instruction attachments.

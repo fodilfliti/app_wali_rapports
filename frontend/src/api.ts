@@ -2299,7 +2299,7 @@ export function createWaliRapportComment(
   });
 }
 
-export type { UploadOptions, UploadProgress } from "./utils/uploadFile";
+export type { UploadOptions, UploadProgress, UploadPhase } from "./utils/uploadFile";
 
 export type GuideVideoAudience =
   | "general"

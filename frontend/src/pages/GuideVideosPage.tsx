@@ -124,6 +124,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
   const [uploading, setUploading] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [playing, setPlaying] = useState<any | null>(null)
 
@@ -181,9 +182,13 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
       const prepared = await prepareFileForUpload(raw, { onCompressing: () => setCompressing(true) })
       setCompressing(false)
       setUploading(true)
+      setUploadPhase('uploading')
       setUploadPercent(0)
       const res = await api.uploadAdminFile(token, prepared, {
-        onProgress: (p) => setUploadPercent(p.percent),
+        onProgress: (p) => {
+          setUploadPercent(p.percent)
+          setUploadPhase(p.phase === 'scanning' ? 'scanning' : 'uploading')
+        },
       })
       setUploadedFile(res.file)
       setUploadPercent(100)
@@ -196,6 +201,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
     } finally {
       setUploading(false)
       setCompressing(false)
+      setUploadPhase('uploading')
     }
   }
 
@@ -414,7 +420,12 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
               {uploading && !compressing ? (
                 <UploadProgressBar
                   percent={uploadPercent}
-                  label={t('mediaUploadProgress', { percent: uploadPercent })}
+                  phase={uploadPhase}
+                  label={
+                    uploadPhase === 'scanning'
+                      ? t('mediaScanning')
+                      : t('mediaUploadProgress', { percent: uploadPercent })
+                  }
                 />
               ) : null}
               {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}

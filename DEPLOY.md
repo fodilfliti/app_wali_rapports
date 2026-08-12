@@ -63,7 +63,8 @@ After upload:
 │   ├── src/
 │   └── …
 └── wali-storage/             ← FILE_STORAGE_ROOT (outside public_html)
-    ├── uploads/
+    ├── uploads/              ← final files after magic-byte + ClamAV scan
+    │   └── temp/             ← multer staging only (never served via /files)
     ├── exports/
     └── pdf/
 ```
@@ -272,7 +273,7 @@ Frontend uses relative `VITE_API_URL=/api` so API calls stay same-origin (no COR
 | `GET /api/health`                         | OK / healthy JSON                    |
 | Open site root                            | Login page (Arabic RTL)              |
 | Login with seeded admin                   | Dashboard                            |
-| Upload a file in a rapport                | File under `~/wali-storage/uploads/` |
+| Upload a file in a rapport                | File under `~/wali-storage/uploads/` (not `uploads/temp/`) after ClamAV OK |
 | Hard refresh deep link e.g. `/office/...` | Still SPA (`.htaccess` works)        |
 
 ---
@@ -285,7 +286,7 @@ Frontend uses relative `VITE_API_URL=/api` so API calls stay same-origin (no COR
 | `database_connection_failed` in stderr | Wrong `DATABASE_URL` / socket; fix `PGSOCKETDIR`                                                        |
 | CORS errors                            | `CORS_ORIGIN` must match exact site origin (`https://…`)                                                |
 | Blank page on refresh of a route       | Missing SPA `.htaccess`                                                                                 |
-| Uploads fail                           | `FILE_STORAGE_ROOT` missing or not writable                                                             |
+| Uploads fail                           | `FILE_STORAGE_ROOT` missing/not writable; ClamAV missing (`clamdscan`/`clamscan`); type mismatch |
 | Upload fails at ~50–100 MB             | LiteSpeed/proxy **max request body** smaller than app limit — ask host or reduce video size client-side |
 | Upload timeout on slow mobile          | Node/proxy idle timeout — prefer client compression; retry once (built into frontend)                   |
 | Migrate works but app has no env       | Env only in `.env` — also set in Node.js App UI                                                         |

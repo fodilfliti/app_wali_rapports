@@ -97,6 +97,7 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
   const [uploading, setUploading] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [userPage, setUserPage] = useState(1)
   const listPath = paths.hub.path(hub, 'shared')
@@ -149,10 +150,14 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
       const prepared = await prepareFileForUpload(raw, { onCompressing: () => setCompressing(true) })
       setCompressing(false)
       setUploading(true)
+      setUploadPhase('uploading')
       setUploadPercent(0)
       const upload = hub === 'chef' ? api.uploadChefFile : api.uploadWaliFile
       const res = await upload(token, prepared, {
-        onProgress: (p) => setUploadPercent(p.percent),
+        onProgress: (p) => {
+          setUploadPercent(p.percent)
+          setUploadPhase(p.phase === 'scanning' ? 'scanning' : 'uploading')
+        },
       })
       setUploadedFileId(res.file.id)
       setUploadedFileName(res.file.original_name)
@@ -166,6 +171,7 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
     } finally {
       setUploading(false)
       setCompressing(false)
+      setUploadPhase('uploading')
     }
   }
 
@@ -242,7 +248,15 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
           {uploadedFileName ? <p className="muted small">{uploadedFileName}</p> : null}
           {compressing ? <p className="muted small">{t('mediaCompressing')}</p> : null}
           {uploading && !compressing ? (
-            <UploadProgressBar percent={uploadPercent} label={t('mediaUploadProgress', { percent: uploadPercent })} />
+            <UploadProgressBar
+              percent={uploadPercent}
+              phase={uploadPhase}
+              label={
+                uploadPhase === 'scanning'
+                  ? t('mediaScanning')
+                  : t('mediaUploadProgress', { percent: uploadPercent })
+              }
+            />
           ) : null}
           {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
         </label>

@@ -46,6 +46,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Wali instructions:** title + body + files to all/selected office users; Chef read-only — `WALI_INSTRUCTIONS.md`.
 - **Chef instructions:** parallel channel; Chef create/delete; office recipients; Wali read-only — `CHEF_INSTRUCTIONS.md`.
 - **Shared files:** Wali **and** Chef upload to same broadcast pool; symmetric recipients; uploader label on cards — `MEDIA_CALENDAR_WALI_SHARING.md`.
+- **Upload security:** magic-byte type check + ClamAV scan (dev simulated) before files leave `uploads/temp/` — `AUTH.md`, `MEDIA_CALENDAR_WALI_SHARING.md`.
 - **Rapport discussion:** non-live comment thread after first Envoyer (office / Chef / Wali); **discussion inbox** (New / All) on office, Chef, and Wali hubs — `RAPPORT_DISCUSSION.md`.
 
 ### Cross-cutting updates (2026-06)

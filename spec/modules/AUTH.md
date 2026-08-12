@@ -24,6 +24,11 @@ Login, short-lived access JWTs, and long-lived refresh sessions so users stay si
   - `uploads/*` — uploader, admin, or rapport/service grant (office) / Wali-or-Chef visibility for linked rapports; guide/broadcast/instruction recipients as applicable.
   - other `pdf/` / `exports/` — admin only.
 - Dangerous types (`html`/`svg`/`js`/…) rejected on upload; non-inline types use `Content-Disposition: attachment` + `nosniff`.
+- **Upload validation (all multipart entry points):**
+  1. Multer lands bytes under `FILE_STORAGE_ROOT/uploads/temp/` (never served via `GET /files`).
+  2. **Magic-byte / binary signature** check (`file-type` + OOXML/OLE refinement) — do **not** trust client `originalname` or `mimetype` alone. Mismatch or unknown type → delete temp → `400` `"Invalid or mismatched file type"`.
+  3. **Malware scan** (`scanFile`): gated by env `UPLOAD_MALWARE_SCAN_ENABLED` (default **true**). When `false`, skip antivirus and treat as clean (magic-byte check still runs). When enabled: production runs cPanel ClamAV (`clamdscan` then `clamscan` fallback); `development` / `test` simulate (reject paths containing `virus` or `eicar`). Infected → delete temp → `400` with scan error.
+  4. Only then rename into final `uploads/{storage_key}{ext}` and create `uploaded_files` row.
 - Frontend rich HTML: sanitize (DOMPurify); **never persist** access or download tokens inside document HTML (strip on save via `prepareRichHtmlForSave`). Inject signed `?dl=` only at display (`usePreparedRichHtml`) for **both** TipTap edit and read-only view. Other media (attachments, instructions, guides, inbox cards): `SignedFileLink` / `useSignedFileUrl` on `url_path` — never raw `file.url` / JWT query.
 
 #### Refresh cookie

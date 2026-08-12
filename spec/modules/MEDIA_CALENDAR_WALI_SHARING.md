@@ -20,9 +20,11 @@ Same shape as document `media_row`, appended after the table grid in preview and
 
 #### File storage
 
-- Table `uploaded_files` — binary stored under `storage/uploads/{storage_key}`
-- Served via authenticated `GET /files/uploads/{storage_key}`
-- Kinds: `image`, `video`, `file` (from MIME)
+- Table `uploaded_files` — binary stored under `storage/uploads/{storage_key}{ext}` after validation
+- Staging: `storage/uploads/temp/` (multer); **never** served via `GET /files`
+- Served via authenticated `GET /files/uploads/{storage_key}` (final path only; deny `uploads/temp/**`)
+- Kinds: `image`, `video`, `file` (from **detected** MIME after magic-byte check)
+- Upload pipeline: magic-byte allowlist → ClamAV `scanFile` (dev simulated) → rename to final path — see `AUTH.md` § file downloads / upload validation
 - **New complex/fiche drafts:** the attachments block is shown while editable even before the first save. The first inline image/video insert or attachment upload **auto-creates** the draft rapport (title required). If the title is missing, show an error and do not insert.
 - **Draft id for media must not wipe the editor:** assigning a persisted rapport id (create-on-upload) must **not** remount the page, re-run create-preview, or replace in-memory rich HTML / tables / media rows. Keep client editor state until an explicit save/load. Upload failure shows an error only — existing typed content stays.
 - **`file_id` values:** public UUID strings everywhere (API, `media_rows`, HTML `data-file-id`). Backend normalize/save must **not** coerce with `Number(file_id)` (drops UUIDs).

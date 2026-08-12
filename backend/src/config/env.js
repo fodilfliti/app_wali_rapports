@@ -18,6 +18,11 @@ const EnvSchema = z.object({
     .optional()
     .transform((v) => (v == null ? undefined : v === "true" || v === "1")),
   FILE_STORAGE_ROOT: z.string().optional(),
+  /** When false, skip ClamAV / malware scan (magic-byte validation still runs). Default true. */
+  UPLOAD_MALWARE_SCAN_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => (v == null ? undefined : v === "true" || v === "1")),
   CORS_ORIGIN: z.string().optional(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).optional(),
   TRUST_PROXY: z
@@ -69,6 +74,7 @@ function getEnv() {
     refreshReuseGraceMs: e.REFRESH_REUSE_GRACE_MS ?? 10_000,
     cookieSecure: e.COOKIE_SECURE ?? nodeEnv === "production",
     fileStorageRoot: e.FILE_STORAGE_ROOT,
+    uploadMalwareScanEnabled: e.UPLOAD_MALWARE_SCAN_ENABLED ?? true,
     corsOrigin: e.CORS_ORIGIN,
     logLevel: e.LOG_LEVEL || "info",
     trustProxy: e.TRUST_PROXY ?? e.NODE_ENV === "production",

@@ -33,7 +33,7 @@ const FONT_SIZES = ['12px', '14px', '16px', '18px', '24px', '32px']
 const IMAGE_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000
 const VIDEO_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000
 
-type UploadPhase = 'idle' | 'preparing' | 'uploading'
+type UploadPhase = 'idle' | 'preparing' | 'uploading' | 'scanning'
 
 type UploadOpts = {
   onProgress?: (p: UploadProgress) => void
@@ -282,6 +282,8 @@ export function RichTextEditor({
         onProgress: (p) => {
           perFileProgressRef.current[fileIndex] = p.percent
           setUploadPercent(blendedBatchPercent(perFileProgressRef.current, totalFiles))
+          if (p.phase === 'scanning') setPhase('scanning')
+          else setPhase('uploading')
         },
       })
       perFileProgressRef.current[fileIndex] = 100
@@ -353,9 +355,16 @@ export function RichTextEditor({
       ? preparingVideo
         ? t('mediaVideoPreparing')
         : t('mediaCompressing')
-      : phase === 'uploading'
-        ? t('mediaUploading')
-        : null
+      : phase === 'scanning'
+        ? t('mediaScanning')
+        : phase === 'uploading'
+          ? t('mediaUploading')
+          : null
+
+  const progressLabel =
+    phase === 'scanning'
+      ? t('mediaScanning')
+      : t('mediaUploadProgress', { percent: uploadPercent })
 
   return (
     <div
@@ -377,10 +386,13 @@ export function RichTextEditor({
       {mediaBusy ? (
         <>
           {statusHint ? <p className="muted richTextUploadingHint">{statusHint}</p> : null}
-          <UploadProgressBar
-            percent={uploadPercent}
-            label={t('mediaUploadProgress', { percent: uploadPercent })}
-          />
+          {phase === 'uploading' || phase === 'scanning' ? (
+            <UploadProgressBar
+              percent={uploadPercent}
+              phase={phase === 'scanning' ? 'scanning' : 'uploading'}
+              label={progressLabel}
+            />
+          ) : null}
         </>
       ) : null}
       {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}

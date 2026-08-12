@@ -49,6 +49,15 @@ async function canAccessStoragePath(user, relPath) {
   }
 
   if (normalized.startsWith("uploads/")) {
+    // Never serve staging / quarantine dirs
+    if (
+      normalized === "uploads/temp" ||
+      normalized.startsWith("uploads/temp/") ||
+      normalized === "uploads/.tmp" ||
+      normalized.startsWith("uploads/.tmp/")
+    ) {
+      return false;
+    }
     const file = await UploadedFile.findOne({ where: { storage_rel_path: normalized } });
     if (!file) return user.role === "ADMIN";
     return canAccessUploadedFile(user, file);

@@ -144,6 +144,7 @@ export function MediaRowsEditor({
   const [uploading, setUploading] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [error, setError] = useState<string | null>(null)
   const fileIds = flattenMediaRows(rows)
 
@@ -158,9 +159,13 @@ export function MediaRowsEditor({
       const prepared = await prepareFileForUpload(raw, { onCompressing: () => setCompressing(true) })
       setCompressing(false)
       setUploading(true)
+      setUploadPhase('uploading')
       setUploadPercent(0)
       const uploaded = await onUpload(prepared, {
-        onProgress: (p) => setUploadPercent(p.percent),
+        onProgress: (p) => {
+          setUploadPercent(p.percent)
+          setUploadPhase(p.phase === 'scanning' ? 'scanning' : 'uploading')
+        },
       })
       setUploadPercent(100)
       onChange(mediaRowsFromFileIds([...fileIds, uploaded.id]))
@@ -173,10 +178,15 @@ export function MediaRowsEditor({
     } finally {
       setUploading(false)
       setCompressing(false)
+      setUploadPhase('uploading')
     }
   }
 
   const busy = uploading || compressing
+  const progressLabel =
+    uploadPhase === 'scanning'
+      ? t('mediaScanning')
+      : t('mediaUploadProgress', { percent: uploadPercent })
 
   return (
     <>
@@ -193,7 +203,11 @@ export function MediaRowsEditor({
         {error ? <p className="formErrorBlock">{error}</p> : null}
         {compressing ? <p className="muted small">{t('mediaCompressing')}</p> : null}
         {uploading && !compressing ? (
-          <UploadProgressBar percent={uploadPercent} label={t('mediaUploadProgress', { percent: uploadPercent })} />
+          <UploadProgressBar
+            percent={uploadPercent}
+            phase={uploadPhase}
+            label={progressLabel}
+          />
         ) : null}
         <div className="mediaAttachmentGrid">
           {fileIds.map((id) => {
@@ -217,7 +231,15 @@ export function MediaRowsEditor({
           })}
           {editable && fileIds.length < maxAttachments ? (
             <label className={`mediaCell mediaUploadSlot${busy ? ' isUploading' : ''}`}>
-              <span>{busy ? (compressing ? t('mediaCompressing') : t('mediaUploading')) : t('addMedia')}</span>
+              <span>
+                {busy
+                  ? compressing
+                    ? t('mediaCompressing')
+                    : uploadPhase === 'scanning'
+                      ? t('mediaScanning')
+                      : t('mediaUploading')
+                  : t('addMedia')}
+              </span>
               <input
                 type="file"
                 disabled={busy}

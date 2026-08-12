@@ -88,9 +88,17 @@ function multerErrorHandler(err, req, res, next) {
     }
     return res.status(400).json({ error: err.message || "Upload failed" });
   }
-  if (String(err.message || "").includes("File type not allowed")) {
+  const msg = String(err.message || "");
+  if (
+    msg.includes("File type not allowed") ||
+    msg.includes("Invalid or mismatched file type")
+  ) {
     void discardMulterFiles(req);
-    return res.status(400).json({ error: "File type not allowed" });
+    return res.status(400).json({ error: "Invalid or mismatched file type" });
+  }
+  if (msg.includes("Malware detected") || msg.includes("virus")) {
+    void discardMulterFiles(req);
+    return res.status(400).json({ error: "Malware detected" });
   }
   void discardMulterFiles(req);
   next(err);

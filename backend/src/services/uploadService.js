@@ -6,6 +6,8 @@ const { storageRoot, ensureStorageDirs } = require("./storage");
 const { UploadedFile } = require("../db");
 const { getLogger } = require("../logger");
 const { findByPublicId, publicId, isUuid } = require("../modules/access/idResolver");
+const { assertValidUploadFileType } = require("./fileTypeValidation");
+const { scanFile } = require("./malwareScanService");
 
 const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const VIDEO_MIMES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
@@ -58,7 +60,7 @@ const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function uploadsTempDir() {
-  return path.join(storageRoot(), "uploads", ".tmp");
+  return path.join(storageRoot(), "uploads", "temp");
 }
 
 function ensureUploadTempDir() {
@@ -119,12 +121,12 @@ function resolveExtension(originalName, mime) {
           ? ".pdf"
           : ".bin";
     if (ext === ".bin") {
-      const err = new Error("File type not allowed");
+      const err = new Error("Invalid or mismatched file type");
       err.status = 400;
       throw err;
     }
   }
-  return ext;
+  return ext === ".jpeg" ? ".jpg" : ext;
 }
 
 function contentTypeGuess(ext) {
@@ -154,6 +156,15 @@ function logUploadComplete({ req, mediaKind, sizeBytes, durationMs }) {
     },
     "upload complete",
   );
+}
+
+function unlinkTempSync(filePath) {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {
+    /* ignore */
+  }
 }
 
 async function removeDiskFile(relPath) {
@@ -187,6 +198,37 @@ async function readFileHead(sourcePath, max = 256) {
   }
 }
 
+/**
+ * Ensure bytes live under uploads/temp for validation + scan, then move to final uploads/.
+ */
+async function materializeTempUpload({ sourcePath, buffer, originalName }) {
+  ensureUploadTempDir();
+  if (sourcePath) {
+    const tempRoot = path.resolve(uploadsTempDir());
+    const resolved = path.resolve(sourcePath);
+    if (resolved.startsWith(tempRoot + path.sep) || resolved === tempRoot) {
+      return resolved;
+    }
+    const dest = path.join(
+      uploadsTempDir(),
+      `${crypto.randomUUID().replace(/-/g, "")}${path.extname(originalName || "").slice(0, 12) || ".bin"}`,
+    );
+    await fsp.rename(sourcePath, dest);
+    return dest;
+  }
+  if (!buffer || !buffer.length) {
+    const err = new Error("File required");
+    err.status = 400;
+    throw err;
+  }
+  const dest = path.join(
+    uploadsTempDir(),
+    `${crypto.randomUUID().replace(/-/g, "")}${path.extname(originalName || "").slice(0, 12) || ".bin"}`,
+  );
+  await fsp.writeFile(dest, buffer);
+  return dest;
+}
+
 async function saveUploadedFile({
   sourcePath,
   buffer,
@@ -198,74 +240,92 @@ async function saveUploadedFile({
   startedAt,
 }) {
   ensureStorageDirs();
-  const mime = mimeType || "application/octet-stream";
-  if (!isAllowedUpload(mime, originalName)) {
-    const err = new Error("File type not allowed");
-    err.status = 400;
+  let tempPath = null;
+  let finalAbs = null;
+
+  try {
+    // Soft client-hint gate (real trust is magic bytes below)
+    const clientMime = mimeType || "application/octet-stream";
+    if (!isAllowedUpload(clientMime, originalName)) {
+      const err = new Error("Invalid or mismatched file type");
+      err.status = 400;
+      throw err;
+    }
+
+    tempPath = await materializeTempUpload({ sourcePath, buffer, originalName });
+
+    // Step A — magic bytes / binary signature
+    const detected = await assertValidUploadFileType(tempPath, originalName);
+    if (!tempPath || !fs.existsSync(tempPath)) {
+      const err = new Error("Invalid or mismatched file type");
+      err.status = 400;
+      throw err;
+    }
+
+    const { head, size: sizeBytes } = await readFileHead(tempPath, 256);
+    if (sniffLooksDangerous(head)) {
+      const err = new Error("Invalid or mismatched file type");
+      err.status = 400;
+      throw err;
+    }
+
+    const max = maxBytesForMime(detected.mime);
+    if (!sizeBytes || sizeBytes > max) {
+      const err = new Error("File too large");
+      err.status = 413;
+      throw err;
+    }
+
+    // Step B — malware scan (ClamAV in production; simulated in development)
+    const scan = await scanFile(tempPath);
+    if (!scan.isClean) {
+      const err = new Error("Malware detected");
+      err.status = 400;
+      err.code = "MALWARE_DETECTED";
+      throw err;
+    }
+
+    let numericRapportId = null;
+    if (rapportId) {
+      const { resolveNumericRapportId } = require("../modules/rapports/rapportService");
+      numericRapportId = await resolveNumericRapportId(rapportId);
+    }
+
+    const storageKey = crypto.randomUUID().replace(/-/g, "");
+    const ext = detected.ext || resolveExtension(originalName, detected.mime);
+    const rel = path.join("uploads", `${storageKey}${ext}`).replace(/\\/g, "/");
+    finalAbs = path.join(storageRoot(), rel);
+
+    // Move out of temp into final uploads location (clean store)
+    await fsp.rename(tempPath, finalAbs);
+    tempPath = null;
+
+    const mime = detected.mime;
+    const row = await UploadedFile.create({
+      storage_key: storageKey,
+      rapport_id: numericRapportId,
+      uploaded_by_user_id: actor.id,
+      original_name: sanitizeFilename(originalName),
+      mime_type: ALLOWED_MIMES.has(mime) ? mime : contentTypeGuess(ext),
+      size_bytes: sizeBytes,
+      media_kind: detected.mediaKind || classifyMime(mime),
+      storage_rel_path: rel,
+    });
+
+    const durationMs = startedAt ? Date.now() - startedAt : undefined;
+    logUploadComplete({
+      req,
+      mediaKind: detected.mediaKind || classifyMime(mime),
+      sizeBytes,
+      durationMs,
+    });
+
+    return serializeFile(row);
+  } catch (err) {
+    unlinkTempSync(tempPath);
+    if (sourcePath && sourcePath !== tempPath) unlinkTempSync(sourcePath);
     throw err;
   }
-
-  let sizeBytes;
-  let headBuffer;
-  if (sourcePath) {
-    const { head, size } = await readFileHead(sourcePath);
-    headBuffer = head;
-    sizeBytes = size;
-  } else {
-    headBuffer = buffer;
-    sizeBytes = buffer?.length || 0;
-  }
-
-  if (sniffLooksDangerous(headBuffer)) {
-    const err = new Error("File type not allowed");
-    err.status = 400;
-    throw err;
-  }
-
-  let numericRapportId = null;
-  if (rapportId) {
-    const { resolveNumericRapportId } = require("../modules/rapports/rapportService");
-    numericRapportId = await resolveNumericRapportId(rapportId);
-  }
-
-  const max = maxBytesForMime(mime);
-  if (!sizeBytes || sizeBytes > max) {
-    const err = new Error("File too large");
-    err.status = 413;
-    throw err;
-  }
-
-  const storageKey = crypto.randomUUID().replace(/-/g, "");
-  const ext = resolveExtension(originalName, mime);
-  const rel = path.join("uploads", `${storageKey}${ext}`).replace(/\\/g, "/");
-  const abs = path.join(storageRoot(), rel);
-
-  if (sourcePath) {
-    await fsp.rename(sourcePath, abs);
-  } else {
-    await fsp.writeFile(abs, buffer);
-  }
-
-  const row = await UploadedFile.create({
-    storage_key: storageKey,
-    rapport_id: numericRapportId,
-    uploaded_by_user_id: actor.id,
-    original_name: sanitizeFilename(originalName),
-    mime_type: ALLOWED_MIMES.has(mime) ? mime : contentTypeGuess(ext),
-    size_bytes: sizeBytes,
-    media_kind: classifyMime(mime),
-    storage_rel_path: rel,
-  });
-
-  const durationMs = startedAt ? Date.now() - startedAt : undefined;
-  logUploadComplete({
-    req,
-    mediaKind: classifyMime(mime),
-    sizeBytes,
-    durationMs,
-  });
-
-  return serializeFile(row);
 }
 
 async function saveUploadedBuffer(opts) {

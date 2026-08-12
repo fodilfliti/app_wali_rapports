@@ -405,6 +405,7 @@ waliRouter.post(
       if (input?.sourcePath) await cleanupTempFile(input.sourcePath);
       if (e.status === 413) return res.status(413).json({ error: e.message });
       if (e.status === 400) return res.status(400).json({ error: e.message });
+      if (e.status === 503) return res.status(503).json({ error: e.message });
       next(e);
     }
   },

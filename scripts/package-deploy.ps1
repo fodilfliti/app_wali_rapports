@@ -51,6 +51,70 @@ function Assert-Path($path, $label) {
   }
 }
 
+# Compress-Archive often fails on Windows when AV/IDE locks a staged file.
+# Zip with FileShare.ReadWrite + retries so deploy works while npm run dev is up.
+function New-DeployZip {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourceDir,
+    [Parameter(Mandatory = $true)][string]$ZipPath,
+    [int]$MaxAttempts = 5
+  )
+  Add-Type -AssemblyName System.IO.Compression
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+  if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
+
+  $lastError = $null
+  for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+    try {
+      $zipStream = [System.IO.File]::Open(
+        $ZipPath,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::None
+      )
+      try {
+        $archive = New-Object System.IO.Compression.ZipArchive(
+          $zipStream,
+          [System.IO.Compression.ZipArchiveMode]::Create
+        )
+        try {
+          $root = (Resolve-Path $SourceDir).Path.TrimEnd("\", "/")
+          Get-ChildItem -Path $SourceDir -Recurse -Force -File | ForEach-Object {
+            $full = $_.FullName
+            $rel = $full.Substring($root.Length).TrimStart("\", "/").Replace("\", "/")
+            $entry = $archive.CreateEntry($rel, [System.IO.Compression.CompressionLevel]::Optimal)
+            $src = [System.IO.File]::Open(
+              $full,
+              [System.IO.FileMode]::Open,
+              [System.IO.FileAccess]::Read,
+              [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+            )
+            try {
+              $dest = $entry.Open()
+              try { $src.CopyTo($dest) }
+              finally { $dest.Dispose() }
+            }
+            finally { $src.Dispose() }
+          }
+        }
+        finally { $archive.Dispose() }
+      }
+      finally { $zipStream.Dispose() }
+      return
+    }
+    catch {
+      $lastError = $_
+      if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force -ErrorAction SilentlyContinue }
+      if ($attempt -lt $MaxAttempts) {
+        Write-Host ("  Zip attempt {0}/{1} failed ({2}); retrying…" -f $attempt, $MaxAttempts, $_.Exception.Message) -ForegroundColor Yellow
+        Start-Sleep -Seconds (2 * $attempt)
+      }
+    }
+  }
+  throw "Failed to create zip after $MaxAttempts attempts: $ZipPath`n$lastError"
+}
+
 Write-Step "Prepare output folder"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 Get-ChildItem $OutDir -Filter "wali-*-*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
@@ -91,18 +155,18 @@ Assert-Path (Join-Path $DistDir "index.html") "frontend/dist/index.html"
 
 Write-Step "Zip frontend → public_html package (no .htaccess)"
 $FrontendStage = Join-Path $OutDir "_stage-frontend"
-if (Test-Path $FrontendStage) { Remove-Item $FrontendStage -Recurse -Force }
+if (Test-Path $FrontendStage) { Remove-Item $FrontendStage -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force -Path $FrontendStage | Out-Null
 Copy-Item -Path (Join-Path $DistDir "*") -Destination $FrontendStage -Recurse -Force
 # Do NOT copy .htaccess — cPanel copy is customized and must stay.
-Compress-Archive -Path (Join-Path $FrontendStage "*") -DestinationPath $FrontendZip -Force
+New-DeployZip -SourceDir $FrontendStage -ZipPath $FrontendZip
 Copy-Item $FrontendZip $FrontendLatest -Force
-Remove-Item $FrontendStage -Recurse -Force
+Remove-Item $FrontendStage -Recurse -Force -ErrorAction SilentlyContinue
 
 # --- Backend ---
 Write-Step "Zip backend → wali-api package (no env; prod seeds whitelisted)"
 $BackendStage = Join-Path $OutDir "_stage-backend"
-if (Test-Path $BackendStage) { Remove-Item $BackendStage -Recurse -Force }
+if (Test-Path $BackendStage) { Remove-Item $BackendStage -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force -Path $BackendStage | Out-Null
 
 # Prod runtime + migrations. Demo/dev/test seeds stay out of the zip.
@@ -164,27 +228,9 @@ Get-ChildItem $BackendStage -Recurse -File -Include `
   "*.log", "*.rar", "*.zip", "tmp-*", ".DS_Store", "Thumbs.db" |
   Remove-Item -Force -ErrorAction SilentlyContinue
 
-Compress-Archive -Path (Join-Path $BackendStage "*") -DestinationPath $BackendZip -Force
-
-# Compress-Archive can miss dotfiles — ensure .sequelizerc is present
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::Open($BackendZip, [System.IO.Compression.ZipArchiveMode]::Update)
-try {
-  $hasSequelize = $zip.Entries | Where-Object { $_.FullName -eq ".sequelizerc" }
-  if (-not $hasSequelize) {
-    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-      $zip,
-      (Join-Path $BackendStage ".sequelizerc"),
-      ".sequelizerc"
-    ) | Out-Null
-  }
-}
-finally {
-  $zip.Dispose()
-}
-
+New-DeployZip -SourceDir $BackendStage -ZipPath $BackendZip
 Copy-Item $BackendZip $BackendLatest -Force
-Remove-Item $BackendStage -Recurse -Force
+Remove-Item $BackendStage -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Step "Done"
 Write-Host ""

@@ -10,7 +10,7 @@ function storageRoot() {
 
 function ensureStorageDirs() {
   const root = storageRoot();
-  for (const sub of ["exports", "pdf", "uploads", "uploads/.tmp"]) {
+  for (const sub of ["exports", "pdf", "uploads", "uploads/temp"]) {
     const dir = path.join(root, sub);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   }
