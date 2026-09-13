@@ -36,6 +36,8 @@ import { SchemaListPanel } from "../components/SchemaListPanel";
 import { ConfirmActionModal } from "../components/ConfirmActionModal";
 import { RapportKindsExplainer } from "../components/RapportKindsExplainer";
 import { notifyHubCountsRefresh } from "../utils/hubCountsRefresh";
+import { hidesCommuneListContentKind, hidesFicheLectureContentKind } from "@wali/access-policy";
+import { useAuthOptional } from "../auth/AuthProvider";
 
 type Props = { token: string };
 
@@ -44,7 +46,7 @@ type ConfigPanel = "schemas" | "rapportTypes" | "templates";
 /** Hidden for now — re-enable when template-duplicate UX ships. */
 const ENABLE_SCHEMA_DUPLICATE = false;
 
-const CONTENT_KINDS = ["table_grid", "document_compose", "commune_list"];
+const CONTENT_KINDS_ALL = ["table_grid", "document_compose", "commune_list"] as const;
 
 function linkedSchemaSlug(rt: any) {
   return rt?.schema_json?.table_schema_slug as string | undefined;
@@ -55,6 +57,12 @@ export function OfficeServiceConfigPage({ token }: Props) {
   const sid = (serviceId || "") as import("../api").EntityIdParam;
   const [searchParams, setSearchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
+  const auth = useAuthOptional();
+  const hideListe = hidesCommuneListContentKind(auth?.me?.role);
+  const hideFiche = hidesFicheLectureContentKind(auth?.me?.role);
+  const CONTENT_KINDS = hideListe
+    ? CONTENT_KINDS_ALL.filter((k) => k !== "commune_list")
+    : [...CONTENT_KINDS_ALL];
   const snack = useSnackbar();
   const [schemas, setSchemas] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
@@ -105,12 +113,19 @@ export function OfficeServiceConfigPage({ token }: Props) {
       ]);
       setSchemas(schemaRes.schemas);
       setTemplates(schemaRes.templates);
-      setRapportTypes(typeRes.rapportTypes);
+      const types = typeRes.rapportTypes || [];
+      setRapportTypes(
+        types.filter((rt: any) => {
+          if (hideListe && rt.content_kind === "commune_list") return false;
+          if (hideFiche && rt.content_kind === "fiche_lecture") return false;
+          return true;
+        }),
+      );
       setService(typeRes.service);
     } catch {
       snack.show(t("errorGeneric"), "error");
     }
-  }, [token, sid, snack, t]);
+  }, [token, sid, snack, t, hideListe, hideFiche]);
 
   useEffect(() => {
     load();
@@ -531,7 +546,7 @@ export function OfficeServiceConfigPage({ token }: Props) {
         </div>
       ) : null}
 
-      <RapportKindsExplainer />
+      <RapportKindsExplainer hideCommuneList={hideListe} hideFicheLecture={hideFiche} />
 
       {schemaModal ? (
         <TableSchemaEditorModal

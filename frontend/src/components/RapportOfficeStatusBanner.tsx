@@ -3,6 +3,7 @@ import {
   canOfficeReturnToDraft,
   canOfficeStartNewVersion,
 } from '../utils/rapportNavigation'
+import { useAuthOptional } from '../auth/AuthProvider'
 import { ReturnRapportToDraftConfirm } from './ReturnRapportToDraftConfirm'
 import { StartNewVersionConfirm } from './StartNewVersionConfirm'
 import { BusyButton } from './BusyButton'
@@ -44,6 +45,7 @@ export function RapportOfficeStatusBanner({
   startingNewVersion,
 }: Props) {
   const { t } = useTranslation()
+  const auth = useAuthOptional()
   if (!rapport?.id) return null
 
   if (rapport.delete_requested || rapport.delete_requested_at) {
@@ -74,7 +76,7 @@ export function RapportOfficeStatusBanner({
   const showReturn =
     canManage === true &&
     typeof onReturnToDraft === 'function' &&
-    canOfficeReturnToDraft(rapport.status)
+    canOfficeReturnToDraft(rapport.status, auth?.me?.role)
 
   const showNewVersion =
     canManage === true &&

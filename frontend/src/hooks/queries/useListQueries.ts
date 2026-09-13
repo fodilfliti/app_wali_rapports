@@ -18,13 +18,14 @@ export function useOfficeServiceTreeQuery(token: string) {
   })
 }
 
-export function useReviewerOfficeUsersQuery(token: string, reviewer: 'wali' | 'chef') {
+export function useReviewerOfficeUsersQuery(
+  token: string,
+  reviewer: 'wali' | 'chef',
+  creatorKey = 'office',
+) {
   return useQuery({
-    queryKey: queryKeys.reviewerOfficeUsers(reviewer),
-    queryFn: () =>
-      reviewer === 'chef'
-        ? api.listChefOfficeUsers(token)
-        : api.listWaliOfficeUsers(token),
+    queryKey: queryKeys.reviewerOfficeUsers(reviewer, creatorKey),
+    queryFn: () => api.getCreatorsList(token, reviewer, creatorKey),
     enabled: !!token,
     staleTime: CACHE.officeUsers.staleTime,
     gcTime: CACHE.officeUsers.gcTime,
@@ -38,13 +39,14 @@ export function useReviewerUserServicesQuery(
   token: string,
   userId: EntityIdParam,
   reviewer: 'wali' | 'chef',
+  creatorKey = 'office',
 ) {
   return useQuery({
-    queryKey: queryKeys.reviewerUserServices(reviewer, userId),
+    queryKey: queryKeys.reviewerUserServices(reviewer, userId, creatorKey),
     queryFn: () =>
       reviewer === 'chef'
-        ? api.listChefUserServices(token, userId)
-        : api.listWaliUserServices(token, userId),
+        ? api.listChefUserServices(token, userId, creatorKey)
+        : api.listWaliUserServices(token, userId, creatorKey),
     enabled: !!token && userId != null && userId !== '',
     staleTime: CACHE.serviceTree.staleTime,
     gcTime: CACHE.serviceTree.gcTime,
@@ -59,14 +61,15 @@ export function useReviewerServiceHubQuery(
   userId: EntityIdParam,
   serviceId: EntityIdParam,
   reviewer: 'wali' | 'chef',
+  creatorKey = 'office',
 ) {
   const scope = reviewer === 'chef' ? 'chef' : 'wali'
   return useQuery({
-    queryKey: queryKeys.serviceHub(scope, serviceId, { userId }),
+    queryKey: queryKeys.serviceHub(scope, serviceId, { userId, creatorKey }),
     queryFn: () =>
       reviewer === 'chef'
-        ? api.getChefServiceContentHub(token, userId, serviceId)
-        : api.getWaliServiceContentHub(token, userId, serviceId),
+        ? api.getChefServiceContentHub(token, userId, serviceId, creatorKey)
+        : api.getWaliServiceContentHub(token, userId, serviceId, creatorKey),
     enabled:
       !!token &&
       userId != null &&
@@ -193,21 +196,33 @@ export function useAdminRapportsListQuery(
   })
 }
 
-export function useAdminServicesQuery(token: string) {
+export function useAdminServicesQuery(
+  token: string,
+  params?: {
+    org_scope?: string;
+    daira_id?: string;
+    municipality_id?: string;
+    direction_id?: string;
+  },
+) {
   return useQuery({
-    queryKey: queryKeys.adminServices(),
-    queryFn: () => api.listAdminServices(token),
+    queryKey: queryKeys.adminServices(params as Record<string, unknown> | undefined),
+    queryFn: () => api.listAdminServices(token, params),
     enabled: !!token,
     staleTime: CACHE.adminRef.staleTime,
     gcTime: CACHE.adminRef.gcTime,
   })
 }
 
-export function useAdminOfficeUsersQuery(token: string) {
+export function useAdminOfficeUsersQuery(
+  token: string,
+  params?: { org_scope?: string; service_id?: string; role?: string },
+  enabled = true,
+) {
   return useQuery({
-    queryKey: queryKeys.adminOfficeUsers(),
-    queryFn: () => api.listAdminOfficeUsers(token),
-    enabled: !!token,
+    queryKey: queryKeys.adminOfficeUsers(params as Record<string, unknown> | undefined),
+    queryFn: () => api.listAdminOfficeUsers(token, params),
+    enabled: !!token && enabled,
     staleTime: CACHE.adminRef.staleTime,
     gcTime: CACHE.adminRef.gcTime,
     select: (data) => data.users,

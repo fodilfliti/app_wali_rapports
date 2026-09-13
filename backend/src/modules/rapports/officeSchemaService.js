@@ -8,6 +8,10 @@ const {
 const schemaConfig = require("./schemaConfigService");
 const { audit } = require("../../services/audit");
 const { baseSlugFromNames, ensureUniqueSlug } = require("../../utils/slugUtils");
+const {
+  hidesCommuneListContentKind,
+  hidesFicheLectureContentKind,
+} = require("../access/creatorRoles");
 
 async function listSchemasForOfficeService(serviceId, user) {
   await assertServiceAccess(user, serviceId, "manage");
@@ -126,7 +130,15 @@ async function duplicateSchemaToService(serviceId, sourceSchemaId, newSlug, user
 
 async function listRapportTypesForOffice(serviceId, user) {
   await assertServiceAccess(user, serviceId, "manage");
-  return schemaConfig.listRapportTypes(serviceId);
+  const result = await schemaConfig.listRapportTypes(serviceId);
+  let types = result.rapportTypes || [];
+  if (hidesCommuneListContentKind(user?.role)) {
+    types = types.filter((t) => t.content_kind !== "commune_list");
+  }
+  if (hidesFicheLectureContentKind(user?.role)) {
+    types = types.filter((t) => t.content_kind !== "fiche_lecture");
+  }
+  return { ...result, rapportTypes: types };
 }
 
 async function createRapportTypeForOffice(serviceId, data, user, req) {

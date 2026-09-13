@@ -45,6 +45,7 @@ const {
   ChefInstruction,
   ChefInstructionRecipient,
   GuideVideo,
+  GuideVideoAudience,
 } = require("../src/db");
 const {
   buildOfficialHeaderBlocks,
@@ -1739,18 +1740,21 @@ async function seedDemo() {
         uploadedByUserId: admin.id,
       });
       await fileRow.update({ storage_rel_path: `uploads/${vf.name}` });
-      await GuideVideo.create({
+      const created = await GuideVideo.create({
         title_ar: audiences[i].title_ar,
         title_fr: audiences[i].title_fr,
         description_ar: "فيديو تجريبي للعرض",
         description_fr: "Vidéo de démonstration",
-        audience: audiences[i].audience,
         uploaded_file_id: fileRow.id,
         is_new: audiences[i].is_new,
         sort_order: i,
         created_by_user_id: admin.id,
         created_at: now,
         updated_at: now,
+      });
+      await GuideVideoAudience.create({
+        guide_video_id: created.id,
+        audience: audiences[i].audience,
       });
       guideCount += 1;
     }

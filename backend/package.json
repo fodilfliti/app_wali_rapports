@@ -15,6 +15,7 @@
     "db:seed-demo": "node scripts/seed-demo-presentation.js",
     "db:seed-prod-bootstrap": "node scripts/seed-prod-bootstrap.js --confirm",
     "db:seed-prod-ensure": "node scripts/seed-prod-ensure.js --confirm",
+    "db:seed-org-heads": "node scripts/seed-org-heads-bootstrap.js --confirm",
     "db:ensure-fiche-lecture": "node scripts/ensure-fiche-lecture-types.js",
     "db:regenerate-credentials-handout": "node scripts/regenerate-credentials-handout-pdf.js",
     "db:ensure-super-admin": "node scripts/ensure-super-admin.js",

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { hidesCommuneListContentKind } from "@wali/access-policy";
+import { useAuthOptional } from "../auth/AuthProvider";
 import * as api from "../api";
 import { ApiError } from "../api";
 import { BackButton } from "../components/BackButton";
@@ -49,6 +51,7 @@ export function OfficeCommuneListPage({ token }: Props) {
   const rapportId = searchParams.get("rapport_id") || undefined;
   const sid = (serviceId || "") as import("../api").EntityIdParam;
   const { t, i18n } = useTranslation();
+  const auth = useAuthOptional();
   const snack = useSnackbar();
   const [workspace, setWorkspace] = useState<any>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -395,6 +398,10 @@ export function OfficeCommuneListPage({ token }: Props) {
         <TablePagination page={page} total={items.length} onPageChange={setPage} />
       </>
     );
+  }
+
+  if (hidesCommuneListContentKind(auth?.me?.role)) {
+    return <Navigate to={`/cabinet/services/${sid}`} replace />;
   }
 
   return (

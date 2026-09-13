@@ -1,5 +1,5 @@
 import type { ActionKey } from './actions';
-import type { UserRole } from './roles';
+import { isCreatorRole, type UserRole } from './roles';
 import { ACTION_REQUIREMENTS, meetsMinAccessLevel } from './permissions';
 import {
   canChefRespondFromList,
@@ -55,10 +55,11 @@ export function canAction(ctx: ActionContext, action: ActionKey): boolean {
 
   const status = ctx.status ?? '';
   const kind = ctx.content_kind;
+  const creator = isCreatorRole(ctx.role);
 
   switch (action) {
     case 'rapport.edit':
-      if (!kind) return canOfficeEditRapport(status) && ctx.role === 'OFFICE_USER';
+      if (!kind) return canOfficeEditRapport(status) && creator;
       return canOfficeEditRapportKind({
         content_kind: kind,
         status,
@@ -66,12 +67,12 @@ export function canAction(ctx: ActionContext, action: ActionKey): boolean {
       });
 
     case 'rapport.return_to_draft':
-      return ctx.role === 'OFFICE_USER' && canOfficeReturnToDraft(status);
+      return creator && canOfficeReturnToDraft(status, ctx.role);
 
     case 'rapport.start_new_version':
       if (!kind) return false;
       return (
-        ctx.role === 'OFFICE_USER' &&
+        creator &&
         canStartNewVersion({
           content_kind: kind,
           status,
@@ -88,10 +89,13 @@ export function canAction(ctx: ActionContext, action: ActionKey): boolean {
 
     case 'rapport.export_excel':
       if (!kind) return false;
-      return ctx.role === 'OFFICE_USER' && canExportExcel({
-        content_kind: kind,
-        commune_content_kind: ctx.commune_content_kind,
-      });
+      return (
+        creator &&
+        canExportExcel({
+          content_kind: kind,
+          commune_content_kind: ctx.commune_content_kind,
+        })
+      );
 
     case 'rapport.show_wali_response_export':
       if (!kind) return false;
@@ -103,10 +107,10 @@ export function canAction(ctx: ActionContext, action: ActionKey): boolean {
       return false;
 
     case 'rapport.submit':
-      return ctx.role === 'OFFICE_USER' && status === 'draft';
+      return creator && status === 'draft';
 
     case 'rapport.finish':
-      return ctx.role === 'OFFICE_USER' && status !== 'draft';
+      return creator && status !== 'draft';
 
     default:
       return true;

@@ -3,6 +3,39 @@ const { User, Service, Department, Rapport, RapportType, UserServiceGrant } = re
 const { getAccessMapForUser, filterServiceTree } = require("./serviceAccessService");
 const hubCountsService = require("./hubCountsService");
 const { publicId, findByPublicId, withPublicId } = require("../access/idResolver");
+const {
+  CREATOR_ROLES,
+  isCreatorRole,
+  roleFromCreatorKey,
+  CREATOR_KEY_TO_ROLE,
+  creatorKeyFromRole,
+} = require("../access/creatorRoles");
+
+/** Resolve optional role / creator_key filter → Sequelize role where value. */
+function resolveCreatorRoleFilter(query = {}) {
+  const rawKey = query.creator_key ?? query.creatorKey ?? null;
+  const rawRole = query.role ?? null;
+  if (rawKey) {
+    const role = roleFromCreatorKey(String(rawKey));
+    if (!role) {
+      const err = new Error("Invalid creator_key");
+      err.status = 400;
+      throw err;
+    }
+    return role;
+  }
+  if (rawRole) {
+    const fromKey = roleFromCreatorKey(String(rawRole));
+    const role = fromKey || String(rawRole);
+    if (!isCreatorRole(role)) {
+      const err = new Error("Invalid role");
+      err.status = 400;
+      throw err;
+    }
+    return role;
+  }
+  return { [Op.in]: CREATOR_ROLES };
+}
 
 function serializeServiceNode(s, includeChildren = true) {
   // Keep BIGINT ids here: hubCounts enrichServiceTreeCounts keys by Number(id).
@@ -83,7 +116,8 @@ function finalizeServiceTree(serializedNodes) {
  * @param {string[]} [statusList] — if omitted, use `whereExtra` only
  * @param {object} [whereExtra] — extra Sequelize where (e.g. delete requests)
  */
-async function pendingCountsByOfficeUser(statusList, whereExtra = null) {
+async function pendingCountsByOfficeUser(statusList, whereExtra = null, roleWhere = null) {
+  const roleFilter = roleWhere ?? { [Op.in]: CREATOR_ROLES };
   const grants = await UserServiceGrant.findAll({
     attributes: ["user_id", "service_id"],
     include: [
@@ -92,7 +126,7 @@ async function pendingCountsByOfficeUser(statusList, whereExtra = null) {
         as: "user",
         attributes: ["id"],
         required: true,
-        where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+        where: { role: roleFilter, is_blocked: false, deleted_at: null },
       },
     ],
   });
@@ -142,43 +176,54 @@ async function pendingCountsByOfficeUser(statusList, whereExtra = null) {
   return countByUser;
 }
 
-async function listOfficeUsersForWali(statusList = hubCountsService.WALI_INBOX_ACTION_STATUSES) {
+async function listOfficeUsersForWali(
+  statusList = hubCountsService.WALI_INBOX_ACTION_STATUSES,
+  query = {},
+) {
+  const roleWhere = resolveCreatorRoleFilter(query);
   const users = await User.findAll({
-    where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+    where: { role: roleWhere, is_blocked: false, deleted_at: null },
     order: [["name", "ASC"], ["id", "ASC"]],
-    attributes: ["id", "uuid", "username", "name", "job_title", "department_id"],
+    attributes: ["id", "uuid", "username", "name", "job_title", "role", "department_id"],
     include: [{ model: Department, as: "department", attributes: ["id", "uuid", "name_ar", "name_fr"] }]
   });
 
-  const countByUser = await pendingCountsByOfficeUser(statusList);
+  const countByUser = await pendingCountsByOfficeUser(statusList, null, roleWhere);
 
   return users.map((u) => ({
     id: publicId(u),
     username: u.username,
     name: u.name,
     job_title: u.job_title,
+    role: u.role,
+    creator_key: creatorKeyFromRole(u.role),
     department: u.department ? withPublicId(u.department) : null,
     pending_rapports_count: countByUser[Number(u.id)] || 0
   }));
 }
 
-async function listOfficeUsersForChef() {
+async function listOfficeUsersForChef(query = {}) {
+  const roleWhere = resolveCreatorRoleFilter(query);
   const users = await User.findAll({
-    where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+    where: { role: roleWhere, is_blocked: false, deleted_at: null },
     order: [["name", "ASC"], ["id", "ASC"]],
-    attributes: ["id", "uuid", "username", "name", "job_title", "department_id"],
+    attributes: ["id", "uuid", "username", "name", "job_title", "role", "department_id"],
     include: [{ model: Department, as: "department", attributes: ["id", "uuid", "name_ar", "name_fr"] }],
   });
 
-  const countByUser = await pendingCountsByOfficeUser(null, {
-    ...hubCountsService.chefActionOrDeleteWhere(),
-  });
+  const countByUser = await pendingCountsByOfficeUser(
+    null,
+    { ...hubCountsService.chefActionOrDeleteWhere() },
+    roleWhere,
+  );
 
   return users.map((u) => ({
     id: publicId(u),
     username: u.username,
     name: u.name,
     job_title: u.job_title,
+    role: u.role,
+    creator_key: creatorKeyFromRole(u.role),
     department: u.department ? withPublicId(u.department) : null,
     pending_rapports_count: countByUser[Number(u.id)] || 0,
   }));
@@ -214,10 +259,22 @@ async function loadFullServiceTree() {
 async function getServiceTreeForUser(userId, actorRole = "OFFICE_USER", opts = {}) {
   const services = await loadFullServiceTree();
   const userRow = userId
-    ? await findByPublicId(User, userId, { attributes: ["id", "uuid"] })
+    ? await findByPublicId(User, userId, { attributes: ["id", "uuid", "role"] })
     : null;
   const numericUserId = userRow?.id ?? null;
   const publicUserId = userRow ? publicId(userRow) : null;
+
+  if (opts.creator_key || opts.expectedRole) {
+    const expected =
+      opts.expectedRole ||
+      roleFromCreatorKey(String(opts.creator_key)) ||
+      null;
+    if (expected && userRow && userRow.role !== expected) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
+  }
 
   if (actorRole === "ADMIN") {
     const serialized = services.map((s) =>
@@ -231,6 +288,9 @@ async function getServiceTreeForUser(userId, actorRole = "OFFICE_USER", opts = {
 
   if (!numericUserId) {
     return { office_user_id: null, services: [] };
+  }
+  if (userRow && !isCreatorRole(userRow.role) && actorRole !== "ADMIN") {
+    return { office_user_id: publicUserId, services: [] };
   }
 
   const accessMap = await getAccessMapForUser(numericUserId);
@@ -276,4 +336,6 @@ module.exports = {
   getOfficeServiceTree,
   toPublicServiceTree,
   collectServiceIdUuidMap,
+  resolveCreatorRoleFilter,
+  CREATOR_KEY_TO_ROLE,
 };

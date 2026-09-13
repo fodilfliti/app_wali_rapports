@@ -18,6 +18,7 @@ const {
   publicId,
   withPublicId,
 } = require("../access/idResolver");
+const { CREATOR_ROLES, ALL_ROLE_FLAGS, truthyFlag } = require("../access/creatorRoles");
 
 function creatorFromRow(b) {
   const u = b.createdByUser;
@@ -57,8 +58,8 @@ const CREATOR_INCLUDE = [
 ];
 
 function recipientRolesForCreator(actorRole) {
-  if (actorRole === "CHEF_CABINET") return ["OFFICE_USER", "WALI"];
-  return ["OFFICE_USER", "CHEF_CABINET"];
+  if (actorRole === "CHEF_CABINET") return [...CREATOR_ROLES, "WALI"];
+  return [...CREATOR_ROLES, "CHEF_CABINET"];
 }
 
 function canViewBroadcastAsPrivileged(actor, broadcast) {
@@ -86,30 +87,46 @@ async function listOfficeUsers() {
 }
 
 async function resolveRecipientIds(body, actor) {
-  const roles = recipientRolesForCreator(actor?.role || "WALI");
-  if (body.all_users) {
+  const allowedRoles = recipientRolesForCreator(actor?.role || "WALI");
+  const roleSet = new Set();
+
+  if (truthyFlag(body.all_users)) {
+    for (const r of allowedRoles) roleSet.add(r);
+  }
+  for (const [flag, role] of Object.entries(ALL_ROLE_FLAGS)) {
+    if (truthyFlag(body[flag]) && allowedRoles.includes(role)) roleSet.add(role);
+  }
+
+  const ids = new Set();
+  if (roleSet.size > 0) {
     const users = await User.findAll({
-      where: { role: { [Op.in]: roles }, is_blocked: false, deleted_at: null },
+      where: {
+        role: { [Op.in]: [...roleSet] },
+        is_blocked: false,
+        deleted_at: null,
+      },
       attributes: ["id"],
     });
-    return users.map((u) => u.id).filter((id) => Number(id) !== Number(actor.id));
+    for (const u of users) {
+      if (Number(u.id) !== Number(actor.id)) ids.add(u.id);
+    }
   }
+
   const requested = body.recipient_user_ids || [];
-  if (!requested.length) return [];
-  const numericIds = [];
   for (const raw of requested) {
     const nid = await resolveNumericId(User, raw);
-    if (nid && Number(nid) !== Number(actor.id)) numericIds.push(nid);
+    if (nid && Number(nid) !== Number(actor.id)) ids.add(nid);
   }
-  if (!numericIds.length) return [];
+
+  if (!ids.size) return [];
   const users = await User.findAll({
     where: {
-      id: { [Op.in]: numericIds },
-      role: { [Op.in]: roles },
+      id: { [Op.in]: [...ids] },
+      role: { [Op.in]: allowedRoles },
       is_blocked: false,
       deleted_at: null,
     },
-    attributes: ["id"]
+    attributes: ["id"],
   });
   return users.map((u) => u.id);
 }

@@ -93,14 +93,18 @@ Wali **or** Chef uploads a file into the **same** shared pool (`wali_broadcasts`
 
 | Creator | Eligible recipients |
 | ------- | ------------------- |
-| Wali / Admin | non-blocked `OFFICE_USER` **and** `CHEF_CABINET` |
-| Chef | non-blocked `OFFICE_USER` **and** `WALI` (exclude self) |
+| Wali / Admin | non-blocked **all `CREATOR_ROLES`** **and** `CHEF_CABINET` |
+| Chef | non-blocked **all `CREATOR_ROLES`** **and** `WALI` (exclude self) |
 
-Pickers: `GET /governor/office-users-for-share` (Wali) and `GET /chief/office-users-for-share` (Chef). “All users” uses the same role set for that creator.
+Bulk flags on create (combinable with per-user `recipient_ids`): `all_office` | `all_daira` | `all_commune` | `all_direction` | **`all_wali`** (Chef create only; gated by allowed recipient roles).
+
+**Chef create defaults:** `all_office` on; daira / commune / direction / `all_wali` off (pick Wali explicitly or via the individual list).
+
+Pickers: `GET /governor/office-users-for-share` (Wali) and `GET /chief/office-users-for-share` (Chef) — list all creator roles (+ Chef or Wali as above). “All users” / role bulk uses the same role set for that uploader.
 
 **Uploader display:** API serializes `created_by: { id, name, role }`. Cards and detail show UI labels **والي** / **رئيس الديوان** (never raw enums).
 
-**Wali as recipient:** when Chef uploads, Wali is a recipient — hub `unread_shared_files` counts unread recipient rows; mark-read on open. Wali list still shows **all** broadcasts (creator + received).
+**Wali as recipient:** when Chef uploads and selects Wali (`all_wali` or individual), Wali is a recipient — hub `unread_shared_files` counts unread recipient rows; mark-read on open. Wali list still shows **all** broadcasts (creator + received).
 
 Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
 
@@ -136,7 +140,7 @@ Broadcast create `title_fr` / calendar editor bilingual fields respect `ENABLE_F
 | `body_text` | TEXT | Comment body |
 | `created_at` | DATE | Timestamp |
 
-**Notifications wiring:** Sharing a broadcast creates notifications for recipients with `message_key = 'waliBroadcast'`, `broadcast_id` pointing to the broadcast record, and a `null` `rapport_id` (which is nullable in the database). Copy is **role-aware** (from Wali vs from Chef). Recipients who have not opened receive reminder notifications (`waliBroadcastReminder`). Pref type remains `broadcasts`. Deep links: office `/cabinet/shared/…`, Chef `/chief/shared/…`, Wali `/governor/shared/…`.
+**Notifications wiring:** Sharing a broadcast creates notifications for recipients with `message_key = 'waliBroadcast'`, `broadcast_id` pointing to the broadcast record, and a `null` `rapport_id` (which is nullable in the database). Copy is **role-aware** (from Wali vs from Chef). Recipients who have not opened receive reminder notifications (`waliBroadcastReminder`). Pref type remains `broadcasts`. Deep links: creators `/cabinet/shared/…`, Chef `/chief/shared/…`, Wali `/governor/shared/…`.
 
 **File ACL:** creator **or** recipient **or** Wali/Admin support access.
 

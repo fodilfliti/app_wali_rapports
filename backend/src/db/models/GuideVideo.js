@@ -10,11 +10,6 @@ module.exports = (sequelize) =>
       title_fr: { type: DataTypes.STRING(200), allowNull: false, defaultValue: "" },
       description_ar: { type: DataTypes.TEXT, allowNull: true },
       description_fr: { type: DataTypes.TEXT, allowNull: true },
-      audience: {
-        type: DataTypes.ENUM("general", "ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"),
-        allowNull: false,
-        defaultValue: "general"
-      },
       uploaded_file_id: { type: DataTypes.BIGINT, allowNull: false },
       is_new: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       sort_order: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },

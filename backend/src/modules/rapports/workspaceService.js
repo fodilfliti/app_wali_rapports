@@ -22,6 +22,7 @@ const {
   isUuid,
   publicId,
 } = require("../access/idResolver");
+const { hidesCommuneListContentKind, hidesFicheLectureContentKind } = require("../access/creatorRoles");
 const {
   loadSchemaBySlug,
   buildDefaultTableRows,
@@ -42,7 +43,7 @@ const calendarEventService = require("./calendarEventService");
 const rapportViewService = require("./rapportViewService");
 const schemaConfigService = require("./schemaConfigService");
 
-const { buildCommuneDocumentDefaultBlocks, buildCommuneDocumentDefaultDataJson, buildDocumentDefaultDataJson, buildFicheDefaultDataJson } = require("./documentDefaults");
+const { buildCommuneDocumentDefaultBlocks, buildCommuneDocumentDefaultDataJson, buildDocumentDefaultDataJson, buildFicheDefaultDataJson, letterheadContextFromService } = require("./documentDefaults");
 
 const DOCUMENT_KINDS = new Set(["document_compose", "fiche_lecture"]);
 
@@ -155,8 +156,24 @@ async function attachMediaAndCalendar(view, rapportId, actor) {
 }
 
 async function loadServiceWithTypes(serviceId) {
+  const { Daira, Municipality, Direction } = require("../../db");
   const service = await findByPublicId(Service, serviceId, {
-    include: [{ model: RapportType, as: "rapportTypes" }],
+    include: [
+      { model: RapportType, as: "rapportTypes" },
+      { model: Daira, as: "daira", attributes: ["id", "uuid", "name_ar", "name_fr"], required: false },
+      {
+        model: Municipality,
+        as: "municipality",
+        attributes: ["id", "uuid", "name_ar", "name_fr"],
+        required: false,
+      },
+      {
+        model: Direction,
+        as: "direction",
+        attributes: ["id", "uuid", "name_ar", "name_fr"],
+        required: false,
+      },
+    ],
   });
   if (!service) {
     const err = new Error("Not found");
@@ -318,6 +335,7 @@ function buildContentKindSummaries(contentKinds) {
 
 async function getServiceContentHub(serviceId, user, options = {}) {
   let accessLevel = "view";
+  let kindFilterRole = user?.role;
   const officeUserNumericId = options.waliForOfficeUserId
     ? await resolveOfficeUserNumericId(options.waliForOfficeUserId)
     : null;
@@ -332,10 +350,16 @@ async function getServiceContentHub(serviceId, user, options = {}) {
       err.status = 404;
       throw err;
     }
-    accessLevel = await resolveAccessLevel(
-      { id: officeUserNumericId, role: "OFFICE_USER" },
-      serviceId,
-    );
+    const lensUser = await User.findByPk(officeUserNumericId, {
+      attributes: ["id", "role", "is_blocked", "deleted_at"],
+    });
+    if (!lensUser || lensUser.is_blocked || lensUser.deleted_at) {
+      const err = new Error("Not found");
+      err.status = 404;
+      throw err;
+    }
+    kindFilterRole = lensUser.role;
+    accessLevel = await resolveAccessLevel(lensUser, serviceId);
     if (accessLevel === "none") {
       const err = new Error("Forbidden");
       err.status = 403;
@@ -382,6 +406,14 @@ async function getServiceContentHub(serviceId, user, options = {}) {
         !t.hidden_at ||
         Number(byType[`${sid}:${Number(t.id)}`]) > 0,
     );
+  }
+
+  // Org-head creators: no قائمة / no مذكرة استخلاصية — silent omit (flip flags in access-policy).
+  if (hidesCommuneListContentKind(kindFilterRole)) {
+    visibleTypes = visibleTypes.filter((t) => t.content_kind !== "commune_list");
+  }
+  if (hidesFicheLectureContentKind(kindFilterRole)) {
+    visibleTypes = visibleTypes.filter((t) => t.content_kind !== "fiche_lecture");
   }
 
   const rapportTypes = visibleTypes.map((t) => {
@@ -839,13 +871,15 @@ async function createDocument(serviceId, rapportTypeId, actor, req, opts = {}) {
       null,
     );
   } else {
-    // skip_default = no user template; still seed official wilaya letterhead.
+    // skip_default = no user template; still seed official wilaya letterhead (org-scoped).
+    const letterheadCtx = letterheadContextFromService(service);
     dataJson =
       rapportType.content_kind === "fiche_lecture"
-        ? buildFicheDefaultDataJson()
+        ? buildFicheDefaultDataJson(letterheadCtx)
         : buildDocumentDefaultDataJson({
             titleAr: rapportType.name_ar,
             titleFr: rapportType.name_fr,
+            ...letterheadCtx,
           });
   }
 
@@ -886,13 +920,15 @@ async function previewDocumentCreate(
   const documentTemplateService = require("./documentTemplateService");
   let data_json;
   if (opts.skip_default) {
-    // No user template — keep official letterhead (fiche / fichier-style docs).
+    // No user template — keep official letterhead (org-scoped).
+    const letterheadCtx = letterheadContextFromService(service);
     data_json =
       rapportType.content_kind === "fiche_lecture"
-        ? buildFicheDefaultDataJson()
+        ? buildFicheDefaultDataJson(letterheadCtx)
         : buildDocumentDefaultDataJson({
             titleAr: rapportType.name_ar,
             titleFr: rapportType.name_fr,
+            ...letterheadCtx,
           });
   } else {
     data_json = await documentTemplateService.resolveInitialDataJson(

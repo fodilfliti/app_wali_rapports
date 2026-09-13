@@ -75,25 +75,74 @@ const directionCreateSchema = refineBilingualNames(
 );
 const directionPatchSchema = dairaPatchSchema;
 
-const userCreateSchema = z.object({
-  username: z
-    .string()
-    .trim()
-    .min(1, V.usernameRequired)
-    .max(120, V.maxLength)
-    .refine((s) => USERNAME_RE.test(s), V.errorUsernameFormat),
-  name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength),
-  role: z.enum(["ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"], {
-    errorMap: () => ({ message: V.userRoleInvalid })
-  }),
-  department_id: publicEntityIdSchema.nullable().optional(),
-  job_title: z.string().trim().max(120, V.maxLength).nullable().optional()
-});
+const userCreateSchema = z
+  .object({
+    username: z
+      .string()
+      .trim()
+      .min(1, V.usernameRequired)
+      .max(120, V.maxLength)
+      .refine((s) => USERNAME_RE.test(s), V.errorUsernameFormat),
+    name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength),
+    role: z.enum(
+      [
+        "ADMIN",
+        "OFFICE_USER",
+        "CHEF_CABINET",
+        "WALI",
+        "PRESIDENT_DAIRA",
+        "PRESIDENT_COMMUNE",
+        "DIRECTEUR_DIRECTION",
+      ],
+      {
+        errorMap: () => ({ message: V.userRoleInvalid }),
+      }
+    ),
+    department_id: publicEntityIdSchema.nullable().optional(),
+    daira_id: publicEntityIdSchema.nullable().optional(),
+    municipality_id: publicEntityIdSchema.nullable().optional(),
+    direction_id: publicEntityIdSchema.nullable().optional(),
+    job_title: z.string().trim().max(120, V.maxLength).nullable().optional(),
+    service_grants: z
+      .array(
+        z.object({
+          service_id: publicEntityIdSchema,
+          access_level: z.enum(["view", "manage"]),
+        })
+      )
+      .max(200)
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === "PRESIDENT_DAIRA" && !data.daira_id) {
+      ctx.addIssue({ code: "custom", message: V.required, path: ["daira_id"] });
+    }
+    if (data.role === "PRESIDENT_COMMUNE" && !data.municipality_id) {
+      ctx.addIssue({ code: "custom", message: V.required, path: ["municipality_id"] });
+    }
+    if (data.role === "DIRECTEUR_DIRECTION" && !data.direction_id) {
+      ctx.addIssue({ code: "custom", message: V.required, path: ["direction_id"] });
+    }
+    const orgHead =
+      data.role === "PRESIDENT_DAIRA" ||
+      data.role === "PRESIDENT_COMMUNE" ||
+      data.role === "DIRECTEUR_DIRECTION";
+    if (!orgHead && Array.isArray(data.service_grants) && data.service_grants.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: V.required,
+        path: ["service_grants"],
+      });
+    }
+  });
 
 const userPatchSchema = z.object({
   name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength).optional(),
   department_id: publicEntityIdSchema.nullable().optional(),
-  job_title: z.string().trim().max(120, V.maxLength).nullable().optional()
+  daira_id: publicEntityIdSchema.nullable().optional(),
+  municipality_id: publicEntityIdSchema.nullable().optional(),
+  direction_id: publicEntityIdSchema.nullable().optional(),
+  job_title: z.string().trim().max(120, V.maxLength).nullable().optional(),
 });
 
 const rapportCreateSchema = z.object({
@@ -137,9 +186,26 @@ const includedEntitiesSchema = z.object({
   keys: z.union([z.array(z.string().trim().min(1).max(64)).max(500), z.null()]),
 });
 
-const guideAudienceEnum = z.enum(["general", "ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"], {
-  errorMap: () => ({ message: V.required })
-});
+const guideAudienceEnum = z.enum(
+  [
+    "general",
+    "ADMIN",
+    "OFFICE_USER",
+    "CHEF_CABINET",
+    "WALI",
+    "PRESIDENT_DAIRA",
+    "PRESIDENT_COMMUNE",
+    "DIRECTEUR_DIRECTION",
+  ],
+  {
+    errorMap: () => ({ message: V.required }),
+  }
+);
+
+const guideAudiencesSchema = z
+  .array(guideAudienceEnum)
+  .min(1, V.required)
+  .transform((arr) => [...new Set(arr)]);
 
 const guideVideoCreateSchema = refineBilingualPair(
   z.object({
@@ -147,7 +213,7 @@ const guideVideoCreateSchema = refineBilingualPair(
     title_fr: z.string().trim().max(200, V.maxLength).optional().default(""),
     description_ar: z.string().trim().max(5000, V.maxLength).nullable().optional(),
     description_fr: z.string().trim().max(5000, V.maxLength).nullable().optional(),
-    audience: guideAudienceEnum,
+    audiences: guideAudiencesSchema,
     is_new: z.boolean().optional().default(false),
     sort_order: z.coerce.number().int().min(0).max(99999).optional().default(0),
     uploaded_file_id: publicEntityIdSchema.optional()
@@ -162,7 +228,7 @@ const guideVideoPatchSchema = z
     title_fr: z.string().trim().max(200, V.maxLength).optional(),
     description_ar: z.string().trim().max(5000, V.maxLength).nullable().optional(),
     description_fr: z.string().trim().max(5000, V.maxLength).nullable().optional(),
-    audience: guideAudienceEnum.optional(),
+    audiences: guideAudiencesSchema.optional(),
     is_new: z.boolean().optional(),
     sort_order: z.coerce.number().int().min(0).max(99999).optional(),
     uploaded_file_id: publicEntityIdSchema.optional()

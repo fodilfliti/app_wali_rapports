@@ -9,7 +9,7 @@ Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTI
 ### Roles & rules
 
 - **WALI**: create + list/detail + **delete** instructions (`/governor/instructions`). Delete removes the instruction, recipient rows, file links, and all related `waliInstruction` notifications.
-- **OFFICE_USER**: list/detail instructions addressed to them; separate hub section + notifs.
+- **Creator roles** (`CREATOR_ROLES`): list/detail instructions addressed to them; separate hub section + notifs.
 - **CHEF_CABINET**: read-only list/detail of **all** instructions (not in recipient picker).
 - **ADMIN**: may read via support routes.
 
@@ -25,7 +25,7 @@ Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTI
 
 #### `wali_instruction_recipients`
 
-- `id`, `instruction_id`, `user_id` (OFFICE_USER), `read_at`, `created_at`
+- `id`, `instruction_id`, `user_id` (any creator role), `read_at`, `created_at`
 
 #### `notifications`
 
@@ -36,9 +36,11 @@ Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTI
 
 ### Workflows
 
-1. Wali composes title/body, optional uploads, selects all office users or subset → create.
+1. Wali composes title/body, optional uploads, selects recipients → create.
+   - Bulk flags (combinable): `all_office` | `all_daira` | `all_commune` | `all_direction` (all non-blocked users of that creator role).
+   - Plus optional `recipient_ids` (per-user multi-select / search across creators).
 2. System inserts recipient rows + notifications.
-3. Office / Chef / Wali open instruction from the list **modal** → office marks recipient + notification read.
+3. Creator / Chef / Wali open instruction from the list **modal** → recipient marks read + notification read.
 4. Chef browses full list without recipient membership.
 
 ### API endpoints
@@ -49,21 +51,21 @@ Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTI
 | `GET` | `/governor/instructions` | Wali list (pagination) |
 | `GET` | `/governor/instructions/:id` | Wali detail + recipients |
 | `DELETE` | `/governor/instructions/:id` | Wali delete (cascade recipients + notifications) |
-| `GET` | `/cabinet/instructions` | Office: my instructions |
-| `GET` | `/cabinet/instructions/:id` | Office detail + mark read |
+| `GET` | `/cabinet/instructions` | Creator: my instructions |
+| `GET` | `/cabinet/instructions/:id` | Creator detail + mark read |
 | `GET` | `/chief/instructions` | Chef read-only all |
 | `GET` | `/chief/instructions/:id` | Chef detail |
 
 ### UI/UX
 
 - Create form `title_fr` / `body_fr` inputs respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
-- Wali hub tile **تعليمات** → create form (title, description, files, recipient multi-select).
-- Office: separate section **تعليمات السيد الوالي** (not mixed into rapport feedback list); hub + header use `unread_instructions` only for this channel.
-- **All roles (office / wali / chef)** open instruction cards in an **in-page modal** (title, body, attachments; wali also shows recipients). Detail routes `/:id` redirect to the list and auto-open that modal.
+- Wali hub tile **تعليمات** → create form (title, description, files, **4 “select all of role” checkboxes** + recipient multi-select). UI labels only (ملحقو الديوان / رؤساء الدوائر / رؤساء البلديات / مديرو المديريات).
+- Creators: separate section **تعليمات السيد الوالي** (not mixed into rapport feedback list); hub + header use `unread_instructions` only for this channel.
+- **All roles (creators / wali / chef)** open instruction cards in an **in-page modal** (title, body, attachments; wali also shows recipients). Detail routes `/:id` redirect to the list and auto-open that modal.
 - Cards are **compact** (title + date/meta; short one-line preview).
 - **Wali delete:** confirm from the open modal only; hard-deletes instruction + related notifications (hub unread counts refresh).
 - Attachment open/download: `url_path` + signed `?dl=` (`SignedFileLink` / `useSignedFileUrl`) — never rely on a bare `file.url` without signing (`AUTH.md`).
-- Office `GET /cabinet/instructions/:id` still marks recipient read when the modal loads.
+- Creator `GET /cabinet/instructions/:id` still marks recipient read when the modal loads.
 - Chef: same cards, no create button.
 - Zod client + server on create.
 

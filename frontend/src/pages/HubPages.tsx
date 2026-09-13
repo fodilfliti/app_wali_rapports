@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 
 import type { TFunction } from 'i18next'
 
-import { resolveHubTiles, type HubTileDef } from '@wali/access-policy'
+import { resolveHubTiles, isCreatorRole, chefChannelNavLabelKey, type HubTileDef, type UserRole } from '@wali/access-policy'
 
 import { useAuthOptional } from '../auth/AuthProvider'
 
@@ -52,6 +52,11 @@ const HUB_TILE_TITLE_KEYS: Record<string, string> = {
   instructions: 'navWaliInstructions',
   chef_instructions: 'navChefInstructions',
   office_users: 'navOfficeUsers',
+  creators_office: 'navCreatorsOffice',
+  creators_daira: 'navCreatorsDaira',
+  creators_commune: 'navCreatorsCommune',
+  creators_direction: 'navCreatorsDirection',
+  workflow_role_settings: 'navWorkflowRoleSettings',
   inbox: 'navInbox',
   delete_requested: 'statusGroupDeleteRequested',
   calendar: 'navCalendar',
@@ -73,6 +78,11 @@ const HUB_TILE_ICONS: Record<string, HubIconName> = {
   instructions: 'document',
   chef_instructions: 'document',
   office_users: 'officeUsers',
+  creators_office: 'officeUsers',
+  creators_daira: 'officeUsers',
+  creators_commune: 'officeUsers',
+  creators_direction: 'officeUsers',
+  workflow_role_settings: 'access',
   inbox: 'inbox',
   delete_requested: 'inbox',
   calendar: 'calendar',
@@ -111,7 +121,23 @@ function officeHubTileExtras(tile: HubTileDef, counts: OfficeHubCounts, t: TFunc
   }
 }
 
+function creatorPendingCount(counts: WaliHubCounts | ChefHubCounts, key: string): number {
+  if (key === 'office') return counts.creators_office_pending ?? counts.office_users_pending ?? 0
+  if (key === 'daira') return counts.creators_daira_pending ?? 0
+  if (key === 'commune') return counts.creators_commune_pending ?? 0
+  if (key === 'direction') return counts.creators_direction_pending ?? 0
+  return 0
+}
+
 function waliHubTileExtras(tile: HubTileDef, counts: WaliHubCounts, t: TFunction): HubTileExtras {
+  if (tile.id.startsWith('creators_')) {
+    const key = tile.id.slice('creators_'.length)
+    const count = creatorPendingCount(counts, key)
+    return {
+      badge: <HubCountBadge count={count} />,
+      subtitle: count > 0 ? t('waliHubOfficeUsersBadgeHint') : undefined,
+    }
+  }
   switch (tile.id) {
     case 'office_users':
       return {
@@ -138,6 +164,14 @@ function waliHubTileExtras(tile: HubTileDef, counts: WaliHubCounts, t: TFunction
 }
 
 function chefHubTileExtras(tile: HubTileDef, counts: ChefHubCounts, t: TFunction): HubTileExtras {
+  if (tile.id.startsWith('creators_')) {
+    const key = tile.id.slice('creators_'.length)
+    const count = creatorPendingCount(counts, key)
+    return {
+      badge: <HubCountBadge count={count} />,
+      subtitle: count > 0 ? t('waliHubOfficeUsersBadgeHint') : undefined,
+    }
+  }
   switch (tile.id) {
     case 'office_users':
       return {
@@ -174,21 +208,27 @@ function HubTileList({
   tiles,
   t,
   getExtras,
+  role,
 }: {
   tiles: HubTileDef[]
   t: TFunction
   getExtras?: (tile: HubTileDef) => HubTileExtras
+  role?: string | null
 }) {
   return (
     <>
       {tiles.map((tile) => {
         const extras = getExtras?.(tile) ?? {}
+        const titleKey =
+          tile.id === 'chef_instructions'
+            ? chefChannelNavLabelKey(role)
+            : (HUB_TILE_TITLE_KEYS[tile.id] ?? tile.id)
         return (
           <HubTile
             key={tile.id}
             to={tile.to}
             icon={HUB_TILE_ICONS[tile.id] ?? 'document'}
-            title={t(HUB_TILE_TITLE_KEYS[tile.id] ?? tile.id)}
+            title={t(titleKey)}
             badge={extras.badge}
             subtitle={extras.subtitle}
           />
@@ -224,10 +264,15 @@ export function AdminHubPage() {
 
 export function OfficeHubPage({ token }: { token: string }) {
   const { t } = useTranslation()
+  const auth = useAuthOptional()
   const { counts } = useOfficeHubCounts(token)
+  const role: UserRole =
+    auth?.me?.role && isCreatorRole(auth.me.role)
+      ? (auth.me.role as UserRole)
+      : 'OFFICE_USER'
   const tiles = useMemo(
-    () => resolveHubTiles('OFFICE_USER', { guideVideos: ENABLE_GUIDE_VIDEOS }),
-    [],
+    () => resolveHubTiles(role, { guideVideos: ENABLE_GUIDE_VIDEOS }),
+    [role],
   )
 
   return (
@@ -239,6 +284,7 @@ export function OfficeHubPage({ token }: { token: string }) {
         <HubTileList
           tiles={tiles}
           t={t}
+          role={role}
           getExtras={(tile) => officeHubTileExtras(tile, counts, t)}
         />
       </div>
@@ -280,7 +326,12 @@ export function ChefHubPage({ token }: { token: string }) {
         <h1>{t('hubChef')}</h1>
       </div>
       <div className="hubGrid">
-        <HubTileList tiles={tiles} t={t} getExtras={(tile) => chefHubTileExtras(tile, counts, t)} />
+        <HubTileList
+          tiles={tiles}
+          t={t}
+          role="CHEF_CABINET"
+          getExtras={(tile) => chefHubTileExtras(tile, counts, t)}
+        />
       </div>
     </div>
   )

@@ -154,7 +154,14 @@ async function request<T>(
   return data as T;
 }
 
-export type UserRole = "ADMIN" | "OFFICE_USER" | "CHEF_CABINET" | "WALI";
+export type UserRole =
+  | "ADMIN"
+  | "OFFICE_USER"
+  | "CHEF_CABINET"
+  | "WALI"
+  | "PRESIDENT_DAIRA"
+  | "PRESIDENT_COMMUNE"
+  | "DIRECTEUR_DIRECTION";
 
 export type SessionUser = {
   id: EntityId;
@@ -264,10 +271,11 @@ export function unsubscribePush(token: string, endpoint: string) {
 
 export function listMunicipalities(
   token: string,
-  params: { page?: number; q?: string; hidden_only?: boolean } = {},
+  params: { page?: number; q?: string; pageSize?: number; hidden_only?: boolean } = {},
 ) {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
+  if (params.pageSize) q.set("pageSize", String(params.pageSize));
   if (params.q) q.set("q", params.q);
   if (params.hidden_only) q.set("hidden_only", "1");
   return request<{
@@ -437,7 +445,16 @@ export function listUsers(
 
 export function createUser(
   token: string,
-  body: { username: string; name: string; role: UserRole; job_title?: string },
+  body: {
+    username: string;
+    name: string;
+    role: UserRole;
+    job_title?: string;
+    daira_id?: EntityIdParam | null;
+    municipality_id?: EntityIdParam | null;
+    direction_id?: EntityIdParam | null;
+    service_grants?: { service_id: EntityIdParam; access_level: "view" | "manage" }[];
+  },
 ) {
   return request<{
     user: any;
@@ -779,24 +796,51 @@ export function chefRespond(
   });
 }
 
+function creatorsApiBase(reviewer: "wali" | "chef", creatorKey: string) {
+  const hub = reviewer === "chef" ? "/chief" : "/governor";
+  return `${hub}/creators/${creatorKey}`;
+}
+
+export function getCreatorsList(
+  token: string,
+  reviewer: "wali" | "chef",
+  creatorKey: string,
+) {
+  return request<{ officeUsers: any[] }>(creatorsApiBase(reviewer, creatorKey), {
+    token,
+  });
+}
+
+/** @deprecated Prefer getCreatorsList(token, 'wali', 'office') */
 export function listWaliOfficeUsers(token: string) {
-  return request<{ officeUsers: any[] }>("/governor/office-users", { token });
+  return getCreatorsList(token, "wali", "office");
 }
 
+/** @deprecated Prefer getCreatorsList(token, 'chef', 'office') */
 export function listChefOfficeUsers(token: string) {
-  return request<{ officeUsers: any[] }>("/chief/office-users", { token });
+  return getCreatorsList(token, "chef", "office");
 }
 
-export function listWaliUserServices(token: string, userId: EntityIdParam) {
-  return request<{ services: any[] }>(`/governor/office-users/${userId}/services`, {
-    token,
-  });
+export function listWaliUserServices(
+  token: string,
+  userId: EntityIdParam,
+  creatorKey = "office",
+) {
+  return request<{ services: any[] }>(
+    `${creatorsApiBase("wali", creatorKey)}/${userId}/services`,
+    { token },
+  );
 }
 
-export function listChefUserServices(token: string, userId: EntityIdParam) {
-  return request<{ services: any[] }>(`/chief/office-users/${userId}/services`, {
-    token,
-  });
+export function listChefUserServices(
+  token: string,
+  userId: EntityIdParam,
+  creatorKey = "office",
+) {
+  return request<{ services: any[] }>(
+    `${creatorsApiBase("chef", creatorKey)}/${userId}/services`,
+    { token },
+  );
 }
 
 export function listOfficeNotifications(token: string, unreadOnly = false) {
@@ -809,6 +853,10 @@ export function listOfficeNotifications(token: string, unreadOnly = false) {
 export type WaliHubCounts = {
   inbox_pending: number;
   office_users_pending: number;
+  creators_office_pending?: number;
+  creators_daira_pending?: number;
+  creators_commune_pending?: number;
+  creators_direction_pending?: number;
   unread_discussion: number;
   unread_shared_files?: number;
   unread_chef_instructions?: number;
@@ -817,6 +865,10 @@ export type WaliHubCounts = {
 export type ChefHubCounts = {
   inbox_pending: number;
   office_users_pending: number;
+  creators_office_pending?: number;
+  creators_daira_pending?: number;
+  creators_commune_pending?: number;
+  creators_direction_pending?: number;
   unread_discussion: number;
   unread_shared_files: number;
   delete_pending: number;
@@ -1132,9 +1184,10 @@ export function getWaliServiceContentHub(
   token: string,
   userId: EntityIdParam,
   serviceId: EntityIdParam,
+  creatorKey = "office",
 ) {
   return request<any>(
-    `/governor/office-users/${userId}/services/${serviceId}/content`,
+    `${creatorsApiBase("wali", creatorKey)}/${userId}/services/${serviceId}/content`,
     { token },
   );
 }
@@ -1143,9 +1196,10 @@ export function getChefServiceContentHub(
   token: string,
   userId: EntityIdParam,
   serviceId: EntityIdParam,
+  creatorKey = "office",
 ) {
   return request<any>(
-    `/chief/office-users/${userId}/services/${serviceId}/content`,
+    `${creatorsApiBase("chef", creatorKey)}/${userId}/services/${serviceId}/content`,
     { token },
   );
 }
@@ -1266,15 +1320,29 @@ export function deleteAdminDepartment(token: string, id: EntityIdParam) {
   });
 }
 
-export function listAdminServices(token: string) {
-  return request<{ services: any[] }>("/admin/services", { token });
+export function listAdminServices(
+  token: string,
+  params?: {
+    org_scope?: string;
+    daira_id?: EntityIdParam;
+    municipality_id?: EntityIdParam;
+    direction_id?: EntityIdParam;
+  },
+) {
+  const q = new URLSearchParams();
+  if (params?.org_scope) q.set("org_scope", params.org_scope);
+  if (params?.daira_id) q.set("daira_id", String(params.daira_id));
+  if (params?.municipality_id) q.set("municipality_id", String(params.municipality_id));
+  if (params?.direction_id) q.set("direction_id", String(params.direction_id));
+  const qs = q.toString();
+  return request<{ services: any[] }>(`/admin/services${qs ? `?${qs}` : ""}`, { token });
 }
 
 export function createAdminService(
   token: string,
   body: Record<string, unknown>,
 ) {
-  return request<{ service: any }>("/admin/services", {
+  return request<{ service: any; services?: any[]; count?: number }>("/admin/services", {
     method: "POST",
     token,
     body: JSON.stringify(body),
@@ -1312,8 +1380,16 @@ export function deleteAdminRapport(token: string, id: EntityIdParam) {
   });
 }
 
-export function listAdminOfficeUsers(token: string) {
-  return request<{ users: any[] }>("/admin/office-users", { token });
+export function listAdminOfficeUsers(
+  token: string,
+  params?: { org_scope?: string; service_id?: EntityIdParam; role?: string },
+) {
+  const q = new URLSearchParams();
+  if (params?.org_scope) q.set("org_scope", params.org_scope);
+  if (params?.service_id) q.set("service_id", String(params.service_id));
+  if (params?.role) q.set("role", params.role);
+  const qs = q.toString();
+  return request<{ users: any[] }>(`/admin/office-users${qs ? `?${qs}` : ""}`, { token });
 }
 
 export function listServiceGrants(token: string, serviceId: EntityIdParam) {
@@ -2306,7 +2382,58 @@ export type GuideVideoAudience =
   | "ADMIN"
   | "OFFICE_USER"
   | "CHEF_CABINET"
-  | "WALI";
+  | "WALI"
+  | "PRESIDENT_DAIRA"
+  | "PRESIDENT_COMMUNE"
+  | "DIRECTEUR_DIRECTION";
+
+export type GuideVideo = {
+  id: string;
+  title_ar: string;
+  title_fr: string;
+  description_ar?: string | null;
+  description_fr?: string | null;
+  audiences: GuideVideoAudience[];
+  is_new: boolean;
+  sort_order: number;
+  created_by_user_id?: number | string;
+  created_at?: string;
+  updated_at?: string;
+  file?: {
+    id: string;
+    url_path: string;
+    original_name?: string;
+    mime_type?: string;
+    size_bytes?: number;
+    media_kind?: string;
+  } | null;
+};
+
+export type WorkflowRoleSetting = {
+  role: UserRole;
+  chef_validate: boolean;
+};
+
+export function getWorkflowRoleSettings(token: string) {
+  return request<{ settings: WorkflowRoleSetting[] }>(
+    "/admin/workflow-role-settings",
+    { token },
+  );
+}
+
+export function patchWorkflowRoleSettings(
+  token: string,
+  settings: { role: UserRole; chef_validate: boolean }[],
+) {
+  return request<{ settings: WorkflowRoleSetting[] }>(
+    "/admin/workflow-role-settings",
+    {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ settings }),
+    },
+  );
+}
 
 export type GuideVideoListRole = "admin" | "office" | "wali" | "chef";
 
@@ -2328,7 +2455,7 @@ export function listGuideVideos(
   if (params?.audience) q.set("audience", params.audience);
   const qs = q.toString();
   return request<{
-    videos: any[];
+    videos: GuideVideo[];
     total: number;
     page: number;
     pageSize: number;

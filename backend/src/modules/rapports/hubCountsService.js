@@ -10,6 +10,11 @@ const {
 const { getPreferences } = require("../notifications/preferenceService");
 const { maybeRunDailyCalendarScan } = require("../notifications/calendarReminderService");
 const { findByPublicId, resolveNumericId } = require("../access/idResolver");
+const {
+  CREATOR_ROLES,
+  CREATOR_KEYS,
+  creatorKeyFromRole,
+} = require("../access/creatorRoles");
 
 const WALI_INBOX_ACTION_STATUSES = ["submitted", "under_review"];
 const CHEF_INBOX_ACTION_STATUSES = ["pending_chef"];
@@ -207,7 +212,7 @@ async function getOfficeHubCounts(userId) {
   };
 }
 
-async function countOfficeUsersWithPendingInGrants(statusWhere) {
+async function countCreatorsWithPendingInGrants(statusWhere) {
   const { UserServiceGrant } = require("../../db");
   const pendingRows = await Rapport.findAll({
     attributes: ["service_id"],
@@ -219,7 +224,10 @@ async function countOfficeUsersWithPendingInGrants(statusWhere) {
     raw: true,
   });
   const serviceIds = pendingRows.map((r) => Number(r.service_id)).filter(Boolean);
-  if (!serviceIds.length) return 0;
+  const emptyByKey = Object.fromEntries(CREATOR_KEYS.map((k) => [k, 0]));
+  if (!serviceIds.length) {
+    return { total: 0, byKey: emptyByKey };
+  }
 
   const grants = await UserServiceGrant.findAll({
     where: { service_id: { [Op.in]: serviceIds } },
@@ -227,26 +235,50 @@ async function countOfficeUsersWithPendingInGrants(statusWhere) {
       {
         model: User,
         as: "user",
-        attributes: ["id"],
+        attributes: ["id", "role"],
         required: true,
-        where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+        where: { role: { [Op.in]: CREATOR_ROLES }, is_blocked: false, deleted_at: null },
       },
     ],
   });
-  const userIds = new Set();
+  const usersByKey = Object.fromEntries(CREATOR_KEYS.map((k) => [k, new Set()]));
+  const allUserIds = new Set();
   for (const g of grants) {
     const id = g.user?.id != null ? Number(g.user.id) : null;
-    if (id) userIds.add(id);
+    if (!id) continue;
+    allUserIds.add(id);
+    const key = creatorKeyFromRole(g.user.role);
+    if (key && usersByKey[key]) usersByKey[key].add(id);
   }
-  return userIds.size;
+  return {
+    total: allUserIds.size,
+    byKey: Object.fromEntries(
+      CREATOR_KEYS.map((k) => [k, usersByKey[k].size]),
+    ),
+  };
+}
+
+async function countOfficeUsersWithPendingInGrants(statusWhere) {
+  const { total } = await countCreatorsWithPendingInGrants(statusWhere);
+  return total;
+}
+
+function pendingCountsPayload(counts) {
+  return {
+    office_users_pending: counts.total,
+    creators_office_pending: counts.byKey.office || 0,
+    creators_daira_pending: counts.byKey.daira || 0,
+    creators_commune_pending: counts.byKey.commune || 0,
+    creators_direction_pending: counts.byKey.direction || 0,
+  };
 }
 
 async function countWaliOfficeUsersWithPending() {
-  return countOfficeUsersWithPendingInGrants(waliInboxActionWhere());
+  return countCreatorsWithPendingInGrants(waliInboxActionWhere());
 }
 
 async function countChefOfficeUsersWithPending() {
-  return countOfficeUsersWithPendingInGrants(chefActionOrDeleteWhere());
+  return countCreatorsWithPendingInGrants(chefActionOrDeleteWhere());
 }
 
 async function countUnreadDiscussion(userId, opts = {}, prefs = null) {
@@ -294,7 +326,7 @@ async function getWaliHubCounts(user) {
   }
   const [
     inbox_pending,
-    office_users_pending,
+    creatorsPending,
     unread_discussion,
     unread_shared_files,
     unread_chef_instructions,
@@ -307,7 +339,7 @@ async function getWaliHubCounts(user) {
   ]);
   return {
     inbox_pending,
-    office_users_pending,
+    ...pendingCountsPayload(creatorsPending),
     unread_discussion,
     unread_shared_files,
     unread_chef_instructions,
@@ -337,7 +369,7 @@ async function getChefHubCounts(user) {
   }
   const [
     inbox_pending,
-    office_users_pending,
+    creatorsPending,
     unread_discussion,
     unread_shared_files,
     delete_pending,
@@ -350,7 +382,7 @@ async function getChefHubCounts(user) {
   ]);
   return {
     inbox_pending,
-    office_users_pending,
+    ...pendingCountsPayload(creatorsPending),
     unread_discussion,
     unread_shared_files,
     delete_pending,

@@ -11,7 +11,7 @@ Single source of truth for hub URL segments shared by frontend and backend: `sha
 | **Hub key** (stable) | `admin` \| `office` \| `chef` \| `wali` — code, JWT mapping, policy. Do not rename lightly. |
 | **URL segment** (renameable) | First path segment — edit **only** `shared/routes/src/segments.ts` (`HUB_SEGMENTS`). |
 
-Path rename ≠ role rename: JWT/DB enums stay `OFFICE_USER`, `CHEF_CABINET`, `WALI`, `ADMIN`.
+Path rename ≠ role rename: JWT/DB enums stay `OFFICE_USER`, `PRESIDENT_DAIRA`, `PRESIDENT_COMMUNE`, `DIRECTEUR_DIRECTION`, `CHEF_CABINET`, `WALI`, `ADMIN`. All four **creator** roles map to hub key `office` (`CREATOR_ROLES` / `hubKeyFromRole`).
 
 ## Live English segments
 
@@ -24,12 +24,31 @@ Path rename ≠ role rename: JWT/DB enums stay `OFFICE_USER`, `CHEF_CABINET`, `W
 
 Examples (builders, not literals in new code):
 
-- Office rapports list: `/cabinet/rapports`
+- Office / creator rapports list: `/cabinet/rapports`
 - Chef inbox: `/chief/inbox`
 - Wali inbox: `/governor/inbox`
 - Office submit API: `POST /api/cabinet/rapports/:id/submit`
 - Shared files: `/cabinet|chief|governor/shared` (same pool; Chef + Wali create)
 - Wali instructions: `…/instructions` — Chef instructions (separate): `…/chef-instructions`
+
+## Creators navigation (Wali / Chef)
+
+Short `creatorKey` (not role enum): `office` \| `daira` \| `commune` \| `direction`.
+
+| Surface | Canonical path |
+| --- | --- |
+| Creators list | `/governor/creators/:creatorKey` or `/chief/creators/:creatorKey` |
+| Creator user | `/…/creators/:creatorKey/:userId` |
+| Creator service tree | `/…/creators/:creatorKey/:userId/services/:serviceId` |
+
+Builders: `paths.hub.creators.list|user|userService` in `shared/routes`.
+
+| Legacy | Canonical (one release) |
+| --- | --- |
+| `/governor/office-users` (+ `/:userId…`) | `/governor/creators/office` (+ `/:userId…`) |
+| `/chief/office-users` (+ `/:userId…`) | `/chief/creators/office` (+ `/:userId…`) |
+
+**Not used as login hubs:** `/daira`, `/commune`, `/direction` — admin reference paths stay `/admin/dairas`, `/admin/municipalities`, `/admin/directions`.
 
 ## Liste (`commune_list`) path segment
 
@@ -51,7 +70,8 @@ Package: `@wali/routes` (`shared/routes`).
 
 - `paths.hub.home(key)` / `paths.hub.path(key, ...parts)` — UI paths
 - `paths.api.mount(key)` — Express mount under API base
-- `hubKeyFromRole(role)` — map account role → hub key
+- `hubKeyFromRole(role)` — map account role → hub key (creators → `office`)
+- `paths.hub.creators.*` — Wali/Chef creators navigation
 - `LISTE_PATH_SEGMENT` — liste UI/API path segment (`entities`)
 
 **All new code** (FE Router, `api.ts`, Express mounts, push/SW deep links) must use these builders.
@@ -71,16 +91,16 @@ Package: `@wali/routes` (`shared/routes`).
 
 Defined in `shared/routes/src/aliases.ts` (`LEGACY_HUB_ALIASES`, `LEGACY_PATH_PREFIXES`, `LEGACY_LISTE_PATH_SEGMENT`).
 
-- FE: redirect legacy UI paths to English segments.
+- FE: redirect legacy UI paths to English segments (incl. `office-users` → `creators/office`).
 - BE: dual-mount API routers on English **and** legacy prefixes for one release.
 - After one stable release: remove dual mounts / redirects.
 
 ## Forbidden
 
-Hardcoded `"/office"`, `"/wali"`, `"/chef"` in pages, `api.ts`, `app.js`, or push code — **except** inside `aliases.ts`. Prefer `LISTE_PATH_SEGMENT` over hardcoded `"communes"` / `"entities"` in liste navigation.
+Hardcoded `"/office"`, `"/wali"`, `"/chef"` in pages, `api.ts`, `app.js`, or push code — **except** inside `aliases.ts`. Prefer `LISTE_PATH_SEGMENT` over hardcoded `"communes"` / `"entities"` in liste navigation. Prefer `paths.hub.creators.*` over hardcoded `"/office-users"` / `"/creators/"`.
 
 ## Related
 
-- `PLATFORM_HARDENING_PLAN.md` § Phase 3
 - `.cursor/rules/routes.mdc`
 - `SYSTEM_SPEC.md` (index)
+- `ACCESS_PROFILES.md` (hub cards)

@@ -22,19 +22,25 @@
 
 | Role | Capabilities |
 | ---- | ------------ |
-| **OFFICE_USER** | Create/edit drafts, submit versions, **return to draft** after send (Éditeur / `manage` only), export (domain-scoped); receive Wali notifications |
-| **WALI** | Browse by office user → service tree; review; optional note or confirm-only |
-| **ADMIN** | Configure services, sub-services, schemas, content kinds |
+| **Creator roles** (`CREATOR_ROLES`) | Create/edit drafts, submit versions, **return to draft** after send (Éditeur / `manage` only — **except** org-head creators when `ORG_HEAD_FEATURE_FLAGS.blockReturnToDraft`), export (domain-scoped); receive Wali/Chef notifications |
+
+Org-head creators (`PRESIDENT_DAIRA` / `PRESIDENT_COMMUNE` / `DIRECTEUR_DIRECTION`) — toggles in `shared/access-policy` `ORG_HEAD_FEATURE_FLAGS`:
+
+- `hideCommuneList` / `hideFicheLecture`: silent omit of قائمة and مذكرة استخلاصية (hubs, explainers, type lists; BE forbids create).
+- `blockReturnToDraft`: after send, no recall to draft; edit only in `draft` / `changes_requested` (Wali/Chef demand). Flip flags to `false` to restore.
+| **WALI** | Browse by creator role card → user → service tree; review; optional note or confirm-only |
+| **CHEF_CABINET** | First validate when role `chef_validate` on; same review tools as Wali for inbox |
+| **ADMIN** | Configure services, sub-services, schemas, content kinds; `workflow_role_settings` |
 
 ### Wali navigation (summary)
 
-1. Wali → **liste ملحقو الديوان / attachés du cabinet** (one click per user).
+1. Wali → **4 creator cards** (ملحقو الديوان / رؤساء الدوائر / رؤساء البلديات / مديرو المديريات) → list under `/governor/creators/:creatorKey`.
 
 2. User → **domaines de suivi** (`services` / sous-services — folder or leaf; UI: مجال المتابعة / Domaine de suivi).
 
 3. Leaf opens content per **`content_kind`**: `table_grid` | `document_compose` | `fiche_lecture` | `commune_list`.
 
-4. Wali responds or marks viewed; office gets **notification**.
+4. Wali responds or marks viewed; creators get **notification**.
 
 ### Content kinds (summary)
 
@@ -129,7 +135,7 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 1. Office opens a table / liste / document editor — **no `rapports` row yet**. Editing stays in the client until **Enregistrer** (brouillon). First Enregistrer **creates** a `draft` (or updates an existing editable draft for that type). Leaving without Enregistrer creates nothing.
 
-2. **Envoyer au wali** → `pending_chef` (chef gate required) or `submitted` + version snapshot (`submitted_at` on current version). Requires a persisted draft (at least one Enregistrer).
+2. **Envoyer au wali** → if `chef_gate = required` **and** `workflow_role_settings.chef_validate` for the actor’s creator role is **true** → `pending_chef`; else → `submitted` (+ version snapshot / `submitted_at`). Role toggle default true — `WORKFLOW_TREE.md`, `CHEF_CABINET.md`. Requires a persisted draft (at least one Enregistrer).
 
 3. Wali opens (inbox detail or `/governor/rapports/:id/view`) → `submitted` becomes `under_review`; may **confirmer**, **demander modification**, or **lu sans commentaire**. Chef/Admin open does **not** change status.
 
@@ -137,7 +143,7 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 5. **Office recall (return to draft)** — urgent correction after send, before Wali accept/view:
 
-   - **Who:** `OFFICE_USER` with service **`manage`** (Éditeur) — same ACL as Envoyer.
+   - **Who:** creator with service **`manage`** (Éditeur) — same ACL as Envoyer.
    - **When:** status ∈ `pending_chef` | `submitted` | `under_review`.
    - **Blocked:** status `acknowledged`, or any `wali_responses` on the **current** version with `decision ∈ {accepted, viewed}`.
    - **Effect (current version only — older versions / archive untouched):**
@@ -152,7 +158,7 @@ Full rules: **`RAPPORT_SERVICE_TYPES.md`**.
 
 5b. **Office start new version** — after Wali accept, for `versioning_mode=versioned` only (table / liste / versioned document):
 
-   - **Who:** `OFFICE_USER` with service **`manage`** (Éditeur).
+   - **Who:** creator with service **`manage`** (Éditeur).
    - **When:** status = `acknowledged`.
    - **Not for:** `standalone` types (create another rapport from the service hub instead); awaiting Chef/Wali (use §5 return-to-draft when still allowed).
    - **Effect:**

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
+  Navigate,
   useNavigate,
   useParams,
   useSearchParams,
   useLocation,
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { hidesCommuneListContentKind, hidesFicheLectureContentKind } from "@wali/access-policy";
+import { useAuthOptional } from "../auth/AuthProvider";
 import type { EntityIdParam } from "../api";
 import * as api from "../api";
 import { ApiError } from "../api";
@@ -798,6 +801,7 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
   const sid = serviceId ?? "";
   const kind = contentKind || "";
   const { t } = useTranslation();
+  const auth = useAuthOptional();
   const snack = useSnackbar();
   const invalidate = useInvalidateAppQueries();
   const [showHiddenTypes, setShowHiddenTypes] = useState(false);
@@ -806,6 +810,13 @@ export function OfficeServiceKindRapportTypesPage({ token }: Props) {
   const hub = hubQuery.data;
   const isInitialLoading = hubQuery.isLoading && !hub;
   const isRefreshing = hubQuery.isFetching && !hubQuery.isLoading;
+
+  if (kind === "commune_list" && hidesCommuneListContentKind(auth?.me?.role)) {
+    return <Navigate to={`/cabinet/services/${sid}`} replace />;
+  }
+  if (kind === "fiche_lecture" && hidesFicheLectureContentKind(auth?.me?.role)) {
+    return <Navigate to={`/cabinet/services/${sid}`} replace />;
+  }
 
   async function invalidateHub() {
     await invalidate({

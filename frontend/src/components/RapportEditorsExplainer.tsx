@@ -5,6 +5,10 @@ import { contentKindHubIcon } from '../utils/rapportNavigation'
 type Props = {
   /** When true, omit outer card chrome (for use inside a modal). */
   bare?: boolean
+  /** Silent omit of قائمة editor sections for org-head creators. */
+  hideCommuneList?: boolean
+  /** Silent omit of مذكرة استخلاصية note for org-head creators. */
+  hideFicheLecture?: boolean
 }
 
 function FeatureList({ items }: { items: string[] }) {
@@ -17,7 +21,11 @@ function FeatureList({ items }: { items: string[] }) {
   )
 }
 
-export function RapportEditorsExplainer({ bare = false }: Props) {
+export function RapportEditorsExplainer({
+  bare = false,
+  hideCommuneList = false,
+  hideFicheLecture = false,
+}: Props) {
   const { t } = useTranslation()
 
   return (
@@ -81,7 +89,11 @@ export function RapportEditorsExplainer({ bare = false }: Props) {
             t('editorsExplainerDocumentFeature8'),
           ]}
         />
-        <p className="muted small kindsExplainerVersionsWhy">{t('editorsExplainerDocumentFicheNote')}</p>
+        {!hideFicheLecture ? (
+          <p className="muted small kindsExplainerVersionsWhy">
+            {t('editorsExplainerDocumentFicheNote')}
+          </p>
+        ) : null}
       </section>
 
       <section className="kindsExplainerSection" aria-labelledby="editorsExplainerTable">
@@ -113,64 +125,68 @@ export function RapportEditorsExplainer({ bare = false }: Props) {
         />
       </section>
 
-      <section className="kindsExplainerSection" aria-labelledby="editorsExplainerListeComplex">
-        <h3 id="editorsExplainerListeComplex" className="kindsExplainerSectionTitle">
-          <HubIcon
-            name={contentKindHubIcon('commune_list')}
-            className="kindsExplainerKindIcon"
-          />{' '}
-          {t('editorsExplainerListeComplexTitle')}
-        </h3>
-        <p className="muted small">{t('editorsExplainerListeComplexLead')}</p>
-        <strong className="kindsExplainerSubHead">{t('editorsExplainerCreateHow')}</strong>
-        <ol className="kindsExplainerSteps">
-          <li>{t('editorsExplainerListeComplexCreate1')}</li>
-          <li>{t('editorsExplainerListeComplexCreate2')}</li>
-          <li>{t('editorsExplainerListeComplexCreate3')}</li>
-          <li>{t('editorsExplainerListeComplexCreate4')}</li>
-        </ol>
-        <strong className="kindsExplainerSubHead">{t('editorsExplainerCanDo')}</strong>
-        <FeatureList
-          items={[
-            t('editorsExplainerListeComplexFeature1'),
-            t('editorsExplainerListeComplexFeature2'),
-            t('editorsExplainerListeComplexFeature3'),
-            t('editorsExplainerListeComplexFeature4'),
-            t('editorsExplainerListeComplexFeature5'),
-            t('editorsExplainerListeComplexFeature6'),
-          ]}
-        />
-      </section>
+      {!hideCommuneList ? (
+        <>
+          <section className="kindsExplainerSection" aria-labelledby="editorsExplainerListeComplex">
+            <h3 id="editorsExplainerListeComplex" className="kindsExplainerSectionTitle">
+              <HubIcon
+                name={contentKindHubIcon('commune_list')}
+                className="kindsExplainerKindIcon"
+              />{' '}
+              {t('editorsExplainerListeComplexTitle')}
+            </h3>
+            <p className="muted small">{t('editorsExplainerListeComplexLead')}</p>
+            <strong className="kindsExplainerSubHead">{t('editorsExplainerCreateHow')}</strong>
+            <ol className="kindsExplainerSteps">
+              <li>{t('editorsExplainerListeComplexCreate1')}</li>
+              <li>{t('editorsExplainerListeComplexCreate2')}</li>
+              <li>{t('editorsExplainerListeComplexCreate3')}</li>
+              <li>{t('editorsExplainerListeComplexCreate4')}</li>
+            </ol>
+            <strong className="kindsExplainerSubHead">{t('editorsExplainerCanDo')}</strong>
+            <FeatureList
+              items={[
+                t('editorsExplainerListeComplexFeature1'),
+                t('editorsExplainerListeComplexFeature2'),
+                t('editorsExplainerListeComplexFeature3'),
+                t('editorsExplainerListeComplexFeature4'),
+                t('editorsExplainerListeComplexFeature5'),
+                t('editorsExplainerListeComplexFeature6'),
+              ]}
+            />
+          </section>
 
-      <section className="kindsExplainerSection" aria-labelledby="editorsExplainerListeTable">
-        <h3 id="editorsExplainerListeTable" className="kindsExplainerSectionTitle">
-          <HubIcon
-            name={contentKindHubIcon('commune_list')}
-            className="kindsExplainerKindIcon"
-          />{' '}
-          {t('editorsExplainerListeTableTitle')}
-        </h3>
-        <p className="muted small">{t('editorsExplainerListeTableLead')}</p>
-        <strong className="kindsExplainerSubHead">{t('editorsExplainerCreateHow')}</strong>
-        <ol className="kindsExplainerSteps">
-          <li>{t('editorsExplainerListeTableCreate1')}</li>
-          <li>{t('editorsExplainerListeTableCreate2')}</li>
-          <li>{t('editorsExplainerListeTableCreate3')}</li>
-          <li>{t('editorsExplainerListeTableCreate4')}</li>
-        </ol>
-        <strong className="kindsExplainerSubHead">{t('editorsExplainerCanDo')}</strong>
-        <FeatureList
-          items={[
-            t('editorsExplainerListeTableFeature1'),
-            t('editorsExplainerListeTableFeature2'),
-            t('editorsExplainerListeTableFeature3'),
-            t('editorsExplainerListeTableFeature4'),
-            t('editorsExplainerListeTableFeature5'),
-            t('editorsExplainerListeTableFeature6'),
-            t('editorsExplainerListeTableFeature7'),
-          ]}
-        />
-      </section>
+          <section className="kindsExplainerSection" aria-labelledby="editorsExplainerListeTable">
+            <h3 id="editorsExplainerListeTable" className="kindsExplainerSectionTitle">
+              <HubIcon
+                name={contentKindHubIcon('commune_list')}
+                className="kindsExplainerKindIcon"
+              />{' '}
+              {t('editorsExplainerListeTableTitle')}
+            </h3>
+            <p className="muted small">{t('editorsExplainerListeTableLead')}</p>
+            <strong className="kindsExplainerSubHead">{t('editorsExplainerCreateHow')}</strong>
+            <ol className="kindsExplainerSteps">
+              <li>{t('editorsExplainerListeTableCreate1')}</li>
+              <li>{t('editorsExplainerListeTableCreate2')}</li>
+              <li>{t('editorsExplainerListeTableCreate3')}</li>
+              <li>{t('editorsExplainerListeTableCreate4')}</li>
+            </ol>
+            <strong className="kindsExplainerSubHead">{t('editorsExplainerCanDo')}</strong>
+            <FeatureList
+              items={[
+                t('editorsExplainerListeTableFeature1'),
+                t('editorsExplainerListeTableFeature2'),
+                t('editorsExplainerListeTableFeature3'),
+                t('editorsExplainerListeTableFeature4'),
+                t('editorsExplainerListeTableFeature5'),
+                t('editorsExplainerListeTableFeature6'),
+                t('editorsExplainerListeTableFeature7'),
+              ]}
+            />
+          </section>
+        </>
+      ) : null}
     </aside>
   )
 }

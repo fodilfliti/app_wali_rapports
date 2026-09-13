@@ -6,16 +6,19 @@ export type ReviewerRole = 'wali' | 'chef'
 export const queryKeys = {
   hubCounts: (role: HubCountsRole) => ['hubCounts', role] as const,
   officeServiceTree: () => ['office', 'serviceTree'] as const,
-  reviewerOfficeUsers: (role: ReviewerRole) => ['reviewer', role, 'officeUsers'] as const,
-  reviewerUserServices: (role: ReviewerRole, userId: EntityIdParam) =>
-    ['reviewer', role, 'userServices', userId] as const,
+  reviewerOfficeUsers: (role: ReviewerRole, creatorKey = 'office') =>
+    ['reviewer', role, 'officeUsers', creatorKey] as const,
+  reviewerUserServices: (role: ReviewerRole, userId: EntityIdParam, creatorKey = 'office') =>
+    ['reviewer', role, 'userServices', creatorKey, userId] as const,
   rapports: (scope: string, params: Record<string, unknown>) =>
     ['rapports', scope, params] as const,
   calendarWeek: (role: ReviewerRole, week: string) => ['calendar', role, week] as const,
   serviceHub: (scope: string, serviceId: EntityIdParam, extra?: Record<string, unknown>) =>
     ['serviceHub', scope, serviceId, extra ?? {}] as const,
-  adminServices: () => ['admin', 'services'] as const,
-  adminOfficeUsers: () => ['admin', 'officeUsers'] as const,
+  adminServices: (params?: Record<string, unknown>) =>
+    ['admin', 'services', params ?? {}] as const,
+  adminOfficeUsers: (params?: Record<string, unknown>) =>
+    ['admin', 'officeUsers', params ?? {}] as const,
   adminMunicipalities: (params: Record<string, unknown>) =>
     ['admin', 'municipalities', params] as const,
   adminDairas: (params: Record<string, unknown>) => ['admin', 'dairas', params] as const,

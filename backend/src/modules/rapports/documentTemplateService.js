@@ -1,10 +1,21 @@
 const { Op } = require("sequelize");
-const { RapportDocumentTemplate, RapportType } = require("../../db");
+const {
+  RapportDocumentTemplate,
+  RapportType,
+  Service,
+  Daira,
+  Municipality,
+  Direction,
+} = require("../../db");
 const { assertServiceAccess, assertRapportAccess } = require("./serviceAccessService");
 const rapportService = require("./rapportService");
 const { audit } = require("../../services/audit");
 const { baseSlugFromNames, ensureUniqueSlug } = require("../../utils/slugUtils");
-const { buildDocumentDefaultDataJson, buildFicheDefaultDataJson } = require("./documentDefaults");
+const {
+  buildDocumentDefaultDataJson,
+  buildFicheDefaultDataJson,
+  letterheadContextFromService,
+} = require("./documentDefaults");
 const { findByPublicId, withPublicId, resolveNumericId } = require("../access/idResolver");
 const { resolveNumericServiceId } = require("./serviceAccessService");
 
@@ -16,6 +27,28 @@ async function requireNumericServiceId(serviceId) {
     throw err;
   }
   return numericServiceId;
+}
+
+async function loadLetterheadContextForService(serviceId) {
+  const numericServiceId = await requireNumericServiceId(serviceId);
+  const service = await Service.findByPk(numericServiceId, {
+    include: [
+      { model: Daira, as: "daira", attributes: ["id", "name_ar", "name_fr"], required: false },
+      {
+        model: Municipality,
+        as: "municipality",
+        attributes: ["id", "name_ar", "name_fr"],
+        required: false,
+      },
+      {
+        model: Direction,
+        as: "direction",
+        attributes: ["id", "name_ar", "name_fr"],
+        required: false,
+      },
+    ],
+  });
+  return letterheadContextFromService(service);
 }
 
 const DOCUMENT_KINDS = new Set(["document_compose", "fiche_lecture"]);
@@ -289,6 +322,7 @@ async function deleteTemplate(templateId, user, req) {
 
 async function resolveInitialDataJson(serviceId, rapportType, templateId) {
   const numericServiceId = await requireNumericServiceId(serviceId);
+  const letterheadCtx = await loadLetterheadContextForService(numericServiceId);
   if (templateId) {
     const tpl = await findByPublicId(RapportDocumentTemplate, templateId);
     if (!tpl || Number(tpl.service_id) !== Number(numericServiceId) || !templateMatchesType(tpl, rapportType)) {
@@ -302,23 +336,37 @@ async function resolveInitialDataJson(serviceId, rapportType, templateId) {
   if (defaultTpl) return templateContentToDataJson(defaultTpl.content_json);
   if (rapportType.schema_json?.default_blocks?.length) {
     const blocks = rapportType.schema_json.default_blocks;
-    // Prefer rich_html defaults when schema only has legacy blocks.
+    // Prefer rich_html defaults when schema only has legacy blocks — letterhead from service org_scope.
     const base =
       rapportType.content_kind === "fiche_lecture"
-        ? buildFicheDefaultDataJson()
+        ? buildFicheDefaultDataJson(letterheadCtx)
         : buildDocumentDefaultDataJson({
             titleAr: rapportType.name_ar,
             titleFr: rapportType.name_fr,
+            ...letterheadCtx,
           });
-    return { ...base, blocks };
+    return { ...base, blocks: buildDocumentBlocksWithLetterhead(blocks, letterheadCtx) };
   }
   if (rapportType.content_kind === "fiche_lecture") {
-    return buildFicheDefaultDataJson();
+    return buildFicheDefaultDataJson(letterheadCtx);
   }
   return buildDocumentDefaultDataJson({
     titleAr: rapportType.name_ar,
     titleFr: rapportType.name_fr,
+    ...letterheadCtx,
   });
+}
+
+/** Replace first 3 letterhead lines in legacy schema blocks when present; else use org-aware defaults. */
+function buildDocumentBlocksWithLetterhead(blocks, letterheadCtx) {
+  const { buildOfficialHeaderBlocks } = require("./documentDefaults");
+  const header = buildOfficialHeaderBlocks(letterheadCtx);
+  if (!Array.isArray(blocks) || blocks.length < 3) {
+    return [...header, ...(Array.isArray(blocks) ? blocks : [])];
+  }
+  // Heuristic: first 3 centered paragraphs are the letterhead — swap them.
+  const rest = blocks.slice(3);
+  return [...header, ...rest];
 }
 
 async function applyTemplateToRapport(rapportId, templateId, mode, actor, req) {

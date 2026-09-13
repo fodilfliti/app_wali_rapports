@@ -7,8 +7,17 @@ export type WorkflowLevel = {
   /** Stable id for config / bypass rules (e.g. chef bypass). */
   id: string;
   labelKey?: string;
-  /** Account role that acts at this level (Wilaya mapping). */
-  actorRole?: 'OFFICE_USER' | 'CHEF_CABINET' | 'WALI';
+  /**
+   * Account role that acts at this level (Wilaya mapping).
+   * Create level: any CREATOR_ROLES (OFFICE_USER family); gated by workflow_role_settings.chef_validate.
+   */
+  actorRole?:
+    | 'OFFICE_USER'
+    | 'PRESIDENT_DAIRA'
+    | 'PRESIDENT_COMMUNE'
+    | 'DIRECTEUR_DIRECTION'
+    | 'CHEF_CABINET'
+    | 'WALI';
 };
 
 export type WorkflowTree = {

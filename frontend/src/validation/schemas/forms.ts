@@ -11,6 +11,12 @@ const publicEntityIdSchema = z.union([
   z.coerce.number().int().positive(),
 ])
 
+/** Form selects use '' for “none”; coerce to null before entity-id check. */
+const optionalPublicEntityIdSchema = z.preprocess(
+  (v) => (v === '' || v === undefined ? null : v),
+  publicEntityIdSchema.nullable(),
+)
+
 export const municipalityFormSchema = z
   .object({
     name_ar: z.string().trim().max(255, V.maxLength),
@@ -65,17 +71,43 @@ export const directionFormSchema = z
     }
   })
 
-export const userFormSchema = z.object({
-  username: z
-    .string()
-    .trim()
-    .min(1, V.usernameRequired)
-    .max(120, V.maxLength)
-    .refine((s) => USERNAME_RE.test(s), V.errorUsernameFormat),
-  name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength),
-  role: z.enum(['ADMIN', 'OFFICE_USER', 'CHEF_CABINET', 'WALI'], { message: V.userRoleInvalid }),
-  job_title: z.string().trim().max(120, V.maxLength).optional(),
-})
+export const userFormSchema = z
+  .object({
+    username: z
+      .string()
+      .trim()
+      .min(1, V.usernameRequired)
+      .max(120, V.maxLength)
+      .refine((s) => USERNAME_RE.test(s), V.errorUsernameFormat),
+    name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength),
+    role: z.enum(
+      [
+        'ADMIN',
+        'OFFICE_USER',
+        'CHEF_CABINET',
+        'WALI',
+        'PRESIDENT_DAIRA',
+        'PRESIDENT_COMMUNE',
+        'DIRECTEUR_DIRECTION',
+      ],
+      { message: V.userRoleInvalid },
+    ),
+    job_title: z.string().trim().max(120, V.maxLength).optional(),
+    daira_id: optionalPublicEntityIdSchema,
+    municipality_id: optionalPublicEntityIdSchema,
+    direction_id: optionalPublicEntityIdSchema,
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === 'PRESIDENT_DAIRA' && !data.daira_id) {
+      ctx.addIssue({ code: 'custom', message: V.required, path: ['daira_id'] })
+    }
+    if (data.role === 'PRESIDENT_COMMUNE' && !data.municipality_id) {
+      ctx.addIssue({ code: 'custom', message: V.required, path: ['municipality_id'] })
+    }
+    if (data.role === 'DIRECTEUR_DIRECTION' && !data.direction_id) {
+      ctx.addIssue({ code: 'custom', message: V.required, path: ['direction_id'] })
+    }
+  })
 
 export const userPatchFormSchema = z.object({
   name: z.string().trim().min(1, V.userNameRequired).max(255, V.maxLength),
@@ -94,9 +126,20 @@ export const guideVideoFormSchema = z
     title_fr: z.string().trim().max(200, V.maxLength),
     description_ar: z.string().trim().max(5000, V.maxLength).optional(),
     description_fr: z.string().trim().max(5000, V.maxLength).optional(),
-    audience: z.enum(['general', 'ADMIN', 'OFFICE_USER', 'CHEF_CABINET', 'WALI'], {
-      message: V.required,
-    }),
+    audiences: z
+      .array(
+        z.enum([
+          'general',
+          'ADMIN',
+          'OFFICE_USER',
+          'CHEF_CABINET',
+          'WALI',
+          'PRESIDENT_DAIRA',
+          'PRESIDENT_COMMUNE',
+          'DIRECTEUR_DIRECTION',
+        ]),
+      )
+      .min(1, V.required),
     is_new: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {

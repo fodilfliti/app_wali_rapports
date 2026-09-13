@@ -49,6 +49,7 @@ import { RapportStatusFlowHelp } from '../components/RapportStatusFlowHelp'
 import { waliInboxRowClass, waliCanRespondFromList } from '../utils/waliInboxList'
 import { backNavigationState } from '../utils/navigationBack'
 import { useInvalidateAppQueries } from '../hooks/useInvalidateAppQueries'
+import { useAuthOptional } from '../auth/AuthProvider'
 import {
   useAdminRapportsListQuery,
   useOfficeRapportsListQuery,
@@ -321,6 +322,8 @@ export function OfficeRapportsListPage({ token }: Props) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const invalidate = useInvalidateAppQueries()
+  const auth = useAuthOptional()
+  const creatorRole = auth?.me?.role
   const [searchParams, setSearchParams] = useSearchParams()
   const serviceId = searchParams.get('service_id') || undefined
   const discussionView = searchParams.get('view') === 'discussion'
@@ -817,7 +820,7 @@ export function OfficeRapportsListPage({ token }: Props) {
                           {t('submitRapport')}
                         </BusyButton>
                       ) : null}
-                      {!discussionView && canOfficeReturnToDraft(r.status) ? (
+                      {!discussionView && canOfficeReturnToDraft(r.status, creatorRole) ? (
                         <ReturnRapportToDraftConfirm onConfirm={() => returnToDraft(r.id)}>
                           {(openConfirm) => (
                             <BusyButton
@@ -904,6 +907,8 @@ export function OfficeServiceRapportListPage({ token }: Props) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
   const navigate = useNavigate()
+  const auth = useAuthOptional()
+  const creatorRole = auth?.me?.role
   const queryClient = useQueryClient()
   const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
@@ -1288,7 +1293,7 @@ export function OfficeServiceRapportListPage({ token }: Props) {
                       {t('submitRapport')}
                     </BusyButton>
                   ) : null}
-                  {canOfficeReturnToDraft(r.status) && canEdit ? (
+                  {canOfficeReturnToDraft(r.status, creatorRole) && canEdit ? (
                     <ReturnRapportToDraftConfirm onConfirm={() => returnToDraft(r.id)}>
                       {(openConfirm) => (
                         <BusyButton

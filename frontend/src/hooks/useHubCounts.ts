@@ -7,6 +7,10 @@ import { queryKeys } from '../query/queryKeys'
 const emptyWaliCounts: api.WaliHubCounts = {
   inbox_pending: 0,
   office_users_pending: 0,
+  creators_office_pending: 0,
+  creators_daira_pending: 0,
+  creators_commune_pending: 0,
+  creators_direction_pending: 0,
   unread_discussion: 0,
   unread_shared_files: 0,
   unread_chef_instructions: 0,
@@ -15,6 +19,10 @@ const emptyWaliCounts: api.WaliHubCounts = {
 const emptyChefCounts: api.ChefHubCounts = {
   inbox_pending: 0,
   office_users_pending: 0,
+  creators_office_pending: 0,
+  creators_daira_pending: 0,
+  creators_commune_pending: 0,
+  creators_direction_pending: 0,
   unread_discussion: 0,
   unread_shared_files: 0,
   delete_pending: 0,

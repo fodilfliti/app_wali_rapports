@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const { UserServiceGrant, Rapport, Service, User } = require("../../db");
 const { findByPublicId, resolveNumericId, withPublicId } = require("../access/idResolver");
+const { CREATOR_ROLES, isCreatorRole } = require("../access/creatorRoles");
 
 const LEVEL_RANK = { none: 0, view: 1, manage: 2 };
 
@@ -35,7 +36,7 @@ async function officeUserServiceScopeWhere(officeUserId) {
 }
 
 /**
- * Active, non-blocked OFFICE_USER ids with a grant on serviceId.
+ * Active, non-blocked creator-role ids with a grant on serviceId.
  * @param {number} serviceId
  * @param {{ minLevel?: 'view'|'manage' }} [opts]
  */
@@ -57,7 +58,7 @@ async function getOfficeUserIdsWithServiceAccess(serviceId, opts = {}) {
   const ids = [];
   for (const g of grants) {
     const u = g.user;
-    if (!u || u.role !== "OFFICE_USER" || u.is_blocked || u.deleted_at) continue;
+    if (!u || !isCreatorRole(u.role) || u.is_blocked || u.deleted_at) continue;
     if (rank(g.access_level) < rank(minLevel)) continue;
     ids.push(Number(u.id));
   }
@@ -80,7 +81,7 @@ async function resolveOfficeFeedbackRecipientIds(rapport) {
     .filter(Boolean);
   if (!fallback.length) return [];
   const users = await User.findAll({
-    where: { id: fallback, role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+    where: { id: fallback, role: { [Op.in]: CREATOR_ROLES }, is_blocked: false, deleted_at: null },
     attributes: ["id"],
   });
   return users.map((u) => Number(u.id));
@@ -163,6 +164,7 @@ async function listGrantsForService(serviceId) {
 async function replaceServiceGrants(serviceId, grantRows, actor, req) {
   const { User } = require("../../db");
   const { audit } = require("../../services/audit");
+  const { roleForOrgScope, unitFkForOrgScope } = require("./serviceOrgScope");
 
   const service = await findByPublicId(Service, serviceId);
   if (!service) {
@@ -171,12 +173,27 @@ async function replaceServiceGrants(serviceId, grantRows, actor, req) {
     throw err;
   }
   const numericServiceId = service.id;
+  const expectedRole = roleForOrgScope(service.org_scope || "diwan");
+  const unitFk = unitFkForOrgScope(service.org_scope || "diwan");
+  const serviceUnitId = unitFk && service[unitFk] != null ? Number(service[unitFk]) : null;
 
   const normalized = [];
   for (const row of grantRows || []) {
     const user = await findByPublicId(User, row.user_id);
-    if (!user || user.role !== "OFFICE_USER" || user.is_blocked || user.deleted_at) continue;
+    if (!user || !isCreatorRole(user.role) || user.is_blocked || user.deleted_at) continue;
     if (!["view", "manage"].includes(row.access_level)) continue;
+    if (expectedRole && user.role !== expectedRole) {
+      const err = new Error("grantRoleScopeMismatch");
+      err.status = 400;
+      throw err;
+    }
+    if (serviceUnitId != null && unitFk) {
+      if (Number(user[unitFk]) !== serviceUnitId) {
+        const err = new Error("grantOrgUnitMismatch");
+        err.status = 400;
+        throw err;
+      }
+    }
     normalized.push({
       user_id: user.id,
       service_id: numericServiceId,

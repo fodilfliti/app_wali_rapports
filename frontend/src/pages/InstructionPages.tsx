@@ -6,6 +6,7 @@ import { BackButton } from '../components/BackButton'
 import { BusyButton } from '../components/BusyButton'
 import { BroadcastFileCard } from '../components/BroadcastSharedUi'
 import { ConfirmActionModal } from '../components/ConfirmActionModal'
+import { CreatorRecipientPicker } from '../components/CreatorRecipientPicker'
 import { TablePagination } from '../components/TablePagination'
 import { QueryListShell } from '../components/QueryListShell'
 import { useSnackbar } from '../snackbar/SnackbarContext'
@@ -20,13 +21,15 @@ import { ENABLE_FR_VALUE_INPUTS } from '../config/features'
 import { MediaUploadError, prepareFileForUpload } from '../utils/media'
 import { blendedBatchPercent, runUploadQueue } from '../utils/uploadQueue'
 import { UploadProgressBar } from '../components/UploadProgressBar'
+import { useAuthOptional } from '../auth/AuthProvider'
+import { chefChannelCopy } from '../utils/chefChannelCopy'
 import type { EntityIdParam } from '../api'
 import { asEntityId } from '../utils/entityIds'
 
 type Props = { token: string }
 
 type InstructionAudience = 'office' | 'wali' | 'chef'
-/** wali = تعليمات السيد الوالي; chef = تعليمات رئيس الديوان */
+/** wali = تعليمات السيد الوالي; chef = Chef→creators channel (تعليمات or إشعارات by role) */
 type InstructionChannel = 'wali' | 'chef'
 
 function instructionTitle(row: any, locale: string) {
@@ -106,6 +109,8 @@ function InstructionViewModal({
 }) {
   const { t, i18n } = useTranslation()
   const snack = useSnackbar()
+  const auth = useAuthOptional()
+  const chefCopy = chefChannelCopy(auth?.me?.role)
   const [row, setRow] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -116,6 +121,13 @@ function InstructionViewModal({
   const showRecipients =
     (channel === 'wali' && audience === 'wali') ||
     (channel === 'chef' && audience === 'chef')
+  const isChefChannel = channel === 'chef'
+  const deleteLabelKey = isChefChannel ? chefCopy.delete : 'deleteInstruction'
+  const deleteDoneKey = isChefChannel ? chefCopy.deleteDone : 'deleteInstructionDone'
+  const deleteTitleKey = isChefChannel ? chefCopy.deleteTitle : 'deleteInstructionConfirmTitle'
+  const deleteMessageKey = isChefChannel
+    ? chefCopy.deleteMessage
+    : 'deleteInstructionConfirmMessage'
 
   useEffect(() => {
     let cancelled = false
@@ -147,7 +159,7 @@ function InstructionViewModal({
       } else {
         await api.deleteWaliInstruction(token, instructionId)
       }
-      snack.show(t('deleteInstructionDone'), 'success')
+      snack.show(t(deleteDoneKey), 'success')
       setConfirmDelete(false)
       onDeleted?.()
       onClose()
@@ -195,7 +207,7 @@ function InstructionViewModal({
                       className="btn btn-danger"
                       onClick={() => setConfirmDelete(true)}
                     >
-                      {t('deleteInstruction')}
+                      {t(deleteLabelKey)}
                     </button>
                   ) : null}
                   <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -235,8 +247,8 @@ function InstructionViewModal({
 
       <ConfirmActionModal
         open={confirmDelete}
-        title={t('deleteInstructionConfirmTitle')}
-        message={t('deleteInstructionConfirmMessage')}
+        title={t(deleteTitleKey)}
+        message={t(deleteMessageKey)}
         confirmLabel={t('delete')}
         variant="danger"
         loading={deleting}
@@ -357,9 +369,11 @@ export function WaliInstructionCreatePage({ token }: Props) {
   const navigate = useNavigate()
   const invalidate = useInvalidateAppQueries()
   const [users, setUsers] = useState<any[]>([])
-  const [allUsers, setAllUsers] = useState(true)
+  const [allOffice, setAllOffice] = useState(true)
+  const [allDaira, setAllDaira] = useState(false)
+  const [allCommune, setAllCommune] = useState(false)
+  const [allDirection, setAllDirection] = useState(false)
   const [selected, setSelected] = useState<EntityIdParam[]>([])
-  const [userSearch, setUserSearch] = useState('')
   const [titleAr, setTitleAr] = useState('')
   const [titleFr, setTitleFr] = useState('')
   const [bodyAr, setBodyAr] = useState('')
@@ -371,7 +385,6 @@ export function WaliInstructionCreatePage({ token }: Props) {
   const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const perFileProgressRef = useRef<number[]>([])
-  const [userPage, setUserPage] = useState(1)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -381,29 +394,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
       .catch(() => {})
   }, [token])
 
-  const filteredUsers = users.filter((u) => {
-    const q = userSearch.trim().toLowerCase()
-    if (!q) return true
-    return (
-      String(u.name || '').toLowerCase().includes(q) ||
-      String(u.username || '').toLowerCase().includes(q)
-    )
-  })
-
-  useEffect(() => {
-    setUserPage(1)
-  }, [userSearch])
-
-  const pagedUsers = paginateSlice(filteredUsers, userPage, DEFAULT_PAGE_SIZE)
-
-  function toggleUser(userId: EntityIdParam, enabled: boolean) {
-    const key = String(userId)
-    setSelected((prev) =>
-      enabled
-        ? [...new Set([...prev.map(String), key])]
-        : prev.filter((id) => String(id) !== key),
-    )
-  }
+  const anyAllRole = allOffice || allDaira || allCommune || allDirection
 
   async function handleFilesPick(list: FileList | null) {
     if (!list?.length) return
@@ -458,7 +449,7 @@ export function WaliInstructionCreatePage({ token }: Props) {
       snack.show(t('bilingualLabelRequired'), 'error')
       return
     }
-    if (!allUsers && selected.length === 0) {
+    if (!anyAllRole && selected.length === 0) {
       snack.show(t('shareRecipientsRequired'), 'error')
       return
     }
@@ -470,8 +461,11 @@ export function WaliInstructionCreatePage({ token }: Props) {
         title_fr: titles.fr,
         body_ar: bodyAr.trim() || null,
         body_fr: bodyFr.trim() || null,
-        all_office: allUsers,
-        recipient_ids: allUsers ? [] : selected,
+        all_office: allOffice,
+        all_daira: allDaira,
+        all_commune: allCommune,
+        all_direction: allDirection,
+        recipient_ids: selected,
         uploaded_file_ids: uploadedFiles.map((f) => f.id),
       })
       await invalidate({ instructions: true, hubCounts: true })
@@ -540,36 +534,20 @@ export function WaliInstructionCreatePage({ token }: Props) {
           ) : null}
           {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
         </label>
-        <label className="checkboxLabel">
-          <input
-            type="checkbox"
-            checked={allUsers}
-            onChange={(e) => setAllUsers(e.target.checked)}
-          />
-          {t('instructionAllOfficeUsers')}
-        </label>
-        {!allUsers ? (
-          <>
-            <input
-              placeholder={t('search')}
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-            />
-            <div className="shareUserPickList">
-              {pagedUsers.map((u) => (
-                <label key={u.id} className="checkboxLabel">
-                  <input
-                    type="checkbox"
-                    checked={selected.some((id) => String(id) === String(u.id))}
-                    onChange={(e) => toggleUser(String(u.id), e.target.checked)}
-                  />
-                  {u.name || u.username}
-                </label>
-              ))}
-            </div>
-            <TablePagination page={userPage} total={filteredUsers.length} onPageChange={setUserPage} />
-          </>
-        ) : null}
+        <CreatorRecipientPicker
+          users={users}
+          flags={{ allOffice, allDaira, allCommune, allDirection }}
+          onFlagsChange={(next) => {
+            if (next.allOffice !== undefined) setAllOffice(next.allOffice)
+            if (next.allDaira !== undefined) setAllDaira(next.allDaira)
+            if (next.allCommune !== undefined) setAllCommune(next.allCommune)
+            if (next.allDirection !== undefined) setAllDirection(next.allDirection)
+          }}
+          selected={selected}
+          onSelectedChange={setSelected}
+          legendKey="instructionRecipients"
+          helpKey="instructionRecipientsHelp"
+        />
         <div className="modalActions">
           <BusyButton type="button" className="btn btn-primary" onClick={submit} busy={saving} busyLabel={t('saving')}>
             {t('save')}
@@ -732,6 +710,8 @@ export function ChefInstructionDetailPage(_props: Props) {
 
 export function ChefAuthoredInstructionsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
+  const auth = useAuthOptional()
+  const chefCopy = chefChannelCopy(auth?.me?.role || 'CHEF_CABINET')
   const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
   const { openId, setOpenId } = useOpenInstructionFromState()
@@ -752,17 +732,17 @@ export function ChefAuthoredInstructionsPage({ token }: Props) {
   return (
     <div className="page instructionsPage">
       <div className="pageHeader row">
-        <h1>{t('navChefInstructions')}</h1>
+        <h1>{t(chefCopy.nav)}</h1>
         <Link className="btn btn-primary" to="/chief/chef-instructions/new">
-          {t('createInstruction')}
+          {t(chefCopy.create)}
         </Link>
         <BackButton fallbackTo="/chief" />
       </div>
-      <p className="muted small instructionsListHint">{t('chefInstructionsListHint')}</p>
+      <p className="muted small instructionsListHint">{t(chefCopy.listHint)}</p>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
         <div className="card instructionsListCard">
           {!rows.length && !isInitialLoading ? (
-            <p className="muted instructionsEmpty">{t('chefInstructionsEmpty')}</p>
+            <p className="muted instructionsEmpty">{t(chefCopy.empty)}</p>
           ) : null}
           <ul className="instructionsList">
             {rows.map((row) => (
@@ -807,13 +787,19 @@ export function ChefAuthoredInstructionsPage({ token }: Props) {
 
 export function ChefInstructionCreatePage({ token }: Props) {
   const { t } = useTranslation()
+  const auth = useAuthOptional()
+  const chefCopy = chefChannelCopy(auth?.me?.role || 'CHEF_CABINET')
   const snack = useSnackbar()
   const navigate = useNavigate()
   const invalidate = useInvalidateAppQueries()
   const [users, setUsers] = useState<any[]>([])
-  const [allUsers, setAllUsers] = useState(true)
+  const [allOffice, setAllOffice] = useState(true)
+  const [allDaira, setAllDaira] = useState(false)
+  const [allCommune, setAllCommune] = useState(false)
+  const [allDirection, setAllDirection] = useState(false)
+  /** Spec: Wali is notified of Chef instructions by default. */
+  const [allWali, setAllWali] = useState(true)
   const [selected, setSelected] = useState<EntityIdParam[]>([])
-  const [userSearch, setUserSearch] = useState('')
   const [titleAr, setTitleAr] = useState('')
   const [titleFr, setTitleFr] = useState('')
   const [bodyAr, setBodyAr] = useState('')
@@ -825,36 +811,13 @@ export function ChefInstructionCreatePage({ token }: Props) {
   const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const perFileProgressRef = useRef<number[]>([])
-  const [userPage, setUserPage] = useState(1)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     api.listChefInstructionOfficeUsers(token).then((r) => setUsers(r.users || [])).catch(() => {})
   }, [token])
 
-  const filteredUsers = users.filter((u) => {
-    const q = userSearch.trim().toLowerCase()
-    if (!q) return true
-    return (
-      String(u.name || '').toLowerCase().includes(q) ||
-      String(u.username || '').toLowerCase().includes(q)
-    )
-  })
-
-  useEffect(() => {
-    setUserPage(1)
-  }, [userSearch])
-
-  const pagedUsers = paginateSlice(filteredUsers, userPage, DEFAULT_PAGE_SIZE)
-
-  function toggleUser(userId: EntityIdParam, enabled: boolean) {
-    const key = String(userId)
-    setSelected((prev) =>
-      enabled
-        ? [...new Set([...prev.map(String), key])]
-        : prev.filter((id) => String(id) !== key),
-    )
-  }
+  const anyAllRole = allOffice || allDaira || allCommune || allDirection || allWali
 
   async function handleFilesPick(list: FileList | null) {
     if (!list?.length) return
@@ -909,7 +872,7 @@ export function ChefInstructionCreatePage({ token }: Props) {
       snack.show(t('bilingualLabelRequired'), 'error')
       return
     }
-    if (!allUsers && selected.length === 0) {
+    if (!anyAllRole && selected.length === 0) {
       snack.show(t('shareRecipientsRequired'), 'error')
       return
     }
@@ -921,8 +884,12 @@ export function ChefInstructionCreatePage({ token }: Props) {
         title_fr: titles.fr,
         body_ar: bodyAr.trim() || null,
         body_fr: bodyFr.trim() || null,
-        all_office: allUsers,
-        recipient_ids: allUsers ? [] : selected,
+        all_office: allOffice,
+        all_daira: allDaira,
+        all_commune: allCommune,
+        all_direction: allDirection,
+        all_wali: allWali,
+        recipient_ids: selected,
         uploaded_file_ids: uploadedFiles.map((f) => f.id),
       })
       await invalidate({ instructions: true, hubCounts: true })
@@ -938,7 +905,7 @@ export function ChefInstructionCreatePage({ token }: Props) {
   return (
     <div className="page">
       <div className="pageHeader row">
-        <h1>{t('createInstruction')}</h1>
+        <h1>{t(chefCopy.create)}</h1>
         <BackButton fallbackTo="/chief/chef-instructions" />
       </div>
       <div className="card formStack">
@@ -994,33 +961,22 @@ export function ChefInstructionCreatePage({ token }: Props) {
           ) : null}
           {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
         </label>
-        <label className="formCheck">
-          <input type="checkbox" checked={allUsers} onChange={(e) => setAllUsers(e.target.checked)} />
-          <span>{t('allOfficeUsersOnly')}</span>
-        </label>
-        {!allUsers ? (
-          <>
-            <input
-              type="search"
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              placeholder={t('shareSearchUsers')}
-            />
-            <div className="recipientList">
-              {pagedUsers.map((u) => (
-                <label key={String(u.id)} className="formCheck">
-                  <input
-                    type="checkbox"
-                    checked={selected.some((id) => String(id) === String(u.id))}
-                    onChange={(e) => toggleUser(String(u.id), e.target.checked)}
-                  />
-                  {u.name || u.username}
-                </label>
-              ))}
-            </div>
-            <TablePagination page={userPage} total={filteredUsers.length} onPageChange={setUserPage} />
-          </>
-        ) : null}
+        <CreatorRecipientPicker
+          users={users}
+          flags={{ allOffice, allDaira, allCommune, allDirection, allWali }}
+          onFlagsChange={(next) => {
+            if (next.allOffice !== undefined) setAllOffice(next.allOffice)
+            if (next.allDaira !== undefined) setAllDaira(next.allDaira)
+            if (next.allCommune !== undefined) setAllCommune(next.allCommune)
+            if (next.allDirection !== undefined) setAllDirection(next.allDirection)
+            if (next.allWali !== undefined) setAllWali(next.allWali)
+          }}
+          selected={selected}
+          onSelectedChange={setSelected}
+          legendKey="instructionRecipients"
+          helpKey="instructionRecipientsHelp"
+          showWaliBulk
+        />
         <div className="modalActions">
           <BusyButton type="button" className="btn btn-primary" onClick={submit} busy={saving} busyLabel={t('saving')}>
             {t('save')}
@@ -1037,6 +993,8 @@ export function ChefAuthoredInstructionDetailPage(_props: Props) {
 
 export function OfficeChefInstructionsPage({ token }: Props) {
   const { t, i18n } = useTranslation()
+  const auth = useAuthOptional()
+  const chefCopy = chefChannelCopy(auth?.me?.role)
   const { counts, refresh } = useOfficeHubCounts(token)
   const invalidate = useInvalidateAppQueries()
   const [page, setPage] = useState(1)
@@ -1064,14 +1022,14 @@ export function OfficeChefInstructionsPage({ token }: Props) {
     <div className="page instructionsPage">
       <div className="pageHeader row">
         <div className="notificationPageHeading">
-          <h1>{t('navChefInstructions')}</h1>
+          <h1>{t(chefCopy.nav)}</h1>
           {(counts.unread_chef_instructions || 0) > 0 ? (
             <p className="muted small">{t('unread')}: {counts.unread_chef_instructions}</p>
           ) : null}
         </div>
         <BackButton fallbackTo="/cabinet" />
       </div>
-      <p className="muted small instructionsListHint">{t('chefInstructionsListHintOffice')}</p>
+      <p className="muted small instructionsListHint">{t(chefCopy.listHintOffice)}</p>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
         <div className="card instructionsListCard">
           {!rows.length && !isInitialLoading ? <p className="muted instructionsEmpty">{t('noResults')}</p> : null}

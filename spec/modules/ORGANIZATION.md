@@ -2,16 +2,16 @@
 
 ### Purpose & constraints
 
-- **Admin** manages **reference data** (dairas, communes, **directions**) and **user accounts** (admin, office, chef cabinet, wali).
-- Communes / dairas / directions are **not** login accounts — they appear as rows/keys inside entity-list rapports (**قائمة**).
+- **Admin** manages **reference data** (dairas, communes, **directions**) and **user accounts** (admin, creators, chef cabinet, wali).
+- Communes / dairas / directions remain **catalog rows** for entity-list rapports (**قائمة**); the three org creator accounts also **bind** to one daira / commune / direction via required FKs.
 - Align municipality shape with app_wilaya: `code`, `name_ar`, `name_fr`, plus `daira_id`.
 - **Service departments (القطاعات)** exist in DB/API but are **hidden in the admin UI** (no hub tile, create-service field, or `/admin/departments` page — that path redirects to services).
 - **No hard delete** for dairas / communes / directions — admin “delete” is **soft-hide** (`hidden_at`) so old rapport versions keep labels and stored data.
 
 ### Roles & rules
 
-- **ADMIN**: create / edit / soft-hide / restore on dairas, communes, directions; full user management.
-- **OFFICE_USER**, **WALI**, **CHEF_CABINET**: no access to organization module.
+- **ADMIN**: create / edit / soft-hide / restore on dairas, communes, directions; full user management; `workflow_role_settings` (Chef-validate toggles).
+- **Creator roles** (`CREATOR_ROLES`), **WALI**, **CHEF_CABINET**: no access to organization module.
 
 ### Data model
 
@@ -31,20 +31,30 @@
 
 #### `users`
 
-- `id`, `username` (unique), `password_hash`, `name`, `role` (`ADMIN` | `OFFICE_USER` | `CHEF_CABINET` | `WALI`)
+- `id`, `username` (unique), `password_hash`, `name`, `role` (`ADMIN` | `OFFICE_USER` | `PRESIDENT_DAIRA` | `PRESIDENT_COMMUNE` | `DIRECTEUR_DIRECTION` | `CHEF_CABINET` | `WALI`)
+- Org FKs (nullable columns; app validation by role):
+  - `daira_id` — **required** when role = `PRESIDENT_DAIRA`
+  - `municipality_id` — **required** when role = `PRESIDENT_COMMUNE`
+  - `direction_id` — **required** when role = `DIRECTEUR_DIRECTION`
+  - `OFFICE_USER` / `ADMIN` / `CHEF_CABINET` / `WALI`: these three FKs stay null
 - `department_id` (FK, nullable — not exposed in current admin UI), `job_title` (nullable string), `email` (nullable string), `email_hidden` (boolean, default false)
 - `access_role_template_id` (nullable FK to role templates), `use_custom_permissions` (boolean, default false)
 - `is_blocked`, `created_at`
 - `is_super_admin` (boolean, default false) — set only via env bootstrap; never via admin create/patch UI
 - `deleted_at` (nullable timestamptz) — soft-delete; row kept for FKs (rapports, discussion, etc.)
-- No `municipality_id` — communes are reference only
+
+#### `workflow_role_settings`
+
+- One row per **creator** role: `role` + `chef_validate` (boolean, **default true**).
+- Admin UI: `/admin/workflow-role-settings` — toggle whether that role’s first submit goes to Chef (`pending_chef`) or straight to Wali (`submitted`).
+- Product detail: `WORKFLOW_TREE.md`, `CHEF_CABINET.md`.
 
 #### Super-admin (مسؤول أعلى)
 
 - Created/marked by env: prefer `SUPER_ADMIN_USERNAME` / `SUPER_ADMIN_PASSWORD` (optional `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`); if unset, fall back to `DEV_ADMIN_*` — upsert `role=ADMIN`, `is_super_admin=true`.
 - Regular admins **cannot** edit / block / reset-password the super-admin account.
 - Only the super-admin may **soft-delete** users and **manage guide videos** (upload/edit/delete) — see `GUIDE_VIDEOS.md`.
-- Soft-delete targets: `OFFICE_USER`, `CHEF_CABINET`, `WALI`, and other non-super `ADMIN`s. **Cannot** soft-delete self or another `is_super_admin`.
+- Soft-delete targets: all creator roles, `CHEF_CABINET`, `WALI`, and other non-super `ADMIN`s. **Cannot** soft-delete self or another `is_super_admin`.
 - Soft-delete does **not** remove the `users` row: sets `deleted_at` + `is_blocked`, revokes tokens, clears grants/overrides/personal notifications/push/prefs and instruction/broadcast recipient rows. Discussion comments and rapports stay; UI shows role label when author is deleted — `RAPPORT_DISCUSSION.md`.
 - Login / refresh reject soft-deleted users (`deleted_at` set). Default user lists exclude soft-deleted rows.
 - Expose `is_super_admin` on `GET /auth/me` and admin user list for UI gating only.
@@ -64,7 +74,9 @@
 
 #### Users
 
-- Admin creates accounts with role (including رئيس الديوان), initial password (8 digits, **CSPRNG** via `crypto.randomInt`), and **assigns the matching default access role template** on create (see `ACCESS_PROFILES.md`); do not leave new users without a template.
+- Admin creates accounts with role (including رئيس الديوان and the three org creators), initial password (8 digits, **CSPRNG** via `crypto.randomInt`), and **assigns the matching default access role template** on create (see `ACCESS_PROFILES.md`); do not leave new users without a template.
+- **Org FK on create (required):** رئيس الدائرة → pick daira (`daira_id`); رئيس البلدية → pick commune (`municipality_id`); مدير المديرية → pick direction (`direction_id`). Admin must create the reference row first. ملحق بالديوان has no org FK.
+- **Service grants on create (org-head roles only):** after the org unit is chosen, admin may assign one or more **unit-scoped** services (`org_scope` daira/commune/direction matching that unit) with `view` | `manage` via optional `service_grants` on `POST /admin/users`. Only services belonging to **that** daira/commune/direction appear in the picker. ملحق بالديوان continues to receive grants only via service share UI — see `SERVICE_SHARING.md`.
 - Block/unblock, reset password; cannot block own account; cannot edit/block/reset a **super-admin** unless you are that same user (self still cannot block/reset self).
 - **Soft-delete (super-admin only):** `DELETE /admin/users/:id` — see Super-admin section. Confirm dialog in UI.
 - **Reset password (users list):** shown only for **other** users (never on the logged-in admin’s own row; never on super-admin when actor is not super). Must open a **confirm dialog** before calling `POST /admin/users/:id/reset-password` — never reset on a single click. Confirm copy should name the target user (username / display name). On confirm → new random 8-digit code + credentials PDF modal (same as create).
@@ -96,11 +108,13 @@
 | `POST` | `/admin/municipalities/:id/hide` | Soft-hide commune |
 | `POST` | `/admin/municipalities/:id/restore` | Restore commune |
 | `GET` | `/admin/users` | List users: `page`, `pageSize`, `q`, optional `role` (excludes soft-deleted) |
-| `POST` | `/admin/users` | Create user |
-| `PATCH` | `/admin/users/:id` | Update name, department (403 if target is super-admin and actor is not that user) |
+| `POST` | `/admin/users` | Create user (role + org FK when required; optional `service_grants` for org-head roles) |
+| `PATCH` | `/admin/users/:id` | Update name, department, org FK (403 if target is super-admin and actor is not that user) |
 | `POST` | `/admin/users/:id/block` | Toggle block (403 on super-admin target for other admins; cannot block self) |
 | `POST` | `/admin/users/:id/reset-password` | New random 8-digit password (403 on super-admin for other admins) |
 | `DELETE` | `/admin/users/:id` | Soft-delete (super-admin only; not self / not other super-admin) |
+| `GET` | `/admin/workflow-role-settings` | Chef-validate flags per creator role |
+| `PATCH` | `/admin/workflow-role-settings` | Update `chef_validate` for creator roles |
 
 **Client validation:** `frontend/src/validation/schemas/forms.ts`  
 **Server validation:** `backend/src/validation/schemas/adminCrud.js`
@@ -113,7 +127,9 @@
 - Admin hub → **البلديات** / Communes → `/municipalities` (daira selector on form)
 - Admin hub → **Users** → `/users`
 - Users list **إعادة الرمز / Réinitialiser**: hidden on own row; for others, confirm dialog before reset (see Users workflows).
-- Account type shown as حساب مدير / **ملحق بالديوان** (Attaché de cabinet) / حساب والي / **رئيس الديوان** — never raw enums (`OFFICE_USER`, etc.)
+- Account type shown as حساب مدير / **ملحق بالديوان** (Attaché de cabinet) / **رئيس الدائرة** / **رئيس البلدية** / **مدير المديرية** / حساب والي / **رئيس الديوان** — never raw enums (`OFFICE_USER`, `PRESIDENT_DAIRA`, etc.)
+- User create form: role select; when org creator, show required daira / commune / direction picker (labels only — never enum strings). When org unit is set, show unit-scoped service grant picker (lecture / éditeur) — `SERVICE_SHARING.md`.
+- Admin hub → Chef-validate settings (workflow role toggles) — see `WORKFLOW_TREE.md`.
 - Org ref lists: active/hidden filter; row hide (confirm) / restore; no permanent delete.
 
 ### Audit events
@@ -127,7 +143,8 @@
 | `MUNICIPALITY_CREATE` | POST municipality |
 | `MUNICIPALITY_UPDATE` | PATCH municipality |
 | `MUNICIPALITY_HIDE` / `MUNICIPALITY_RESTORE` | Soft-hide / restore commune |
-| `USER_CREATE` | POST user |
+| `SERVICE_CREATE` / `SERVICE_CREATE_BULK` | Single or bulk service create |
+| `SERVICE_GRANTS_UPDATE` | Replace grants on a leaf |
 | `USER_UPDATE` | PATCH user |
 | `USER_BLOCK` | Block toggle |
 | `USER_PASSWORD_RESET` | Reset password |

@@ -1,6 +1,25 @@
 // Roles & ids
-export type { UserRole, HubKey } from './roles';
-export { ROLE_LABEL_KEYS, hubKeyForRole } from './roles';
+export type { UserRole, HubKey, CreatorKey } from './roles';
+export {
+  ROLE_LABEL_KEYS,
+  CREATOR_HUB_LABEL_KEYS,
+  CREATOR_ROLES,
+  CREATOR_KEYS,
+  CREATOR_KEY_TO_ROLE,
+  CREATOR_ROLE_TO_KEY,
+  ORG_HEAD_CREATOR_ROLES,
+  ORG_HEAD_FEATURE_FLAGS,
+  hubKeyForRole,
+  isCreatorRole,
+  isOrgHeadCreatorRole,
+  hidesCommuneListContentKind,
+  hidesFicheLectureContentKind,
+  blocksOrgHeadReturnToDraft,
+  usesChefNotificationsWording,
+  chefChannelNavLabelKey,
+  creatorKeyFromRole,
+  roleFromCreatorKey,
+} from './roles';
 
 export type { EntityId } from './ids';
 export { entityIdSchema } from './ids';

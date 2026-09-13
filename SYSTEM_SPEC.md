@@ -34,18 +34,20 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 
 ### Cross-cutting updates (initial)
 
-- **Four account types:** `ADMIN` (compte admin), `OFFICE_USER` (**ملحق بالديوان** / Attaché de cabinet), `WALI` (compte wali), `CHEF_CABINET` (رئيس الديوان) — never show raw enums in UI.
+- **Seven account types:** `ADMIN` (compte admin), `OFFICE_USER` (**ملحق بالديوان** / Attaché de cabinet), `PRESIDENT_DAIRA` (**رئيس الدائرة**), `PRESIDENT_COMMUNE` (**رئيس البلدية**), `DIRECTEUR_DIRECTION` (**مدير المديرية**), `CHEF_CABINET` (**رئيس الديوان**), `WALI` (compte wali) — never show raw enums in UI.
+- **Creator set:** `OFFICE_USER` + the three org creators share hub key `office` (`/cabinet`); helper `CREATOR_ROLES` / `isCreatorRole` in `@wali/access-policy`. Per-role Chef gate: admin `workflow_role_settings.chef_validate` (default true) — `spec/modules/WORKFLOW_TREE.md`.
 - **Domain tree UI:** DB/API `services` → leaf **مجال المتابعة** / **Domaine de suivi**; folder **مجلد** / **Dossier** (not «dossier» for leaf nodes).
-- **Communes / dairas / directions (Directions):** reference rows only; no login accounts for these. Communes belong to a daira; directions are independent. UI path: `/directions` (labels المديريات / Directions). Service « départements / قطاعات » are hidden in admin UI.
+- **Service org scope:** each service has `org_scope` `diwan` \| `daira` \| `commune` \| `direction`. Existing → `diwan`. Non-diwan leaves are **duplicated per org unit** (bulk create); display names not unique; grant pickers and user-create grants filter by scope/unit — `spec/modules/SERVICE_SHARING.md`.
+- **Communes / dairas / directions (Directions):** reference rows for catalogs + **required org FKs** on the three org creator accounts (`daira_id` / `municipality_id` / `direction_id`). Communes belong to a daira; directions are independent. UI path: `/directions` (labels المديريات / Directions). Service « départements / قطاعات » are hidden in admin UI.
 - **Route prefixes:** stable hub keys `admin|office|chef|wali`; live UI/API segments `/admin`, `/cabinet`, `/chief`, `/governor` via `shared/routes` (`paths.hub.*`) — legacy `/office|/wali|/chef` one-release aliases — `spec/modules/ROUTES.md`. Auth: `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`.
 - **Form validation:** mandatory Zod client + server on all create/edit flows — `spec/CORE.md`.
 - **Distinct UI theme:** teal/gold tokens in `frontend/src/theme/tokens.css` (not app_wilaya green).
-- **Rapport architecture (4 content kinds):** Wali navigates office user → service/sub-service tree; types جدول / ملف مركّب / مذكرة استخلاصية / **قائمة** (`commune_list` with configurable commune / daira / direction targets) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
-- **Version archive + Wali notifications:** old versions for graphs/history; office notified on Wali note — `RAPPORT_SERVICE_TYPES.md`, `RAPPORTS.md`.
-- **Chef gate:** first submit goes to رئيس الديوان; after Wali demands changes, resubmit skips Chef (info notif only) — `CHEF_CABINET.md`.
-- **Wali instructions:** title + body + files to all/selected office users; Chef read-only — `WALI_INSTRUCTIONS.md`.
-- **Chef instructions:** parallel channel; Chef create/delete; office recipients; Wali read-only — `CHEF_INSTRUCTIONS.md`.
-- **Shared files:** Wali **and** Chef upload to same broadcast pool; symmetric recipients; uploader label on cards — `MEDIA_CALENDAR_WALI_SHARING.md`.
+- **Rapport architecture (4 content kinds):** Wali navigates creator → service/sub-service tree; types جدول / ملف مركّب / مذكرة استخلاصية / **قائمة** (`commune_list` with configurable commune / daira / direction targets) — `spec/modules/RAPPORT_SERVICE_TYPES.md`.
+- **Version archive + Wali notifications:** old versions for graphs/history; creators notified on Wali note — `RAPPORT_SERVICE_TYPES.md`, `RAPPORTS.md`.
+- **Chef gate:** first submit goes to رئيس الديوان when role `chef_validate` is on (default); admin per-creator-role toggle — `WORKFLOW_TREE.md`, `CHEF_CABINET.md`. After Wali demands changes, resubmit skips Chef (info notif only).
+- **Wali instructions:** title + body + files to all/selected creators (`all_office` | `all_daira` | `all_commune` | `all_direction` + ids); Chef read-only — `WALI_INSTRUCTIONS.md`.
+- **Chef instructions:** parallel channel; Chef create/delete; creator recipients (same bulk flags); Wali read-only — `CHEF_INSTRUCTIONS.md`.
+- **Shared files:** Wali **and** Chef upload to same broadcast pool; recipients include all creator roles; uploader label on cards — `MEDIA_CALENDAR_WALI_SHARING.md`.
 - **Upload security:** magic-byte type check + ClamAV scan (dev simulated) before files leave `uploads/temp/` — `AUTH.md`, `MEDIA_CALENDAR_WALI_SHARING.md`.
 - **Rapport discussion:** non-live comment thread after first Envoyer (office / Chef / Wali); **discussion inbox** (New / All) on office, Chef, and Wali hubs — `RAPPORT_DISCUSSION.md`.
 
@@ -87,7 +89,7 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Chef as broadcast recipient:** `CHEF_CABINET` included in Wali share picker and “all” sends; Chef inbox `/chief/shared` — `spec/modules/MEDIA_CALENDAR_WALI_SHARING.md`, `CHEF_CABINET.md`.
 - **Office return to draft:** Éditeur may recall a sent rapport (`pending_chef` | `submitted` | `under_review`) to `draft` (same current version; wipe current-version Chef/Wali remarks + discussion + linked notifications; `chef_gate=required`; older versions kept; blocked after Wali accept/view) — `spec/modules/RAPPORTS.md`.
 - **Office delete:** instant when no Chef/Wali responses (or discard unsubmitted draft version only); otherwise delete request → Chef approve/reject; Chef filter `delete_requested` + `delete_pending` hub count + confirm dialogs — `RAPPORTS.md`, `CHEF_CABINET.md`.
-- **Guide videos:** Admin uploads guide videos (général + per role); Admin-audience videos hidden from others; `ENABLE_GUIDE_VIDEOS` flag — `spec/modules/GUIDE_VIDEOS.md`.
+- **Guide videos:** Admin uploads guide videos (one or more audiences: général + roles); videos that include Admin audience are hidden from others; `ENABLE_GUIDE_VIDEOS` flag — `spec/modules/GUIDE_VIDEOS.md`.
 - **User credentials PDF:** On user create / password reset, generated handout is **French only** (not bilingual) — `spec/modules/ORGANIZATION.md`.
 - **Button sizing:** Action-row buttons must share one height/size class (`btn` / `btn-sm` / `btn-lg`); no mixed padding in the same row — `spec/CORE.md` § Button sizing & action rows.
 - **Readable backend logs:** pino short access lines + level by status; 5xx stack / 4xx warn; `LOG_LEVEL=info` day-to-day — `spec/CORE.md` § App / console logging.
@@ -107,6 +109,13 @@ Digital platform for **Wilaya governor's office** users to create, version, and 
 - **Identity UUID:** expand + dual-read; API public `id` = UUID; BIGINT PK drop deferred; `entityIdSchema` dual during transition — `spec/modules/IDENTITY_UUID.md`.
 - **Workflow tree:** shared types + Wilaya default map + Direction scaffold only — `spec/modules/WORKFLOW_TREE.md`.
 - **P7 smoke:** role × module checklist — `spec/modules/HARDENING_SMOKE_MATRIX.md`.
+
+### Cross-cutting updates (creator roles)
+
+- **Three org creators:** رئيس الدائرة / رئيس البلدية / مدير المديرية — same capabilities as ملحق بالديوان; `/cabinet` hub; org FK required on create — `ORGANIZATION.md`.
+- **Chef validate by role:** admin matrix `workflow_role_settings` (`chef_validate` per creator role, default true) — `WORKFLOW_TREE.md`, `CHEF_CABINET.md`, `RAPPORTS.md`.
+- **Wali/Chef navigation:** four creator cards → `/governor/creators/{office|daira|commune|direction}` (+ `/chief/...`); legacy `/office-users` → `creators/office` — `ROUTES.md`, `ACCESS_PROFILES.md`.
+- **Instructions / broadcasts:** recipient bulk flags `all_office` | `all_daira` | `all_commune` | `all_direction` + `recipient_ids` — `WALI_INSTRUCTIONS.md`, `CHEF_INSTRUCTIONS.md`, `MEDIA_CALENDAR_WALI_SHARING.md`.
 
 ### What to do when adding a new feature
 

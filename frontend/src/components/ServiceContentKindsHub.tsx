@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { hidesCommuneListContentKind, hidesFicheLectureContentKind } from '@wali/access-policy'
+import { useAuthOptional } from '../auth/AuthProvider'
 import { BackButton } from './BackButton'
 import { HubCountBadge } from './HubCountBadge'
 import { HubTile } from './HubTile'
@@ -73,20 +75,30 @@ export function ServiceContentKindsHub({
   onBrowseSchemas,
 }: Props) {
   const { t, i18n } = useTranslation()
+  const auth = useAuthOptional()
+  const hideListe = hidesCommuneListContentKind(auth?.me?.role)
+  const hideFiche = hidesFicheLectureContentKind(auth?.me?.role)
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [editorsExplainerOpen, setEditorsExplainerOpen] = useState(false)
   const serviceLabel = i18n.language === 'fr' ? service.name_fr : service.name_ar
   const byKind = Object.fromEntries(summaries.map((s) => [s.content_kind, s]))
   const canManageTypes = mode === 'office' && manageTypes && accessLevel === 'manage'
-  const totalActionCount = CONTENT_KINDS_ORDER.reduce((sum, kind) => {
+  const kindOrder = CONTENT_KINDS_ORDER.filter((k) => {
+    if (hideListe && k === 'commune_list') return false
+    if (hideFiche && k === 'fiche_lecture') return false
+    return true
+  })
+  const totalActionCount = kindOrder.reduce((sum, kind) => {
     const s = byKind[kind]
     return sum + (Number(s?.action_count) || 0)
   }, 0)
 
-  const kindsToShow = CONTENT_KINDS_ORDER.filter((kind) => {
+  const kindsToShow = kindOrder.filter((kind) => {
+    if (hideListe && kind === 'commune_list') return false
+    if (hideFiche && kind === 'fiche_lecture') return false
     const types = contentKinds[kind] || []
     if (types.length) return true
-    if (canManageTypes && ADDABLE_KINDS.has(kind)) return true
+    if (canManageTypes && ADDABLE_KINDS.has(kind) && !(hideListe && kind === 'commune_list')) return true
     return false
   })
 
@@ -214,7 +226,7 @@ export function ServiceContentKindsHub({
             aria-labelledby="kindsExplainerTitle"
             onClick={(e) => e.stopPropagation()}
           >
-            <RapportKindsExplainer bare />
+            <RapportKindsExplainer bare hideCommuneList={hideListe} hideFicheLecture={hideFiche} />
             <div className="modalActions">
               <button type="button" className="btn btn-secondary" onClick={() => setExplainerOpen(false)}>
                 {t('close')}
@@ -237,7 +249,7 @@ export function ServiceContentKindsHub({
             aria-labelledby="editorsExplainerTitle"
             onClick={(e) => e.stopPropagation()}
           >
-            <RapportEditorsExplainer bare />
+            <RapportEditorsExplainer bare hideCommuneList={hideListe} hideFicheLecture={hideFiche} />
             <div className="modalActions">
               <button
                 type="button"

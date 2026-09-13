@@ -24,6 +24,8 @@ const {
 const { notifyUsers, notifyActiveRole } = require("../notifications/notifyService");
 const { getPreferences } = require("../notifications/preferenceService");
 const { assertCan, forbidden, canStartNewVersion } = require("../access/assertCan");
+const { isCreatorRole, hidesCommuneListContentKind, hidesFicheLectureContentKind, blocksOrgHeadReturnToDraft } = require("../access/creatorRoles");
+const { isChefValidateEnabled } = require("../organization/workflowRoleSettingsService");
 const { resolveAccessLevel } = require("./serviceAccessService");
 const { findByPublicId, isUuid, publicId, withPublicId, withPublicIds, resolveNumericId } = require("../access/idResolver");
 
@@ -1363,6 +1365,23 @@ async function createRapport(data, actor, req) {
     throw err;
   }
 
+  if (
+    rapportType.content_kind === "commune_list" &&
+    hidesCommuneListContentKind(actor?.role)
+  ) {
+    const err = new Error("Forbidden");
+    err.status = 403;
+    throw err;
+  }
+  if (
+    rapportType.content_kind === "fiche_lecture" &&
+    hidesFicheLectureContentKind(actor?.role)
+  ) {
+    const err = new Error("Forbidden");
+    err.status = 403;
+    throw err;
+  }
+
   let data_json = data.data_json || {};
   if (rapportType.content_kind === "commune_list") {
     const { getIncludedEntityKeys } = require("./entityKeys");
@@ -1390,7 +1409,7 @@ async function createRapport(data, actor, req) {
   const ownerOfficeUserId =
     rapportType.content_kind === "fiche_lecture"
       ? null
-      : actor.role === "OFFICE_USER"
+      : isCreatorRole(actor.role)
         ? actor.id
         : data.owner_office_user_id || actor.id;
 
@@ -1677,8 +1696,13 @@ async function submitRapport(id, actor, req) {
   );
 
   const chefGate = rapport.chef_gate || "required";
-  const needsChef = chefGate === "required";
+  let needsChef = chefGate === "required";
+  if (needsChef && isCreatorRole(actor.role)) {
+    const chefValidateOn = await isChefValidateEnabled(actor.role);
+    if (!chefValidateOn) needsChef = false;
+  }
   const nextStatus = needsChef ? "pending_chef" : "submitted";
+  const skippedByRoleSetting = chefGate === "required" && !needsChef;
 
   const isFiche =
     rapport.rapportType?.content_kind === "fiche_lecture";
@@ -1698,6 +1722,11 @@ async function submitRapport(id, actor, req) {
       message_key: "rapportPendingChef",
       rapport_id: rapport.id,
     });
+  } else if (skippedByRoleSetting) {
+    await notifyActiveRole("WALI", {
+      message_key: "rapportPendingWali",
+      rapport_id: rapport.id,
+    });
   } else {
     await notifyActiveRole("CHEF_CABINET", {
       message_key: "rapportResubmittedBypass",
@@ -1712,7 +1741,12 @@ async function submitRapport(id, actor, req) {
   await audit(
     actor.id,
     needsChef ? "RAPPORT_SUBMIT_PENDING_CHEF" : "RAPPORT_SUBMIT",
-    { rapport_id: rapport.id, version_id: versionId, chef_gate: chefGate },
+    {
+      rapport_id: rapport.id,
+      version_id: versionId,
+      chef_gate: chefGate,
+      chef_validate_skipped: skippedByRoleSetting,
+    },
     { req },
   );
   return getRapportDetail(rapport.id);
@@ -1720,6 +1754,11 @@ async function submitRapport(id, actor, req) {
 
 /** Office recall: undo send on the current version (no fork). Wipe current-version remarks/chat only. */
 async function returnRapportToDraft(id, actor, req) {
+  if (blocksOrgHeadReturnToDraft(actor?.role)) {
+    const err = new Error("Forbidden");
+    err.status = 403;
+    throw err;
+  }
   const rapport = await loadRapport(id, {
     include: [{ model: RapportType, as: "rapportType" }],
   });

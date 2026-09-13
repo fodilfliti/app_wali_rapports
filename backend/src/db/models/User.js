@@ -9,8 +9,22 @@ module.exports = (sequelize) =>
       username: { type: DataTypes.STRING(120), allowNull: false, unique: true },
       name: { type: DataTypes.STRING(255), allowNull: true },
       password_hash: { type: DataTypes.STRING(255), allowNull: false },
-      role: { type: DataTypes.ENUM("ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"), allowNull: false },
+      role: {
+        type: DataTypes.ENUM(
+          "ADMIN",
+          "OFFICE_USER",
+          "CHEF_CABINET",
+          "WALI",
+          "PRESIDENT_DAIRA",
+          "PRESIDENT_COMMUNE",
+          "DIRECTEUR_DIRECTION"
+        ),
+        allowNull: false,
+      },
       department_id: { type: DataTypes.BIGINT, allowNull: true },
+      daira_id: { type: DataTypes.BIGINT, allowNull: true },
+      municipality_id: { type: DataTypes.BIGINT, allowNull: true },
+      direction_id: { type: DataTypes.BIGINT, allowNull: true },
       job_title: { type: DataTypes.STRING(120), allowNull: true },
       email: { type: DataTypes.STRING(255), allowNull: true },
       email_hidden: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },

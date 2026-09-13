@@ -17,6 +17,7 @@ const {
 } = require("./schemaRowRemapService");
 const { hasBilingualText } = require("../../validation/bilingual");
 const { findByPublicId, resolveNumericId, withPublicId } = require("../access/idResolver");
+const { hidesCommuneListContentKind, hidesFicheLectureContentKind } = require("../access/creatorRoles");
 
 async function loadServiceWithTypes(serviceId) {
   const service = await findByPublicId(Service, serviceId, {
@@ -410,6 +411,22 @@ async function listRapportTypes(serviceId) {
 }
 
 async function createRapportType(serviceId, data, actor, req) {
+  if (
+    data.content_kind === "commune_list" &&
+    hidesCommuneListContentKind(actor?.role)
+  ) {
+    const err = new Error("Forbidden");
+    err.status = 403;
+    throw err;
+  }
+  if (
+    data.content_kind === "fiche_lecture" &&
+    hidesFicheLectureContentKind(actor?.role)
+  ) {
+    const err = new Error("Forbidden");
+    err.status = 403;
+    throw err;
+  }
   const service = await loadServiceWithTypes(serviceId);
   const numericServiceId = service.id;
   if (data.content_kind === "fiche_lecture") {

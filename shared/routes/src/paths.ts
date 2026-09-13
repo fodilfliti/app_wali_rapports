@@ -63,8 +63,31 @@ export function apiListeEntityDataPath(rapportId: string): string {
 const ROLE_TO_HUB: Record<string, HubKey> = {
   ADMIN: 'admin',
   OFFICE_USER: 'office',
+  PRESIDENT_DAIRA: 'office',
+  PRESIDENT_COMMUNE: 'office',
+  DIRECTEUR_DIRECTION: 'office',
   CHEF_CABINET: 'chef',
   WALI: 'wali',
+}
+
+/** Wali/Chef creators list: `/governor/creators/daira`. */
+export function creatorsListPath(hub: 'wali' | 'chef', creatorKey: string): string {
+  return hubPath(hub, 'creators', creatorKey)
+}
+
+/** Wali/Chef creator user: `/governor/creators/daira/:userId`. */
+export function creatorsUserPath(hub: 'wali' | 'chef', creatorKey: string, userId: string): string {
+  return hubPath(hub, 'creators', creatorKey, userId)
+}
+
+/** Wali/Chef creator service tree under user. */
+export function creatorsUserServicePath(
+  hub: 'wali' | 'chef',
+  creatorKey: string,
+  userId: string,
+  serviceId: string,
+): string {
+  return hubPath(hub, 'creators', creatorKey, userId, 'services', serviceId)
 }
 
 export function hubKeyFromRole(role: string): HubKey | null {
@@ -83,6 +106,11 @@ export const paths = {
       hub: officeListeHubPath,
       entity: officeListeEntityPath,
       bulk: officeListeBulkPath,
+    },
+    creators: {
+      list: creatorsListPath,
+      user: creatorsUserPath,
+      userService: creatorsUserServicePath,
     },
   },
   api: {

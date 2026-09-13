@@ -3,6 +3,7 @@ const fs = require("fs");
 const {
   UploadedFile,
   GuideVideo,
+  GuideVideoAudience,
   WaliBroadcast,
   WaliBroadcastRecipient,
   WaliInstructionFile,
@@ -11,7 +12,15 @@ const {
 const { assertRapportAccess } = require("../modules/rapports/serviceAccessService");
 const { storageRoot } = require("./storage");
 
-const PUBLIC_GUIDE_AUDIENCES = ["general", "OFFICE_USER", "CHEF_CABINET", "WALI"];
+const PUBLIC_GUIDE_AUDIENCES = [
+  "general",
+  "OFFICE_USER",
+  "PRESIDENT_DAIRA",
+  "PRESIDENT_COMMUNE",
+  "DIRECTEUR_DIRECTION",
+  "CHEF_CABINET",
+  "WALI",
+];
 
 function normalizeRel(rel) {
   return String(rel || "")
@@ -105,13 +114,22 @@ async function canAccessUploadedFile(user, file) {
   // Guide videos
   const guide = await GuideVideo.findOne({
     where: { uploaded_file_id: file.id },
-    attributes: ["id", "audience"],
+    attributes: ["id"],
+    include: [
+      {
+        model: GuideVideoAudience,
+        as: "audienceRows",
+        attributes: ["audience"],
+      },
+    ],
   });
   if (guide) {
     if (user.role === "ADMIN") return true;
-    if (PUBLIC_GUIDE_AUDIENCES.includes(guide.audience)) {
-      if (guide.audience === "general") return true;
-      return guide.audience === user.role;
+    const audiences = (guide.audienceRows || []).map((r) => r.audience);
+    if (audiences.includes("ADMIN")) return false;
+    if (audiences.includes("general")) return true;
+    if (audiences.includes(user.role) && PUBLIC_GUIDE_AUDIENCES.includes(user.role)) {
+      return true;
     }
     return false;
   }

@@ -25,5 +25,8 @@ export {
   apiListeEntityPath,
   apiListeEntityClearPath,
   apiListeEntityDataPath,
+  creatorsListPath,
+  creatorsUserPath,
+  creatorsUserServicePath,
   paths,
 } from './paths'

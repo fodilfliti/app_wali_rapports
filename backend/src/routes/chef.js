@@ -30,6 +30,7 @@ const {
   multerFileInput,
   cleanupTempFile,
 } = require("../services/uploadService");
+const { roleFromCreatorKey } = require("../modules/access/creatorRoles");
 
 const chefRouter = express.Router();
 chefRouter.use(
@@ -38,6 +39,10 @@ chefRouter.use(
   checkBlocked,
   requireRole(["CHEF_CABINET", "ADMIN"]),
 );
+
+function creatorListQuery(creatorKey, query = {}) {
+  return { ...query, creator_key: creatorKey };
+}
 
 chefRouter.get(
   "/hub-counts",
@@ -52,14 +57,61 @@ chefRouter.get(
 );
 
 chefRouter.get(
+  "/creators/:creatorKey",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      if (!roleFromCreatorKey(req.params.creatorKey)) {
+        return res.status(400).json({ error: "Invalid creator_key" });
+      }
+      res.json({
+        officeUsers: await navigationService.listOfficeUsersForChef(
+          creatorListQuery(req.params.creatorKey, req.query),
+        ),
+      });
+    } catch (e) {
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+chefRouter.get(
   "/office-users",
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
       res.json({
-        officeUsers: await navigationService.listOfficeUsersForChef(),
+        officeUsers: await navigationService.listOfficeUsersForChef(
+          creatorListQuery("office", req.query),
+        ),
       });
     } catch (e) {
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+chefRouter.get(
+  "/creators/:creatorKey/:userId/services",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      const expectedRole = roleFromCreatorKey(req.params.creatorKey);
+      if (!expectedRole) {
+        return res.status(400).json({ error: "Invalid creator_key" });
+      }
+      res.json(
+        await navigationService.getServiceTreeForUser(
+          req.params.userId,
+          expectedRole,
+          { forChef: true, creator_key: req.params.creatorKey },
+        ),
+      );
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
   },
@@ -74,10 +126,37 @@ chefRouter.get(
         await navigationService.getServiceTreeForUser(
           req.params.userId,
           "OFFICE_USER",
-          { forChef: true },
+          { forChef: true, creator_key: "office" },
         ),
       );
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      next(e);
+    }
+  },
+);
+
+chefRouter.get(
+  "/creators/:creatorKey/:userId/services/:serviceId/content",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      if (!roleFromCreatorKey(req.params.creatorKey)) {
+        return res.status(400).json({ error: "Invalid creator_key" });
+      }
+      res.json(
+        await workspaceService.getServiceContentHub(
+          req.params.serviceId,
+          req.user,
+          {
+            waliForOfficeUserId: req.params.userId,
+            forChef: true,
+          },
+        ),
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
       next(e);
     }
   },

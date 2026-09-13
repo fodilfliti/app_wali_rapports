@@ -1,16 +1,18 @@
-## Module: Chef instructions (تعليمات رئيس الديوان)
+## Module: Chef instructions (إشعارات رئيس الديوان)
 
 ### Purpose & constraints
 
-Chef de cabinet sends operational instructions to all or selected office users: title, description, optional file attachments. **Separate channel** from Wali instructions (`wali_instructions`) and from file broadcasts (`wali_broadcasts`). Do not merge UIs or inboxes with Wali instructions.
+Chef de cabinet sends operational notices to all or selected creator accounts: title, description, optional file attachments. **Separate channel** from Wali instructions (`wali_instructions`) and from file broadcasts (`wali_broadcasts`). Do not merge UIs or inboxes with Wali instructions.
+
+**UI copy:** Arabic/French labels depend on role — **ملحق بالديوان** (`OFFICE_USER`), **رئيس الديوان** (`CHEF_CABINET`), and Wali keep **تعليمات** / Instructions; **org heads** (رئيس دائرة / بلدية / مدير) use **إشعارات** / Notifications when `ORG_HEAD_FEATURE_FLAGS.chefChannelAsNotifications` is true. Internal API/DB/keys remain `chef_instructions` / `chefInstruction`. Helper: `usesChefNotificationsWording` / FE `chefChannelCopy`.
 
 Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTITY_UUID.md`). Create gated by `rapports.chef_instructions.create` / ActionKey (`ACCESS_PROFILES.md`).
 
 ### Roles & rules
 
 - **CHEF_CABINET**: create + list/detail + **delete** own instructions (`/chief/chef-instructions`). Delete removes the instruction, recipient rows, file links, and all related `chefInstruction` notifications. Keeps **read-only** access to Wali instructions via existing `/chief/instructions`.
-- **OFFICE_USER**: list/detail Chef instructions addressed to them; separate hub tile + unread (`unread_chef_instructions`).
-- **WALI**: read-only list/detail of **all** Chef instructions (not in recipient picker) via `/governor/chef-instructions`; **notified** on create (`chefInstruction`) with hub badge `unread_chef_instructions` (unread notification rows); opening detail marks those notifications read.
+- **Creator roles** (`CREATOR_ROLES`): list/detail Chef instructions addressed to them; separate hub tile + unread (`unread_chef_instructions`).
+- **WALI**: read-only list/detail of **all** Chef instructions via `/governor/chef-instructions`; **notified** when included (`all_wali` default on, or individual pick); hub badge `unread_chef_instructions` (unread notification rows); opening detail marks those notifications read.
 - **ADMIN**: may read via support routes.
 
 ### Data model
@@ -25,7 +27,7 @@ Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTI
 
 #### `chef_instruction_recipients`
 
-- `id`, `instruction_id`, `user_id` (OFFICE_USER), `read_at`, `created_at`
+- `id`, `instruction_id`, `user_id` (any creator role), `read_at`, `created_at`
 
 #### `notifications`
 
@@ -36,10 +38,12 @@ Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTI
 
 ### Workflows
 
-1. Chef composes title/body, optional uploads, selects all office users or subset → create.
-2. System inserts recipient rows + notifications (`chefInstruction`) for office recipients **and** active Wali accounts.
-3. Office / Wali / Chef open from the list **modal** → office marks recipient + notification read; Wali marks notification read.
-4. Wali browses full list without recipient membership (mirror of Chef on Wali instructions), with notifs + unread badge.
+1. Chef composes title/body, optional uploads, selects recipients → create.
+   - Bulk flags (combinable): `all_office` | `all_daira` | `all_commune` | `all_direction` | `all_wali` + optional `recipient_ids`.
+   - Defaults: `all_office` + `all_wali` on; other role bulks off.
+2. System inserts recipient rows + notifications (`chefInstruction`) for selected creators **and** Wali when `all_wali` / individual Wali selected.
+3. Creator / Wali / Chef open from the list **modal** → recipient marks read + notification read; Wali marks notification read (also when browsing without recipient row).
+4. Wali browses full list of **all** Chef instructions (`/governor/chef-instructions`), with notifs + unread badge.
 
 ### API endpoints
 
@@ -49,16 +53,16 @@ Paths: `/governor`, `/cabinet`, `/chief` (`ROUTES.md`). Public ids UUID (`IDENTI
 | `GET` | `/chief/chef-instructions` | Chef list (pagination) |
 | `GET` | `/chief/chef-instructions/:id` | Chef detail + recipients |
 | `DELETE` | `/chief/chef-instructions/:id` | Chef delete (cascade recipients + notifications) |
-| `GET` | `/cabinet/chef-instructions` | Office: my Chef instructions |
-| `GET` | `/cabinet/chef-instructions/:id` | Office detail + mark read |
+| `GET` | `/cabinet/chef-instructions` | Creator: my Chef instructions |
+| `GET` | `/cabinet/chef-instructions/:id` | Creator detail + mark read |
 | `GET` | `/governor/chef-instructions` | Wali read-only all |
 | `GET` | `/governor/chef-instructions/:id` | Wali detail |
 
 ### UI/UX
 
 - Create form `title_fr` / `body_fr` inputs respect `ENABLE_FR_VALUE_INPUTS` — see `spec/CORE.md` § Bilingual content fields.
-- Chef hub tile **تعليمات رئيس الديوان** → create form (title, description, files, recipient multi-select).
-- Office: separate section **تعليمات رئيس الديوان** (not mixed with Wali instructions or rapport feedback); hub uses `unread_chef_instructions` only for this channel.
+- Chef hub tile **تعليمات رئيس الديوان** → create form (title, description, files, **role bulk checkboxes** including **كل حسابات الوالي** + recipient multi-select). Defaults: ملحقو الديوان + الوالي.
+- Creators: separate section **تعليمات رئيس الديوان** (not mixed with Wali instructions or rapport feedback); hub uses `unread_chef_instructions` only for this channel.
 - Wali: read-only cards; no create/delete.
 - **All roles** open cards in an **in-page modal** (same pattern as Wali instructions). Detail routes `/:id` redirect to the list and auto-open that modal.
 - Cards are **compact** (title + date/meta; short one-line preview).

@@ -8,6 +8,7 @@ Use these only after migrations (`000032`–`000034`). Prefer **prod ensure** ov
 |--------|-----|--------|
 | `seed-dev.js` | `npm run seed` / `db:seed-dev` | Dairas/communes/admin; **uuid** on bulkCreate |
 | `seed-prod-ensure.js` | `db:seed-prod-ensure` | Additive users/services/fiche types only |
+| `seed-org-heads-bootstrap.js` | `db:seed-org-heads` | Seeds missing **dairas + directions (مديريات)** from Word inventory; creates رئيس الدائرة / بلدية / مدير users; daira gets 4 services, others get الوضع العام; credentials use **Arabic unit names** in job_title; Directeur login prefix **`dir.`** (migrates `dd.*`); force-rewrites Excel+PDF under `private/bootstrap/org-heads/{daira,commune,direction}/` |
 | `ensure-fiche-lecture-types.js` | `db:ensure-fiche-lecture` | Missing fiche types only |
 | `ensure-super-admin.js` | `db:ensure-super-admin` | Admin account |
 | Shared | `scripts/lib/seedIdentity.js` | Stamps `uuid` + `*_uuid` FKs on rapport/version/notification/file |

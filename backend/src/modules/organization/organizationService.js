@@ -14,6 +14,7 @@ const {
   WaliBroadcastRecipient,
   WaliInstructionRecipient,
   AccessRoleTemplate,
+  Service,
   sequelize,
 } = require("../../db");
 const { audit } = require("../../services/audit");
@@ -21,12 +22,16 @@ const { generateCredentialsPdf } = require("../../services/credentialsPdfService
 const { revokeAllForUser } = require("../auth/refreshTokenService");
 const { findByPublicId, isUuid, withPublicIds, withPublicId, resolveNumericId } = require("../access/idResolver");
 const { assertCan, forbidden: policyForbidden } = require("../access/assertCan");
+const { orgScopeForRole, unitFkForOrgScope } = require("../rapports/serviceOrgScope");
 
 const DEFAULT_TEMPLATE_SLUG_BY_ROLE = {
   ADMIN: "ADMIN_FULL",
   OFFICE_USER: "OFFICE_STANDARD",
   CHEF_CABINET: "CHEF_STANDARD",
   WALI: "WALI_STANDARD",
+  PRESIDENT_DAIRA: "DAIRA_STANDARD",
+  PRESIDENT_COMMUNE: "COMMUNE_STANDARD",
+  DIRECTEUR_DIRECTION: "DIRECTION_STANDARD",
 };
 
 async function defaultAccessTemplateIdForRole(role) {
@@ -357,18 +362,102 @@ function randomPassword8() {
   return String(n);
 }
 
+/**
+ * Validate and insert grants for org-head creators on user create.
+ * Each service must match role org_scope and the user's unit FK.
+ */
+async function applyOrgHeadServiceGrantsOnCreate(user, grantRows, unitIds) {
+  const expectedScope = orgScopeForRole(user.role);
+  if (!expectedScope || expectedScope === "diwan") {
+    const err = new Error("serviceGrantsNotAllowed");
+    err.status = 400;
+    throw err;
+  }
+  const fk = unitFkForOrgScope(expectedScope);
+  const userUnitId = unitIds[fk];
+  if (!userUnitId) {
+    const err = new Error("orgUnitRequired");
+    err.status = 400;
+    throw err;
+  }
+
+  const rows = [];
+  for (const g of grantRows || []) {
+    const service = await findByPublicId(Service, g.service_id);
+    if (!service || !service.is_active || service.is_folder) {
+      const err = new Error("invalidServiceGrant");
+      err.status = 400;
+      throw err;
+    }
+    if (service.org_scope !== expectedScope) {
+      const err = new Error("serviceOrgScopeMismatch");
+      err.status = 400;
+      throw err;
+    }
+    if (Number(service[fk]) !== Number(userUnitId)) {
+      const err = new Error("serviceOrgUnitMismatch");
+      err.status = 400;
+      throw err;
+    }
+    if (!["view", "manage"].includes(g.access_level)) {
+      const err = new Error("invalidAccessLevel");
+      err.status = 400;
+      throw err;
+    }
+    rows.push({
+      user_id: user.id,
+      service_id: service.id,
+      access_level: g.access_level,
+    });
+  }
+  if (rows.length) {
+    await UserServiceGrant.bulkCreate(rows);
+  }
+}
+
 async function createUser(data, actor, req) {
   try {
     assertCan(actor, "organization.users.manage");
   } catch {
     if (actor.role !== "ADMIN") throw policyForbidden();
   }
-  const existing = await User.findOne({ where: { username: data.username } });
+  const existing = await User.findOne({
+    where: { username: { [Op.iLike]: data.username } },
+  });
   if (existing) {
     const err = new Error("errorUsernameExists");
     err.status = 409;
+    err.fieldErrors = { username: "errorUsernameExists" };
     throw err;
   }
+
+  let daira_id = null;
+  let municipality_id = null;
+  let direction_id = null;
+
+  if (data.role === "PRESIDENT_DAIRA") {
+    daira_id = await resolveNumericId(Daira, data.daira_id);
+    if (!daira_id) {
+      const err = new Error("dairaRequired");
+      err.status = 400;
+      throw err;
+    }
+  } else if (data.role === "PRESIDENT_COMMUNE") {
+    municipality_id = await resolveNumericId(Municipality, data.municipality_id);
+    if (!municipality_id) {
+      const err = new Error("municipalityRequired");
+      err.status = 400;
+      throw err;
+    }
+  } else if (data.role === "DIRECTEUR_DIRECTION") {
+    direction_id = await resolveNumericId(Direction, data.direction_id);
+    if (!direction_id) {
+      const err = new Error("directionRequired");
+      err.status = 400;
+      throw err;
+    }
+  }
+
   const access_role_template_id =
     data.access_role_template_id != null
       ? data.access_role_template_id
@@ -379,11 +468,23 @@ async function createUser(data, actor, req) {
     name: data.name,
     role: data.role,
     department_id: data.department_id ?? null,
+    daira_id,
+    municipality_id,
+    direction_id,
     job_title: data.job_title ?? null,
     access_role_template_id,
     password_hash: await bcrypt.hash(initialPassword, 10),
     is_blocked: false
   });
+
+  if (Array.isArray(data.service_grants) && data.service_grants.length) {
+    await applyOrgHeadServiceGrantsOnCreate(user, data.service_grants, {
+      daira_id,
+      municipality_id,
+      direction_id,
+    });
+  }
+
   const pdf = await generateCredentialsPdf({
     username: user.username,
     name: user.name,
@@ -399,6 +500,7 @@ async function createUser(data, actor, req) {
       role: user.role,
       access_role_template_id,
       pdf_url: pdf.file_url,
+      service_grants_count: Array.isArray(data.service_grants) ? data.service_grants.length : 0,
     },
     { req }
   );

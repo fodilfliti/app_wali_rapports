@@ -9,6 +9,9 @@ function roleLabelFr(role) {
   if (role === "WALI") return "Wali";
   if (role === "CHEF_CABINET") return "Chef de cabinet";
   if (role === "OFFICE_USER") return "Attaché de cabinet";
+  if (role === "PRESIDENT_DAIRA") return "Président de daïra";
+  if (role === "PRESIDENT_COMMUNE") return "Président de commune";
+  if (role === "DIRECTEUR_DIRECTION") return "Directeur de direction";
   return "Bureau";
 }
 

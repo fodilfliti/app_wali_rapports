@@ -38,7 +38,7 @@ type FormFields = {
   title_fr: string
   description_ar: string
   description_fr: string
-  audience: Audience
+  audiences: Audience[]
   is_new: boolean
 }
 
@@ -47,12 +47,20 @@ const EMPTY_FORM: FormFields = {
   title_fr: '',
   description_ar: '',
   description_fr: '',
-  audience: 'general',
+  audiences: ['general'],
   is_new: false,
 }
 
 function audienceTabs(canSeeAdmin: boolean): Audience[] {
-  const tabs: Audience[] = ['general', 'OFFICE_USER', 'CHEF_CABINET', 'WALI']
+  const tabs: Audience[] = [
+    'general',
+    'OFFICE_USER',
+    'PRESIDENT_DAIRA',
+    'PRESIDENT_COMMUNE',
+    'DIRECTEUR_DIRECTION',
+    'CHEF_CABINET',
+    'WALI',
+  ]
   if (canSeeAdmin) tabs.push('ADMIN')
   return tabs
 }
@@ -61,8 +69,25 @@ function audienceLabelKey(audience: Audience): string {
   if (audience === 'general') return 'guideAudienceGeneral'
   if (audience === 'ADMIN') return 'roleAdmin'
   if (audience === 'OFFICE_USER') return 'roleOffice'
+  if (audience === 'PRESIDENT_DAIRA') return 'rolePresidentDaira'
+  if (audience === 'PRESIDENT_COMMUNE') return 'rolePresidentCommune'
+  if (audience === 'DIRECTEUR_DIRECTION') return 'roleDirecteurDirection'
   if (audience === 'CHEF_CABINET') return 'roleChefCabinet'
   return 'roleWali'
+}
+
+function normalizeRowAudiences(row: { audiences?: Audience[]; audience?: Audience }): Audience[] {
+  if (Array.isArray(row.audiences) && row.audiences.length > 0) return row.audiences
+  if (row.audience) return [row.audience]
+  return ['general']
+}
+
+function toggleAudience(current: Audience[], value: Audience, checked: boolean): Audience[] {
+  if (checked) {
+    if (current.includes(value)) return current
+    return [...current, value]
+  }
+  return current.filter((a) => a !== value)
 }
 
 function GuideVideoThumbMedia({ file }: { file: MediaFile }) {
@@ -143,7 +168,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
 
   function openCreate() {
     setEditId(null)
-    setFields({ ...EMPTY_FORM, audience })
+    setFields({ ...EMPTY_FORM, audiences: [audience] })
     setUploadedFile(null)
     setExistingFile(null)
     setUploadError(null)
@@ -159,7 +184,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
       title_fr: row.title_fr || '',
       description_ar: row.description_ar || '',
       description_fr: row.description_fr || '',
-      audience: row.audience,
+      audiences: normalizeRowAudiences(row),
       is_new: Boolean(row.is_new),
     })
     setUploadedFile(null)
@@ -206,7 +231,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
   }
 
   async function save() {
-    if (!form.validate(fields, t, ['title_ar', 'title_fr', 'audience'])) return
+    if (!form.validate(fields, t, ['title_ar', 'title_fr', 'audiences'])) return
     const fileReady = uploadedFile || (!editId ? null : existingFile)
     if (!fileReady) {
       snack.show(t('guideVideoFileRequired'), 'error')
@@ -221,7 +246,7 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
       title_fr: titles.fr,
       description_ar: descs.ar || null,
       description_fr: descs.fr || null,
-      audience: fields.audience,
+      audiences: fields.audiences,
       is_new: fields.is_new,
     }
     if (uploadedFile) body.uploaded_file_id = uploadedFile.id
@@ -338,9 +363,11 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
                 </button>
                 <div className="guideVideoCardBody">
                   <div className="guideVideoCardMeta">
-                    <span className="guideVideoAudienceChip">
-                      {t(audienceLabelKey(row.audience as Audience))}
-                    </span>
+                    {normalizeRowAudiences(row).map((a) => (
+                      <span key={a} className="guideVideoAudienceChip">
+                        {t(audienceLabelKey(a))}
+                      </span>
+                    ))}
                   </div>
                   <h2 className="guideVideoTitle">{title}</h2>
                   {desc ? <p className="guideVideoDesc muted small">{desc}</p> : null}
@@ -474,19 +501,27 @@ export function GuideVideosPage({ token, listRole, canManage = false }: Props) {
                 />
               </label>
             ) : null}
-            <label>
-              {t('guideVideoAudience')}
-              <select
-                value={fields.audience}
-                onChange={(e) => setFields((f) => ({ ...f, audience: e.target.value as Audience }))}
-              >
+            <fieldset className="guideVideoAudienceFieldset">
+              <legend>{t('guideVideoAudience')}</legend>
+              <div className="guideVideoAudienceChecks">
                 {audienceTabs(true).map((a) => (
-                  <option key={a} value={a}>
-                    {t(audienceLabelKey(a))}
-                  </option>
+                  <label key={a} className="checkboxRow guideVideoAudienceCheck">
+                    <input
+                      type="checkbox"
+                      checked={fields.audiences.includes(a)}
+                      onChange={(e) =>
+                        setFields((f) => ({
+                          ...f,
+                          audiences: toggleAudience(f.audiences, a, e.target.checked),
+                        }))
+                      }
+                    />
+                    <span>{t(audienceLabelKey(a))}</span>
+                  </label>
                 ))}
-              </select>
-            </label>
+              </div>
+              <FieldErrorText text={form.fieldErrorText('audiences', t)} />
+            </fieldset>
             <label className="checkboxRow">
               <input
                 type="checkbox"

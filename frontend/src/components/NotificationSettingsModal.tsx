@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { isCreatorRole } from '@wali/access-policy'
 import * as api from '../api'
 import { useSnackbar } from '../snackbar/SnackbarContext'
+import { chefChannelCopy } from '../utils/chefChannelCopy'
 import {
   ensurePushSubscription,
   hasLocalPushSubscription,
@@ -159,12 +161,13 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
   const [recoveryOpen, setRecoveryOpen] = useState(false)
 
   const showCalendar = user.role === 'WALI' || user.role === 'CHEF_CABINET'
-  const showInstructions = user.role === 'OFFICE_USER'
-  const showChefInstructions = user.role === 'OFFICE_USER' || user.role === 'WALI'
+  const showInstructions = isCreatorRole(user.role)
+  const showChefInstructions = isCreatorRole(user.role) || user.role === 'WALI'
   const showBroadcasts =
-    user.role === 'OFFICE_USER' || user.role === 'CHEF_CABINET' || user.role === 'WALI'
+    isCreatorRole(user.role) || user.role === 'CHEF_CABINET' || user.role === 'WALI'
   const showInbox = user.role === 'WALI' || user.role === 'CHEF_CABINET'
-  const showFeedback = user.role === 'OFFICE_USER'
+  const showFeedback = isCreatorRole(user.role)
+  const chefCopy = chefChannelCopy(user.role)
   const supported = pushSupported()
 
   async function refreshThisDeviceState() {
@@ -408,8 +411,14 @@ export function NotificationSettingsModal({ token, open, user, onClose }: Props)
                 {TYPE_KEYS.filter(typeVisible).map((key) => (
                   <SwitchCard
                     key={key}
-                    title={t(`notifType_${key}`)}
-                    help={t(`notifTypeDesc_${key}`)}
+                    title={
+                      key === 'chef_instructions' ? t(chefCopy.notifType) : t(`notifType_${key}`)
+                    }
+                    help={
+                      key === 'chef_instructions'
+                        ? t(chefCopy.notifTypeDesc)
+                        : t(`notifTypeDesc_${key}`)
+                    }
                     checked={masterOn && prefs[key]}
                     disabled={saving || !masterOn}
                     onToggle={(next) => patch({ [key]: next }, { silent: true })}

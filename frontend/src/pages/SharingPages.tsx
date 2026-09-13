@@ -13,6 +13,7 @@ import {
   SharedBroadcastListCard,
   SharedUploaderTag,
 } from '../components/BroadcastSharedUi'
+import { CreatorRecipientPicker } from '../components/CreatorRecipientPicker'
 import { TablePagination } from '../components/TablePagination'
 import { QueryListShell } from '../components/QueryListShell'
 import { useSignedFileUrl } from '../hooks/useSignedFileUrl'
@@ -84,10 +85,15 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
   const snack = useSnackbar()
   const navigate = useNavigate()
   const invalidate = useInvalidateAppQueries()
+  const isChefHub = hub === 'chef'
   const [users, setUsers] = useState<any[]>([])
-  const [allUsers, setAllUsers] = useState(true)
+  /** Chef: attachés only by default; Wali create: all creator roles. */
+  const [allOffice, setAllOffice] = useState(true)
+  const [allDaira, setAllDaira] = useState(!isChefHub)
+  const [allCommune, setAllCommune] = useState(!isChefHub)
+  const [allDirection, setAllDirection] = useState(!isChefHub)
+  const [allWali, setAllWali] = useState(false)
   const [selected, setSelected] = useState<EntityIdParam[]>([])
-  const [userSearch, setUserSearch] = useState('')
   const [titleAr, setTitleAr] = useState('')
   const [titleFr, setTitleFr] = useState('')
   const [message, setMessage] = useState('')
@@ -99,47 +105,14 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
   const [uploadPercent, setUploadPercent] = useState(0)
   const [uploadPhase, setUploadPhase] = useState<'uploading' | 'scanning'>('uploading')
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [userPage, setUserPage] = useState(1)
   const listPath = paths.hub.path(hub, 'shared')
-  const allUsersLabel = hub === 'chef' ? t('allOfficeUsersAndWali') : t('allOfficeUsers')
+  const anyAllRole =
+    allOffice || allDaira || allCommune || allDirection || (isChefHub && allWali)
 
   useEffect(() => {
     const load = hub === 'chef' ? api.listChefShareUsers : api.listWaliShareUsers
     load(token).then((r) => setUsers(r.users)).catch(() => {})
   }, [token, hub])
-
-  const filteredUsers = users.filter((u) => {
-    const q = userSearch.trim().toLowerCase()
-    if (!q) return true
-    const name = String(u.name || '').toLowerCase()
-    const username = String(u.username || '').toLowerCase()
-    return name.includes(q) || username.includes(q)
-  })
-
-  useEffect(() => {
-    setUserPage(1)
-  }, [userSearch])
-
-  const pagedFilteredUsers = paginateSlice(filteredUsers, userPage, DEFAULT_PAGE_SIZE)
-
-  function toggleUser(userId: EntityIdParam, enabled: boolean) {
-    const key = String(userId)
-    setSelected((prev) =>
-      enabled
-        ? [...new Set([...prev.map(String), key])]
-        : prev.filter((id) => String(id) !== key),
-    )
-  }
-
-  function selectAllFiltered() {
-    setSelected((prev) => [
-      ...new Set([...prev.map(String), ...filteredUsers.map((u) => String(u.id))]),
-    ])
-  }
-
-  function clearSelection() {
-    setSelected([])
-  }
 
   async function handleFilePick(raw: File | null) {
     if (!raw) return
@@ -181,7 +154,7 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
       return
     }
     if (uploading || compressing) return
-    if (!allUsers && selected.length === 0) {
+    if (!anyAllRole && selected.length === 0) {
       snack.show(t('shareRecipientsRequired'), 'error')
       return
     }
@@ -192,8 +165,12 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
     try {
       const titles = bilingualPairForSave(titleAr, titleFr)
       const body = {
-        all_users: allUsers,
-        recipient_user_ids: allUsers ? [] : selected,
+        all_office: allOffice,
+        all_daira: allDaira,
+        all_commune: allCommune,
+        all_direction: allDirection,
+        ...(isChefHub ? { all_wali: allWali } : {}),
+        recipient_user_ids: selected,
         title_ar: titles.ar,
         title_fr: titles.fr,
         message_ar: message,
@@ -261,68 +238,22 @@ export function WaliBroadcastCreatePage({ token, hub = 'wali' }: Props & { hub?:
           {uploadError ? <p className="formErrorBlock">{uploadError}</p> : null}
         </label>
 
-        <fieldset className="shareRecipientsSection">
-          <legend className="shareRecipientsLegend">{t('shareRecipients')}</legend>
-          <p className="muted small shareRecipientsHelp">{t('shareRecipientsHelp')}</p>
-          <label className="formCheck">
-            <input
-              type="checkbox"
-              checked={allUsers}
-              onChange={(e) => {
-                setAllUsers(e.target.checked)
-                if (e.target.checked) setSelected([])
-              }}
-            />
-            <span>{allUsersLabel}</span>
-          </label>
-          {!allUsers ? (
-            <div className="recipientPanel">
-              <div className="recipientToolbar">
-                <input
-                  type="search"
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder={t('shareSearchUsers')}
-                />
-                <button type="button" className="btn btn-secondary btn-sm" onClick={selectAllFiltered}>
-                  {t('shareSelectAll')}
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={clearSelection}>
-                  {t('shareClearSelection')}
-                </button>
-              </div>
-              <p className="muted small recipientCount">
-                {t('shareSelectedCount', { count: selected.length, total: users.length })}
-              </p>
-              <ul className="recipientList">
-                {pagedFilteredUsers.length ? (
-                  pagedFilteredUsers.map((u) => {
-                    const userId = String(u.id)
-                    const checked = selected.some((id) => String(id) === userId)
-                    return (
-                      <li key={userId}>
-                        <label className={`formCheck recipientRow${checked ? ' selected' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => toggleUser(userId, e.target.checked)}
-                          />
-                          <span className="recipientRowMain">
-                            <strong>{u.name || u.username}</strong>
-                            {u.name ? <span className="muted small">{u.username}</span> : null}
-                          </span>
-                        </label>
-                      </li>
-                    )
-                  })
-                ) : (
-                  <li className="recipientEmpty muted small">{t('noResults')}</li>
-                )}
-              </ul>
-              <TablePagination page={userPage} total={filteredUsers.length} onPageChange={setUserPage} compact />
-            </div>
-          ) : null}
-        </fieldset>
+        <CreatorRecipientPicker
+          users={users}
+          flags={{ allOffice, allDaira, allCommune, allDirection, allWali }}
+          onFlagsChange={(next) => {
+            if (next.allOffice !== undefined) setAllOffice(next.allOffice)
+            if (next.allDaira !== undefined) setAllDaira(next.allDaira)
+            if (next.allCommune !== undefined) setAllCommune(next.allCommune)
+            if (next.allDirection !== undefined) setAllDirection(next.allDirection)
+            if (next.allWali !== undefined) setAllWali(next.allWali)
+          }}
+          selected={selected}
+          onSelectedChange={setSelected}
+          legendKey="shareRecipients"
+          helpKey="shareRecipientsHelpLinked"
+          showWaliBulk={isChefHub}
+        />
 
         <label className="formCheck">
           <input type="checkbox" checked={allowComments} onChange={(e) => setAllowComments(e.target.checked)} />

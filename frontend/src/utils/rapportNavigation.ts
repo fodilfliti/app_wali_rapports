@@ -1,6 +1,7 @@
 import type { EntityIdParam } from '../api'
 import type { HubIconName } from '../components/HubIcons'
 import {
+  canOfficeReturnToDraft as canOfficeReturnToDraftPolicy,
   canStartNewVersion,
   canShowVersionArchive,
   type ContentKind,
@@ -51,8 +52,13 @@ export function officeContentKindPath(serviceId: EntityIdParam, contentKind: str
   return `/cabinet/services/${serviceId}/kinds/${contentKind}`
 }
 
-export function waliContentKindPath(userId: EntityIdParam, serviceId: EntityIdParam, contentKind: string) {
-  return `/governor/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
+export function waliContentKindPath(
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
+  contentKind: string,
+  creatorKey = 'office',
+) {
+  return `/governor/creators/${creatorKey}/${userId}/services/${serviceId}/kinds/${contentKind}`
 }
 
 export function reviewerContentKindPath(
@@ -60,13 +66,19 @@ export function reviewerContentKindPath(
   userId: EntityIdParam,
   serviceId: EntityIdParam,
   contentKind: string,
+  creatorKey = 'office',
 ) {
   const base = mode === 'chef' ? '/chief' : '/governor'
-  return `${base}/office-users/${userId}/services/${serviceId}/kinds/${contentKind}`
+  return `${base}/creators/${creatorKey}/${userId}/services/${serviceId}/kinds/${contentKind}`
 }
 
-export function waliRapportTypeListPath(userId: EntityIdParam, serviceId: EntityIdParam, rt: RapportTypeNav) {
-  return `/governor/office-users/${userId}/services/${serviceId}/rapports/${rt.id}`
+export function waliRapportTypeListPath(
+  userId: EntityIdParam,
+  serviceId: EntityIdParam,
+  rt: RapportTypeNav,
+  creatorKey = 'office',
+) {
+  return `/governor/creators/${creatorKey}/${userId}/services/${serviceId}/rapports/${rt.id}`
 }
 
 export function reviewerRapportTypeListPath(
@@ -74,9 +86,10 @@ export function reviewerRapportTypeListPath(
   userId: EntityIdParam,
   serviceId: EntityIdParam,
   rapportTypeId: EntityIdParam,
+  creatorKey = 'office',
 ) {
   const base = mode === 'chef' ? '/chief' : '/governor'
-  return `${base}/office-users/${userId}/services/${serviceId}/rapports/${rapportTypeId}`
+  return `${base}/creators/${creatorKey}/${userId}/services/${serviceId}/rapports/${rapportTypeId}`
 }
 
 export function sortRapportTypesForDisplay(types: RapportTypeNav[], locale: string): RapportTypeNav[] {
@@ -184,12 +197,8 @@ export function canOfficeEditRapport(status: string) {
 }
 
 /** Office may recall a sent rapport to draft before Wali accept/view. */
-export function canOfficeReturnToDraft(status: string) {
-  return (
-    status === 'pending_chef' ||
-    status === 'submitted' ||
-    status === 'under_review'
-  )
+export function canOfficeReturnToDraft(status: string, role?: string | null) {
+  return canOfficeReturnToDraftPolicy(status, role)
 }
 
 /**

@@ -19,6 +19,7 @@ import {
 } from '../utils/rapportNavigation'
 import { rapportStatusLabel } from '../utils/officeRapportList'
 import { waliInboxRowClass } from '../utils/waliInboxList'
+import { CREATOR_HUB_LABEL_KEYS, roleFromCreatorKey, type CreatorKey } from '@wali/access-policy'
 import {
   chefCanRespondFromList,
   type ReviewerMode,
@@ -48,6 +49,12 @@ import { useLocation } from 'react-router-dom'
 
 type Props = { token: string; reviewer?: ReviewerMode }
 
+function useCreatorKeyParam(): CreatorKey {
+  const { creatorKey } = useParams()
+  const key = (creatorKey || 'office') as CreatorKey
+  return roleFromCreatorKey(key) ? key : 'office'
+}
+
 function canRespondFromList(reviewer: ReviewerMode, status?: string) {
   return reviewer === 'chef' ? chefCanRespondFromList(status) : waliCanRespondFromList(status)
 }
@@ -69,19 +76,21 @@ function findServiceInTree(nodes: any[], serviceId: EntityIdParam): any {
 
 export function WaliOfficeUsersPage({ token, reviewer = 'wali' }: Props) {
   const { t } = useTranslation()
+  const creatorKey = useCreatorKeyParam()
   const [page, setPage] = useState(1)
   const hub = reviewerHubPath(reviewer)
-  const usersQuery = useReviewerOfficeUsersQuery(token, reviewer)
+  const usersQuery = useReviewerOfficeUsersQuery(token, reviewer, creatorKey)
   const users = usersQuery.data ?? []
   const isInitialLoading = usersQuery.isLoading && usersQuery.data === undefined
   const isRefreshing = usersQuery.isFetching && !usersQuery.isLoading
 
   const pagedUsers = paginateSlice(users, page, DEFAULT_PAGE_SIZE)
+  const titleKey = CREATOR_HUB_LABEL_KEYS[creatorKey] || 'navCreatorsOffice'
 
   return (
     <div className="page">
       <div className="pageHeader row">
-        <h1>{t('navOfficeUsers')}</h1>
+        <h1>{t(titleKey)}</h1>
         <BackButton to={hub} fallbackTo={hub} />
       </div>
       <QueryListShell isInitialLoading={isInitialLoading} isRefreshing={isRefreshing}>
@@ -89,7 +98,7 @@ export function WaliOfficeUsersPage({ token, reviewer = 'wali' }: Props) {
           {pagedUsers.map((u) => (
             <HubTile
               key={u.id}
-              to={`${reviewerUserServicesPath(reviewer, u.id)}`}
+              to={`${reviewerUserServicesPath(reviewer, u.id, creatorKey)}`}
               icon="users"
               title={u.name || u.username}
               subtitle={u.job_title || undefined}
@@ -111,10 +120,11 @@ export function WaliOfficeUsersPage({ token, reviewer = 'wali' }: Props) {
 export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props & { userId: EntityIdParam }) {
   const { folderId } = useParams()
   const fid = folderId || undefined
+  const creatorKey = useCreatorKeyParam()
   const { t, i18n } = useTranslation()
   const [page, setPage] = useState(1)
-  const basePath = reviewerUserServicesPath(reviewer, userId)
-  const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer)
+  const basePath = reviewerUserServicesPath(reviewer, userId, creatorKey)
+  const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer, creatorKey)
   const services = servicesQuery.data ?? []
   const isInitialLoading = servicesQuery.isLoading && servicesQuery.data === undefined
   const isRefreshing = servicesQuery.isFetching && !servicesQuery.isLoading
@@ -127,7 +137,7 @@ export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props
   const items = folder ? folder.children || [] : services
   const pagedItems = paginateSlice(items, page, DEFAULT_PAGE_SIZE)
   const pageTitle = folder ? serviceLabel(folder, i18n.language) : t('navServices')
-  const backTo = fid ? folderBackPath(services, fid, basePath) : reviewerOfficeUsersPath(reviewer)
+  const backTo = fid ? folderBackPath(services, fid, basePath) : reviewerOfficeUsersPath(reviewer, creatorKey)
 
   return (
     <div className="page">
@@ -165,7 +175,8 @@ export function WaliUserServicesPage({ token, userId, reviewer = 'wali' }: Props
 export function WaliServiceRapportTypesPage({ token, userId, reviewer = 'wali' }: Props & { userId: EntityIdParam }) {
   const { serviceId } = useParams()
   const sid = serviceId ?? ''
-  const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer)
+  const creatorKey = useCreatorKeyParam()
+  const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer, creatorKey)
   const hub = hubQuery.data
   const isInitialLoading = hubQuery.isLoading && !hub
 
@@ -184,8 +195,8 @@ export function WaliServiceRapportTypesPage({ token, userId, reviewer = 'wali' }
       service={hub.service}
       summaries={hub.contentKindSummaries || []}
       contentKinds={hub.contentKinds}
-      backTo={reviewerUserServicesPath(reviewer, userId)}
-      rapportTypePath={(rt) => reviewerRapportTypeListPath(reviewer, userId, sid, rt.id)}
+      backTo={reviewerUserServicesPath(reviewer, userId, creatorKey)}
+      rapportTypePath={(rt) => reviewerRapportTypeListPath(reviewer, userId, sid, rt.id, creatorKey)}
       mode="wali"
     />
   )
@@ -195,8 +206,9 @@ export function WaliServiceKindRapportTypesPage({ token, userId, reviewer = 'wal
   const { serviceId, contentKind } = useParams()
   const sid = serviceId ?? ''
   const kind = contentKind || ''
+  const creatorKey = useCreatorKeyParam()
   const { t } = useTranslation()
-  const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer)
+  const hubQuery = useReviewerServiceHubQuery(token, userId, sid, reviewer, creatorKey)
   const hub = hubQuery.data
   const isInitialLoading = hubQuery.isLoading && !hub
 
@@ -216,7 +228,7 @@ export function WaliServiceKindRapportTypesPage({ token, userId, reviewer = 'wal
     <ServiceRapportTypesHub
       service={hub.service}
       rapportTypes={types}
-      backTo={`${reviewerUserServicesPath(reviewer, userId)}/${sid}`}
+      backTo={`${reviewerUserServicesPath(reviewer, userId, creatorKey)}/${sid}`}
       mode="wali"
       waliUserId={userId}
       pageTitle={t(`contentKind_${kind}`, { defaultValue: kind })}
@@ -228,6 +240,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
   const { serviceId, rapportTypeId } = useParams()
   const sid = serviceId ?? ''
   const typeId = rapportTypeId ?? ''
+  const creatorKey = useCreatorKeyParam()
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
@@ -238,7 +251,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
   const [deleteDecideId, setDeleteDecideId] = useState<EntityIdParam | null>(null)
   const [listPage, setListPage] = useState(1)
 
-  const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer)
+  const servicesQuery = useReviewerUserServicesQuery(token, userId, reviewer, creatorKey)
   const services = servicesQuery.data ?? []
   const service = sid ? findServiceInTree(services, sid) : null
   const rapportType =
@@ -276,7 +289,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
     }
     const total = Number(listQuery.data?.total ?? rows.length)
     if (total !== 1 && Number.isFinite(Number(listQuery.data?.total))) return
-    const backTo = `${reviewerUserServicesPath(reviewer, userId)}/${sid}`
+    const backTo = `${reviewerUserServicesPath(reviewer, userId, creatorKey)}/${sid}`
     navigate(reviewerRapportViewPath(reviewer, rows[0].id), {
       replace: true,
       state: backNavigationState(backTo),
@@ -291,6 +304,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
     reviewer,
     userId,
     sid,
+    creatorKey,
   ])
 
   async function sendResponse(payload: {
@@ -337,7 +351,7 @@ export function WaliServiceRapportListPage({ token, userId, reviewer = 'wali' }:
     <div className="page">
       <div className="pageHeader row">
         <h1>{pageTitle}</h1>
-        <BackButton fallbackTo={`${reviewerUserServicesPath(reviewer, userId)}/${sid}`} />
+        <BackButton fallbackTo={`${reviewerUserServicesPath(reviewer, userId, creatorKey)}/${sid}`} />
       </div>
       <ListRefreshIndicator show={isRefreshing} />
 

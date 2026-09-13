@@ -18,13 +18,18 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 | ------------- | -------- | ----- |
 | `ADMIN` | compte admin / حساب مدير | Users, communes, dairas, directions, domaines de suivi (services), rapport types, access profiles |
 | `OFFICE_USER` | **ملحق بالديوان** / **Attaché de cabinet** | Create/edit/submit rapports in assigned domaines de suivi |
-| `CHEF_CABINET` | رئيس الديوان / Chef de cabinet | First-line validation before Wali; same review tools as Wali (no instruction/broadcast create) |
+| `PRESIDENT_DAIRA` | **رئيس الدائرة** / Président de daïra | Same as office creator; required `daira_id` |
+| `PRESIDENT_COMMUNE` | **رئيس البلدية** / Président de commune | Same as office creator; required `municipality_id` |
+| `DIRECTEUR_DIRECTION` | **مدير المديرية** / Directeur de direction | Same as office creator; required `direction_id` |
+| `CHEF_CABINET` | رئيس الديوان / Chef de cabinet | First-line validation before Wali; same review tools as Wali (no Wali-instruction create) |
 | `WALI` | حساب الوالي / Compte wali | Read validated rapports, respond, request changes, create instructions |
 
-**UI vocabulary (never show raw enums):** `OFFICE_USER` → ملحق بالديوان / Attaché de cabinet (plural: ملحقو الديوان / Attachés du cabinet). Domain tree nodes (`services` table): leaf UI = **مجال المتابعة** / **Domaine de suivi**; folder UI = **مجلد** / **Dossier**. Keep code/API role enums (`OFFICE_USER`, …) and table name `services` unchanged. Hub **URL** segments are renameable via `shared/routes` (live: `/cabinet`, `/chief`, `/governor`) — see `spec/modules/ROUTES.md`.
+**Creator roles** (`CREATOR_ROLES` in `@wali/access-policy`): `OFFICE_USER` | `PRESIDENT_DAIRA` | `PRESIDENT_COMMUNE` | `DIRECTEUR_DIRECTION` — share hub key `office` (`/cabinet`). Not validators.
 
-- **Reference geography/org:** `dairas`, `municipalities` (FK `daira_id`), `directions` (flat) — **not login accounts**.
-- **User**: `username`, `name`, `role`, optional `department_id`, access role template.
+**UI vocabulary (never show raw enums):** `OFFICE_USER` → ملحق بالديوان / Attaché de cabinet (plural: ملحقو الديوان / Attachés du cabinet); org creators → رئيس الدائرة / رئيس البلدية / مدير المديرية (plurals on Wali/Chef cards: رؤساء الدوائر / رؤساء البلديات / مديرو المديريات). Domain tree nodes (`services` table): leaf UI = **مجال المتابعة** / **Domaine de suivi**; folder UI = **مجلد** / **Dossier**. Keep code/API role enums and table name `services` unchanged. Hub **URL** segments are renameable via `shared/routes` (live: `/cabinet`, `/chief`, `/governor`) — see `spec/modules/ROUTES.md`.
+
+- **Reference geography/org:** `dairas`, `municipalities` (FK `daira_id`), `directions` (flat) — catalog rows; also bound to org creator accounts via user FKs — `ORGANIZATION.md`.
+- **User**: `username`, `name`, `role`, optional `department_id` / org FKs, access role template.
 
 ### Authentication & Access Control
 
@@ -33,7 +38,7 @@ Cross-cutting standards for all modules. Modules must not redefine these rules u
 - **Blocked users** (`is_blocked = true`) rejected by `checkBlocked` middleware; block / password change / reset revoke refresh sessions.
 - **Route prefixes** by hub key (live English segments; see `ROUTES.md`):
   - `/admin/*` → `ADMIN`
-  - `/cabinet/*` (hub `office`) → `OFFICE_USER` or `ADMIN`
+  - `/cabinet/*` (hub `office`) → any `CREATOR_ROLES` or `ADMIN`
   - `/chief/*` (hub `chef`) → `CHEF_CABINET` or `ADMIN`
   - `/governor/*` (hub `wali`) → `WALI` or `ADMIN`
   - Legacy `/office|/chef|/wali` dual-mounted / redirected for one release.
@@ -86,7 +91,7 @@ Used for `document_compose` and `fiche_lecture` (`RichDocumentEditor`, TipTap).
 - **Toolbar:** sticky at top of editor scroll area (`position: sticky` on `.richTextToolbar`).
 - **RTL alignment:** toolbar container uses `direction: ltr` so **left / center / right** buttons map to **physical** page sides in Arabic UI (not reversed by RTL flex).
 - **Editor font:** Tahoma for RTL content in the editor surface.
-- **Official letterhead (default on create):** for `fiche_lecture` and commune **fichier complexe** (`commune_list` + `commune_content_kind=complex`), and when no user document template applies, seed TipTap HTML with three **bold centered body-size** lines (not large headings): الجمهورية… / ولاية تلمسان / الديوان — then an optional title (`fiche_lecture`: **مذكرة استخلاصية** as `h3`; commune: entity name as `h2`). Source: `documentDefaults.js` / FE `documentDefaults.ts`. Editable after create. `skip_default` skips user templates only — **letterhead still applies**.
+- **Official letterhead (default on create):** for `fiche_lecture` and commune **fichier complexe** (`commune_list` + `commune_content_kind=complex`), and when no user document template applies, seed TipTap HTML with three **bold centered body-size** lines (not large headings): الجمهورية… / ولاية تلمسان / **third line from service `org_scope`** — then an optional title (`fiche_lecture`: **مذكرة استخلاصية** as `h3`; commune: entity name as `h2`). Third line: `diwan` → الديوان; `daira` → دائرة {name}; `commune` → بلدية {name}; `direction` → مديرية {name}. Source: `documentDefaults.js` / FE `documentDefaults.ts`. Editable after create. `skip_default` skips user templates only — **letterhead still applies**.
 - **Images / videos in HTML:** uploaded via rapport uploads; persist bare `/files/uploads/...` paths (and `data-file-id` = public UUID). **Never** persist `?dl=` / access tokens in stored HTML.
 - **Display (edit + view):** `usePreparedRichHtml` sanitizes and injects short-lived signed `?dl=` URLs for every `/files/` `src`/`href`. TipTap **edit** mode must show working media (same signing as view); when signed URLs arrive, refresh image/video `src` in place — do **not** remount the editor or `setContent` on every keystroke (caret loss).
 - **Empty-mount guard:** TipTap must not overwrite non-empty stored HTML with an empty first paint; gate editor mount until content is ready; ignore empty `onChange` when the prop still has content.
@@ -327,6 +332,7 @@ List and hub-badge fetches use **TanStack Query** with **stale-while-revalidate*
 
 | Role | Sections |
 | ---- | -------- |
-| **Office** | Mes rapports → Services / domaines |
-| **Wali** | Rapports reçus → Par service → Historique |
-| **Admin** | Communes → Utilisateurs → Services & types → Accès |
+| **Creators** (cabinet) | Mes rapports → Services / domaines (all four creator roles) |
+| **Wali** | Creators (4 cards) → inbox / calendar / instructions |
+| **Chef** | Creators (4 cards) → inbox / shared / Chef instructions |
+| **Admin** | Communes → Utilisateurs → Services & types → Accès / Chef-validate toggles |

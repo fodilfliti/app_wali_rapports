@@ -253,7 +253,12 @@ adminRouter.post(
       const { user, initialPassword, credentials } = await org.createUser(req.validatedBody, req.user, req);
       res.json({ user, initialPassword, credentials });
     } catch (e) {
-      if (e.status === 409) return res.status(409).json({ error: e.message });
+      if (e.status === 409)
+        return res.status(409).json({
+          error: e.message,
+          fieldErrors: e.fieldErrors || { username: "errorUsernameExists" },
+        });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
   }
@@ -358,17 +363,19 @@ adminRouter.delete("/departments/:id", async (req, res, next) => {
 
 adminRouter.get("/services", async (req, res, next) => {
   try {
-    const services = await serviceAdmin.listServicesAdmin();
+    const services = await serviceAdmin.listServicesAdmin(req.query);
     res.json({ services });
   } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e.status === 404) return res.status(404).json({ error: e.message });
     next(e);
   }
 });
 
 adminRouter.post("/services", validateBody(serviceCreateSchema), async (req, res, next) => {
   try {
-    const service = await serviceAdmin.createService(req.validatedBody, req.user, req);
-    res.status(201).json({ service });
+    const result = await serviceAdmin.createService(req.validatedBody, req.user, req);
+    res.status(201).json(result);
   } catch (e) {
     if (e.status === 409) return res.status(409).json({ error: e.message });
     if (e.status === 400) return res.status(400).json({ error: e.message });
@@ -415,15 +422,42 @@ adminRouter.put("/services/:id/grants", validateBody(serviceGrantsSchema), async
     );
     res.json({ grants });
   } catch (e) {
+    if (e.status === 404) return res.status(404).json({ error: e.message });
+    if (e.status === 400) return res.status(400).json({ error: e.message });
     next(e);
   }
 });
 
 adminRouter.get("/office-users", async (req, res, next) => {
   try {
-    const users = await serviceAdmin.listOfficeUsersForGrantPicker();
+    const users = await serviceAdmin.listOfficeUsersForGrantPicker(req.query);
     res.json({ users });
   } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+adminRouter.get("/workflow-role-settings", async (req, res, next) => {
+  try {
+    const workflowRoleSettings = require("../modules/organization/workflowRoleSettingsService");
+    res.json({ settings: await workflowRoleSettings.listWorkflowRoleSettings() });
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.patch("/workflow-role-settings", async (req, res, next) => {
+  try {
+    const workflowRoleSettings = require("../modules/organization/workflowRoleSettingsService");
+    const settings = await workflowRoleSettings.updateWorkflowRoleSettings(
+      req.body?.settings,
+      req.user,
+      req,
+    );
+    res.json({ settings });
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
     next(e);
   }
 });

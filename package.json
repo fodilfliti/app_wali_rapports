@@ -15,6 +15,7 @@
     "migrate:undo:all": "cd backend && npm run db:migrate:undo:all",
     "seed": "cd backend && npm run db:seed-dev",
     "seed:test": "cd backend && npm run db:seed-test",
+    "seed:org-heads": "cd backend && npm run db:seed-org-heads",
     "install:all": "cd backend && npm install && cd ../frontend && npm install && npm install --prefix shared/access-policy && npm install --prefix shared/routes && npm run build:shared"
   }
 }

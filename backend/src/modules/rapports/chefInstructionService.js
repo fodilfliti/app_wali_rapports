@@ -16,6 +16,11 @@ const {
   publicId,
   withPublicId,
 } = require("../access/idResolver");
+const {
+  CREATOR_ROLES,
+  resolveCreatorRecipientIds,
+} = require("../access/creatorRoles");
+const { Op } = require("sequelize");
 
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -53,31 +58,23 @@ function serializeInstruction(row, extras = {}) {
 
 async function listOfficeUsers() {
   const users = await User.findAll({
-    where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
-    attributes: ["id", "uuid", "name", "username"],
+    where: {
+      role: { [Op.in]: [...CREATOR_ROLES, "WALI"] },
+      is_blocked: false,
+      deleted_at: null,
+    },
+    attributes: ["id", "uuid", "name", "username", "role"],
     order: [["name", "ASC"]],
   });
   return users.map((u) => withPublicId(u));
 }
 
 async function resolveRecipientIds(body) {
-  if (body.all_office === "1" || body.all_office === true || body.all_office === "true") {
-    const users = await User.findAll({
-      where: { role: "OFFICE_USER", is_blocked: false, deleted_at: null },
-      attributes: ["id"],
-    });
-    return users.map((u) => u.id);
-  }
-  if (!body.recipient_ids) return [];
-  const raw =
-    typeof body.recipient_ids === "string" ? JSON.parse(body.recipient_ids) : body.recipient_ids;
-  if (!Array.isArray(raw)) return [];
-  const numericIds = [];
-  for (const id of raw) {
-    const nid = await resolveNumericId(User, id);
-    if (nid) numericIds.push(nid);
-  }
-  return numericIds;
+  return resolveCreatorRecipientIds(body, {
+    User,
+    Op,
+    resolveNumericId,
+  });
 }
 
 async function createInstruction({ files = [], body }, actor, req) {
@@ -165,11 +162,8 @@ async function createInstruction({ files = [], body }, actor, req) {
     message_key: "chefInstruction",
   });
 
-  const { notifyActiveRole } = require("../notifications/notifyService");
-  await notifyActiveRole("WALI", {
-    chef_instruction_id: instruction.id,
-    message_key: "chefInstruction",
-  });
+  // Wali always gets list access; notify only when selected via all_wali / recipient_ids
+  // (included in recipientIds above). Do not double-notify.
 
   await audit(actor.id, "CHEF_INSTRUCTION_CREATE", { chef_instruction_id: instruction.id }, { req });
   return getInstruction(instruction.uuid || instruction.id, { asChef: true });

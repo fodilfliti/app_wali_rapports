@@ -12,6 +12,9 @@ export type CreatedByUser = {
 function roleLabel(role: string | undefined, t: (k: string) => string) {
   if (role === "CHEF_CABINET") return t("roleChefCabinet");
   if (role === "WALI") return t("roleWali");
+  if (role === "PRESIDENT_DAIRA") return t("rolePresidentDaira");
+  if (role === "PRESIDENT_COMMUNE") return t("rolePresidentCommune");
+  if (role === "DIRECTEUR_DIRECTION") return t("roleDirecteurDirection");
   if (role === "ADMIN") return t("roleAdmin");
   return t("roleOffice");
 }
@@ -38,7 +41,7 @@ type Props = {
 
 export function RapportCreatedBy({
   user,
-  className = "muted small rapportCreatedBy",
+  className = "muted rapportCreatedBy",
   labelKey = "createdByUser",
 }: Props) {
   const { t } = useTranslation();

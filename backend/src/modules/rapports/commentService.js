@@ -10,6 +10,7 @@ const { audit } = require("../../services/audit");
 const { assertRapportAccess } = require("./serviceAccessService");
 const { notifyUsers } = require("../notifications/notifyService");
 const { findByPublicId, publicId } = require("../access/idResolver");
+const { CREATOR_ROLES, isCreatorRole } = require("../access/creatorRoles");
 
 const BODY_MAX = 5000;
 
@@ -74,7 +75,7 @@ async function assertCanDiscuss(rapportId, actor, { asWali = false } = {}) {
   if (asWali) {
     const rapportService = require("./rapportService");
     await rapportService.assertVisibleToWali(rapportId);
-  } else if (actor.role === "OFFICE_USER" || actor.role === "ADMIN") {
+  } else if (isCreatorRole(actor.role) || actor.role === "ADMIN") {
     await assertRapportAccess(actor, rapportId, "view");
   } else if (actor.role === "CHEF_CABINET") {
     const rapportService = require("./rapportService");
@@ -142,7 +143,7 @@ async function resolveRecipientIds(rapport, authorId) {
     .filter(Boolean);
   if (officeIds.length) {
     const officeUsers = await User.findAll({
-      where: { id: officeIds, role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+      where: { id: officeIds, role: { [Op.in]: CREATOR_ROLES }, is_blocked: false, deleted_at: null },
       attributes: ["id"]
     });
     for (const u of officeUsers) ids.add(Number(u.id));
@@ -169,7 +170,7 @@ async function resolveRecipientIds(rapport, authorId) {
   const priorIds = priorAuthors.map((r) => Number(r.author_user_id)).filter(Boolean);
   if (priorIds.length) {
     const participants = await User.findAll({
-      where: { id: priorIds, role: "OFFICE_USER", is_blocked: false, deleted_at: null },
+      where: { id: priorIds, role: { [Op.in]: CREATOR_ROLES }, is_blocked: false, deleted_at: null },
       attributes: ["id"]
     });
     for (const u of participants) ids.add(Number(u.id));

@@ -2,15 +2,26 @@ import { useTranslation } from 'react-i18next'
 import { HubIcon } from './HubIcons'
 import { CONTENT_KINDS_ORDER, contentKindHubIcon } from '../utils/rapportNavigation'
 
-const KIND_ORDER = [...CONTENT_KINDS_ORDER]
-
 type Props = {
   /** When true, omit outer card chrome (for use inside a modal). */
   bare?: boolean
+  /** Silent omit of قائمة for org-head creators. */
+  hideCommuneList?: boolean
+  /** Silent omit of مذكرة استخلاصية for org-head creators. */
+  hideFicheLecture?: boolean
 }
 
-export function RapportKindsExplainer({ bare = false }: Props) {
+export function RapportKindsExplainer({
+  bare = false,
+  hideCommuneList = false,
+  hideFicheLecture = false,
+}: Props) {
   const { t } = useTranslation()
+  const kindOrder = CONTENT_KINDS_ORDER.filter((k) => {
+    if (hideCommuneList && k === 'commune_list') return false
+    if (hideFicheLecture && k === 'fiche_lecture') return false
+    return true
+  })
 
   return (
     <aside
@@ -43,7 +54,7 @@ export function RapportKindsExplainer({ bare = false }: Props) {
           {t('kindsExplainerKindsTitle')}
         </h3>
         <div className="kindsExplainerGrid">
-          {KIND_ORDER.map((kind) => (
+          {kindOrder.map((kind) => (
             <div key={kind} className="kindsExplainerKindCard">
               <HubIcon name={contentKindHubIcon(kind)} className="kindsExplainerKindIcon" />
               <strong>{t(`contentKind_${kind}`)}</strong>
@@ -56,22 +67,24 @@ export function RapportKindsExplainer({ bare = false }: Props) {
         </div>
       </section>
 
-      <section className="kindsExplainerSection" aria-labelledby="kindsExplainerListeModes">
-        <h3 id="kindsExplainerListeModes" className="kindsExplainerSectionTitle">
-          {t('kindsExplainerListeModesTitle')}
-        </h3>
-        <p className="muted small kindsExplainerVersionsWhy">{t('kindsExplainerListeModesLead')}</p>
-        <div className="kindsExplainerPair">
-          <div className="kindsExplainerPairCard">
-            <strong>{t('communeContentKind_complex')}</strong>
-            <p className="muted small">{t('kindsExplainerListeMode_complex')}</p>
+      {!hideCommuneList ? (
+        <section className="kindsExplainerSection" aria-labelledby="kindsExplainerListeModes">
+          <h3 id="kindsExplainerListeModes" className="kindsExplainerSectionTitle">
+            {t('kindsExplainerListeModesTitle')}
+          </h3>
+          <p className="muted small kindsExplainerVersionsWhy">{t('kindsExplainerListeModesLead')}</p>
+          <div className="kindsExplainerPair">
+            <div className="kindsExplainerPairCard">
+              <strong>{t('communeContentKind_complex')}</strong>
+              <p className="muted small">{t('kindsExplainerListeMode_complex')}</p>
+            </div>
+            <div className="kindsExplainerPairCard">
+              <strong>{t('communeContentKind_table')}</strong>
+              <p className="muted small">{t('kindsExplainerListeMode_table')}</p>
+            </div>
           </div>
-          <div className="kindsExplainerPairCard">
-            <strong>{t('communeContentKind_table')}</strong>
-            <p className="muted small">{t('kindsExplainerListeMode_table')}</p>
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section className="kindsExplainerSection" aria-labelledby="kindsExplainerVersions">
         <h3 id="kindsExplainerVersions" className="kindsExplainerSectionTitle">

@@ -38,14 +38,14 @@ Output in `deploy-out/` (gitignored):
 | Zip                             | Upload to                       | Contains                                                                                                                                         | Never included (keep your server copies)                                         |
 | ------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | `wali-frontend-public_html.zip` | extract **into** `public_html/` | `dist/` assets only                                                                                                                              | `.htaccess`, env, `src/`, `node_modules`                                         |
-| `wali-api.zip`                  | extract **into** `~/wali-api/`  | `src/`, `config/`, `package*.json`, `.sequelizerc`, **`shared/*/dist`**, prod scripts (`seed-prod-ensure`, inventory, `lib/ensureSuperAdmin`, …) | `.env`, env examples, **demo/dev/test** seed scripts, `node_modules`, `storage/` |
+| `wali-api.zip`                  | extract **into** `~/wali-api/`  | `src/`, `config/`, `package*.json`, `.sequelizerc`, **`shared/*/dist`**, prod scripts (`seed-prod-ensure`, `seed-org-heads`, inventories, `lib/ensureSuperAdmin`, …) | `.env`, env examples, **demo/dev/test** seed scripts, `node_modules`, `storage/` |
 
 After upload:
 
 1. Frontend: unzip into `public_html` — your existing `.htaccess` is left alone.
 2. Backend: unzip into `wali-api` — your existing `.env` is left alone → cPanel **Run NPM Install** → **Restart** → `npm run db:migrate` if new migrations (under `src/db/migrations`, not `scripts/`).
 3. Confirm `~/wali-api/shared/access-policy/dist/index.js` and `~/wali-api/shared/routes/dist/index.js` exist after unzip (bundled by `package-deploy.ps1`).
-4. Confirm prod ensure helpers exist: `~/wali-api/scripts/seed-prod-ensure.js`, `scripts/data/prodBootstrapInventory.js`, `scripts/lib/ensureSuperAdmin.js`, `scripts/lib/prodCabinetUsers.js`.
+4. Confirm prod helpers exist: `~/wali-api/scripts/seed-prod-ensure.js`, `scripts/seed-org-heads-bootstrap.js`, `scripts/data/prodBootstrapInventory.js`, `scripts/data/orgHeadsInventory.js`, `scripts/lib/ensureSuperAdmin.js`, `scripts/lib/prodCabinetUsers.js`.
 
 `deploy/public_html.htaccess` is a first-version **reference only** — never upload it over the cPanel `.htaccess`.
 
@@ -111,7 +111,7 @@ Required on server:
 - `config/`
 - `.sequelizerc`
 - `.env` (create once on server; **never** overwrite from a zip)
-- Prod cabinet scripts (from zip or full API copy): `scripts/seed-prod-ensure.js`, `scripts/seed-prod-bootstrap.js`, `scripts/data/prodBootstrapInventory.js`, `scripts/lib/prodCabinetUsers.js`, `scripts/lib/ensureSuperAdmin.js`, `scripts/load-env.js`, `scripts/ensure-fiche-lecture-types.js`, `scripts/ensure-super-admin.js`
+- Prod cabinet scripts (from zip or full API copy): `scripts/seed-prod-ensure.js`, `scripts/seed-prod-bootstrap.js`, `scripts/seed-org-heads-bootstrap.js`, `scripts/data/prodBootstrapInventory.js`, `scripts/data/orgHeadsInventory.js`, `scripts/lib/prodCabinetUsers.js`, `scripts/lib/ensureSuperAdmin.js`, `scripts/load-env.js`, `scripts/ensure-fiche-lecture-types.js`, `scripts/ensure-super-admin.js`
 
 **Not** uploaded by `package-deploy.ps1`: demo/dev/test helpers (`seed-demo*`, `seed-dev`, `seed-test-fixtures`, `seedCabinetHeroes`, …). If you replace the **whole** `~/wali-api/` tree from a local backend copy, keep those out of production or leave them unused — never run demo/test seeds on prod.
 
@@ -172,11 +172,12 @@ npm run db:seed-dev
 | `npm run db:seed-demo`                            | **No**                       | Same wipe as test seed, plus deletes **departments**                                                                                                                                                                                                                                         |
 | `npm run db:seed-prod-bootstrap`                  | **Once only** (after backup) | Wipes **office/wali/chef data** (rapports incl. fiche docs, other schemas, non-admin users, services…) then loads cabinet + **fiche_lecture type per leaf**. **Keeps** guide videos (+ files), ADMIN, org reference.                                                                         |
 | `npm run db:seed-prod-ensure`                     | **Safe ongoing**             | Adds missing users/services/grants from the same inventory; never deletes or resets passwords. Plain `npm run …` (passes `--confirm`). New passwords only in `credentials-added-*.xlsx` / printable `credentials-added-*.pdf` (1 page/user). Also ensures fiche_lecture on inventory leaves. |
+| `npm run db:seed-org-heads`                       | **Yes (after migrate)**      | Seeds missing dairas + **directions (مديريات)**; creates رئيس الدائرة / بلدية / مدير users; daira ×4 services, others ×الوضع العام; **rewrites** Excel+PDF under `private/bootstrap/org-heads/{daira,commune,direction}/` (new passwords each run). Plain `npm run …` (passes `--confirm`). |
 | `npm run db:ensure-fiche-lecture`                 | **Safe**                     | Creates missing `fiche_lecture` types on all leaf services only. No wipe, no users.                                                                                                                                                                                                          |
 | `npm run db:seed-demo-cabinet`                    | **Dev only**                 | Fills cabinet bootstrap services with presentation data; refuses when `NODE_ENV=production`                                                                                                                                                                                                  |
 | `npm run db:migrate:undo` / `db:migrate:undo:all` | **No**                       | Rolls back migrations; can drop tables / remove seed rows                                                                                                                                                                                                                                    |
 
-**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `npm run db:seed-prod-bootstrap` once (keeps guide videos; wipes office/wali/chef data including schemas) — credentials under **`backend/private/bootstrap/`** (outside `FILE_STORAGE_ROOT`; never served via `/files`). For later people/services: deploy updated API (inventory + ensure scripts), then `npm run db:seed-prod-ensure` (no wipe). If credential sheets were ever under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords` once (quarantines sheets + rotates those users’ passwords into a new private Excel).
+**Prod rule:** migrate (+ optionally `seed-dev` once). Never `seed-test`, `seed-demo`, or migrate undo. For the **one-time** production structure reset: backup DB, then `npm run db:seed-prod-bootstrap` once (keeps guide videos; wipes office/wali/chef data including schemas) — credentials under **`backend/private/bootstrap/`** (outside `FILE_STORAGE_ROOT`; never served via `/files`). For later diwan people/services: deploy updated API (inventory + ensure scripts), then `npm run db:seed-prod-ensure` (no wipe). For org-heads (دائرة / بلدية / مديرية): deploy API including `seed-org-heads-bootstrap.js` + `orgHeadsInventory.js`, then `npm run db:seed-org-heads` — download `private/bootstrap/org-heads/*`. If credential sheets were ever under `storage/bootstrap/`, run `npm run security:rotate-bootstrap-passwords` once (quarantines sheets + rotates those users’ passwords into a new private Excel).
 
 #### Add cabinet users / services (safe) — after API upload
 
@@ -186,14 +187,23 @@ Do **not** upload only `prodBootstrapInventory.js` if the server is missing help
 2. Keep server `.env` (do not overwrite).
 3. **Restart** Node.js App.
 4. If new migrations: `cd ~/wali-api && npm run db:migrate`
-5. Add missing people/services from inventory:
+5. Add missing diwan people/services from inventory:
 
    ```bash
    cd ~/wali-api
    npm run db:seed-prod-ensure
    ```
 
-6. Download / print only `~/wali-api/private/bootstrap/credentials-added-*.pdf` (and `.xlsx` for ops). Existing users keep their passwords.
+6. Org-heads (رؤساء الدوائر / البلديات / مديرو المديريات) — seeds مديريات if missing, services, grants; rewrites handouts:
+
+   ```bash
+   cd ~/wali-api
+   npm run db:seed-org-heads
+   ```
+
+7. Download / print:
+   - Diwan adds: `~/wali-api/private/bootstrap/credentials-added-*.pdf` (existing users keep passwords).
+   - Org-heads: `~/wali-api/private/bootstrap/org-heads/{daira,commune,direction}/credentials-*.pdf` (+ `.xlsx`).
 
 ### 6. Frontend build (on your PC)
 
@@ -227,14 +237,20 @@ First-time only: ensure React Router fallback + leave `/api` alone (see commente
    cd ~/wali-api && npm run db:migrate
    ```
 
-4. If `prodBootstrapInventory.js` (or ensure scripts) changed — add missing users/services:
+4. If `prodBootstrapInventory.js` (or ensure scripts) changed — add missing diwan users/services:
 
    ```bash
    cd ~/wali-api && npm run db:seed-prod-ensure
    ```
 
-5. **Restart** Node.js App in cPanel.
-6. Smoke test: `https://YOUR_DOMAIN/api/health`
+5. If `orgHeadsInventory.js` / org-heads script changed — seed daira/commune/direction users + مديريات:
+
+   ```bash
+   cd ~/wali-api && npm run db:seed-org-heads
+   ```
+
+6. **Restart** Node.js App in cPanel.
+7. Smoke test: `https://YOUR_DOMAIN/api/health`
 
 ### Frontend change
 
@@ -337,3 +353,4 @@ Client-side: images are compressed in-browser before POST; optional video re-enc
 3. **Postgres** + `npm run db:migrate` (+ seed once).
 4. **Build frontend** locally with `VITE_API_URL=/api` → upload `dist/` only (never overwrite cPanel `.htaccess` / `.env`).
 5. **New cabinet people:** deploy full API (incl. `scripts/lib/ensureSuperAdmin.js` + inventory) → `npm run db:seed-prod-ensure` → hand out `credentials-added-*.pdf`.
+6. **Org-heads (دائرة / بلدية / مديرية):** deploy API incl. `seed-org-heads-bootstrap.js` + `orgHeadsInventory.js` → `npm run db:seed-org-heads` → hand out `private/bootstrap/org-heads/*/credentials-*.pdf`.

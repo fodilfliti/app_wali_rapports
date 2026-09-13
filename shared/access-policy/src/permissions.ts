@@ -1,5 +1,8 @@
 import type { ActionKey } from './actions';
-import type { UserRole } from './roles';
+import { CREATOR_ROLES, type UserRole } from './roles';
+
+/** Spreadable role list for office/cabinet ActionKeys. */
+const CREATORS = [...CREATOR_ROLES] as UserRole[];
 
 /** Access levels from permission catalog (`none` | `view` | `manage`). */
 export type AccessLevel = 'none' | 'view' | 'manage';
@@ -60,15 +63,15 @@ export const ACTION_REQUIREMENTS: Partial<Record<ActionKey, ActionRequirement>> 
   'hub.admin.schemas': { roles: ['ADMIN'] },
   'hub.admin.guide': { roles: ['ADMIN'] },
   'hub.admin.access': { roles: ['ADMIN'], permissionKey: 'organization.access_roles.manage', minAccessLevel: 'view' },
-  // Office hub
-  'hub.office.services': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
-  'hub.office.rapports': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
-  'hub.office.discussion': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
-  'hub.office.notifications': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
-  'hub.office.shared': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
-  'hub.office.instructions': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
-  'hub.office.chef_instructions': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
-  'hub.office.guide': { roles: ['OFFICE_USER'], permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  // Office hub (all creator roles share /cabinet)
+  'hub.office.services': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.rapports': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.discussion': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.notifications': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.shared': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.instructions': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.chef_instructions': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
+  'hub.office.guide': { roles: CREATORS, permissionKey: 'hub.dashboard', minAccessLevel: 'view' },
   // Wali hub
   'hub.wali.office_users': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.wali.inbox': { roles: ['WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
@@ -89,19 +92,19 @@ export const ACTION_REQUIREMENTS: Partial<Record<ActionKey, ActionRequirement>> 
   'hub.chef.shared': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'hub.chef.guide': { roles: ['CHEF_CABINET'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   // Rapport actions
-  'rapport.view': { roles: ['ADMIN', 'OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
-  'rapport.edit': { roles: ['OFFICE_USER'], minAccessLevel: 'manage' },
-  'rapport.submit': { roles: ['OFFICE_USER'], minAccessLevel: 'manage' },
-  'rapport.return_to_draft': { roles: ['OFFICE_USER'], minAccessLevel: 'manage' },
-  'rapport.start_new_version': { roles: ['OFFICE_USER'], minAccessLevel: 'manage' },
-  'rapport.show_version_archive': { roles: ['ADMIN', 'OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
-  'rapport.export_excel': { roles: ['OFFICE_USER'], minAccessLevel: 'manage' },
+  'rapport.view': { roles: ['ADMIN', ...CREATORS, 'CHEF_CABINET', 'WALI'] },
+  'rapport.edit': { roles: CREATORS, minAccessLevel: 'manage' },
+  'rapport.submit': { roles: CREATORS, minAccessLevel: 'manage' },
+  'rapport.return_to_draft': { roles: CREATORS, minAccessLevel: 'manage' },
+  'rapport.start_new_version': { roles: CREATORS, minAccessLevel: 'manage' },
+  'rapport.show_version_archive': { roles: ['ADMIN', ...CREATORS, 'CHEF_CABINET', 'WALI'] },
+  'rapport.export_excel': { roles: CREATORS, minAccessLevel: 'manage' },
   'rapport.show_wali_response_export': { roles: ['WALI'] },
   'rapport.respond': { roles: ['CHEF_CABINET', 'WALI'], permissionKey: 'rapports.inbox.respond', minAccessLevel: 'manage' },
-  'rapport.comment': { roles: ['OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
-  'rapport.delete': { roles: ['OFFICE_USER'], minAccessLevel: 'manage' },
-  'rapport.finish': { roles: ['OFFICE_USER'], minAccessLevel: 'manage' },
-  'rapport.discussion.view': { roles: ['OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
+  'rapport.comment': { roles: [...CREATORS, 'CHEF_CABINET', 'WALI'] },
+  'rapport.delete': { roles: CREATORS, minAccessLevel: 'manage' },
+  'rapport.finish': { roles: CREATORS, minAccessLevel: 'manage' },
+  'rapport.discussion.view': { roles: [...CREATORS, 'CHEF_CABINET', 'WALI'] },
   // Organization
   'organization.municipalities.view': { roles: ['ADMIN'], permissionKey: 'organization.municipalities.view', minAccessLevel: 'view' },
   'organization.municipalities.manage': { roles: ['ADMIN'], permissionKey: 'organization.municipalities.manage', minAccessLevel: 'manage' },
@@ -111,10 +114,10 @@ export const ACTION_REQUIREMENTS: Partial<Record<ActionKey, ActionRequirement>> 
   // Inbox / instructions
   'rapports.inbox.view': { roles: ['CHEF_CABINET', 'WALI'], permissionKey: 'rapports.inbox.view', minAccessLevel: 'view' },
   'rapports.inbox.respond': { roles: ['CHEF_CABINET', 'WALI'], permissionKey: 'rapports.inbox.respond', minAccessLevel: 'manage' },
-  'rapports.instructions.view': { roles: ['OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
+  'rapports.instructions.view': { roles: [...CREATORS, 'CHEF_CABINET', 'WALI'] },
   'rapports.instructions.create': { roles: ['WALI'] },
   'rapports.instructions.delete': { roles: ['WALI'] },
-  'rapports.chef_instructions.view': { roles: ['OFFICE_USER', 'CHEF_CABINET', 'WALI'] },
+  'rapports.chef_instructions.view': { roles: [...CREATORS, 'CHEF_CABINET', 'WALI'] },
   'rapports.chef_instructions.create': { roles: ['CHEF_CABINET'] },
   'rapports.chef_instructions.delete': { roles: ['CHEF_CABINET'] },
   'broadcast.create': { roles: ['WALI', 'CHEF_CABINET'] },

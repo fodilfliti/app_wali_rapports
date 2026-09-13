@@ -1,5 +1,5 @@
 import type { ActionKey } from '../actions';
-import type { UserRole } from '../roles';
+import { isCreatorRole, type CreatorKey, type UserRole } from '../roles';
 
 export type HubTileDef = {
   id: string;
@@ -19,6 +19,7 @@ const ADMIN_TILES: HubTileDef[] = [
   { id: 'dairas', to: '/dairas', actionKeys: ['hub.admin.dairas'] },
   { id: 'directions', to: '/directions', actionKeys: ['hub.admin.directions'] },
   { id: 'users', to: '/users', actionKeys: ['hub.admin.users'] },
+  { id: 'workflow_role_settings', to: '/admin/workflow-role-settings', actionKeys: ['hub.admin.access'] },
   { id: 'rapports', to: '/admin/rapports', actionKeys: ['hub.admin.rapports'] },
   { id: 'services', to: '/admin/services', actionKeys: ['hub.admin.services'] },
   { id: 'schemas', to: '/admin/schemas', actionKeys: ['hub.admin.schemas'] },
@@ -34,8 +35,21 @@ const OFFICE_TILES: HubTileDef[] = [
   { id: 'chef_instructions', to: '/cabinet/chef-instructions', actionKeys: ['hub.office.chef_instructions'] },
 ];
 
+const CREATOR_KEYS_ORDER: CreatorKey[] = ['office', 'daira', 'commune', 'direction'];
+
+function creatorTiles(
+  hubPrefix: '/governor' | '/chief',
+  actionKey: ActionKey,
+): HubTileDef[] {
+  return CREATOR_KEYS_ORDER.map((key) => ({
+    id: `creators_${key}`,
+    to: `${hubPrefix}/creators/${key}`,
+    actionKeys: [actionKey],
+  }));
+}
+
 const WALI_TILES: HubTileDef[] = [
-  { id: 'office_users', to: '/governor/office-users', actionKeys: ['hub.wali.office_users'] },
+  ...creatorTiles('/governor', 'hub.wali.office_users'),
   { id: 'inbox', to: '/governor/rapports', actionKeys: ['hub.wali.inbox'] },
   { id: 'discussion', to: '/governor/rapports?view=discussion', actionKeys: ['hub.wali.discussion'] },
   { id: 'calendar', to: '/governor/calendar', actionKeys: ['hub.wali.calendar'] },
@@ -45,7 +59,7 @@ const WALI_TILES: HubTileDef[] = [
 ];
 
 const CHEF_TILES: HubTileDef[] = [
-  { id: 'office_users', to: '/chief/office-users', actionKeys: ['hub.chef.office_users'] },
+  ...creatorTiles('/chief', 'hub.chef.office_users'),
   { id: 'inbox', to: '/chief/rapports', actionKeys: ['hub.chef.inbox'] },
   {
     id: 'delete_requested',
@@ -80,11 +94,19 @@ export function resolveHubTiles(role: UserRole, opts: ResolveHubTilesOpts = {}):
       return guideVideos ? withGuideTile(tiles, '/admin', 'hub.admin.guide') : tiles;
     }
     case 'OFFICE_USER':
+    case 'PRESIDENT_DAIRA':
+    case 'PRESIDENT_COMMUNE':
+    case 'DIRECTEUR_DIRECTION':
       return guideVideos ? withGuideTile(OFFICE_TILES, '/cabinet', 'hub.office.guide') : [...OFFICE_TILES];
     case 'WALI':
       return guideVideos ? withGuideTile(WALI_TILES, '/governor', 'hub.wali.guide') : [...WALI_TILES];
     case 'CHEF_CABINET':
       return guideVideos ? withGuideTile(CHEF_TILES, '/chief', 'hub.chef.guide') : [...CHEF_TILES];
+    default:
+      if (isCreatorRole(role)) {
+        return guideVideos ? withGuideTile(OFFICE_TILES, '/cabinet', 'hub.office.guide') : [...OFFICE_TILES];
+      }
+      return [];
   }
 }
 

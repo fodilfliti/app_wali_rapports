@@ -25,6 +25,7 @@ import {
   LEGACY_LISTE_PATH_SEGMENT,
   LISTE_PATH_SEGMENT,
 } from "@wali/routes";
+import { isCreatorRole, roleFromCreatorKey } from "@wali/access-policy";
 import { AuthProvider } from "./auth/AuthProvider";
 import { queryClient } from "./query/queryClient";
 import "./theme/tokens.css";
@@ -41,6 +42,7 @@ import { AdminDirectionsListPage } from "./pages/AdminDirectionsListPage";
 import { AdminSchemasPage } from "./pages/AdminSchemasPage";
 import { AdminServicesPage } from "./pages/AdminServicesPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
+import { AdminWorkflowRoleSettingsPage } from "./pages/AdminWorkflowRoleSettingsPage";
 import {
   AdminAccessPage,
   AdminHubPage,
@@ -175,55 +177,74 @@ function OfficeKindRedirect() {
   return <Navigate to={`/cabinet/services/${serviceId}`} replace />;
 }
 
+function LegacyOfficeUsersRedirect({ hub }: { hub: "governor" | "chief" }) {
+  const location = useLocation();
+  const rest = location.pathname.replace(`/${hub}/office-users`, "");
+  return (
+    <Navigate
+      to={`/${hub}/creators/office${rest}${location.search}${location.hash}`}
+      replace
+    />
+  );
+}
+
 function ChefUserServicesRoute({ token }: { token: string }) {
-  const { userId } = useParams();
-  if (!isEntityIdParam(userId)) return <Navigate to="/chief/office-users" replace />;
+  const { userId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
+  if (!isEntityIdParam(userId)) return <Navigate to={`/chief/creators/${key}`} replace />;
   return <WaliUserServicesPage token={token} userId={userId} reviewer="chef" />;
 }
 
 function ChefServiceRapportTypesRoute({ token }: { token: string }) {
-  const { userId } = useParams();
-  if (!isEntityIdParam(userId)) return <Navigate to="/chief/office-users" replace />;
+  const { userId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
+  if (!isEntityIdParam(userId)) return <Navigate to={`/chief/creators/${key}`} replace />;
   return <WaliServiceRapportTypesPage token={token} userId={userId} reviewer="chef" />;
 }
 
 function ChefServiceKindRapportTypesRoute({ token: _token }: { token: string }) {
-  const { userId, serviceId } = useParams();
+  const { userId, serviceId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
   if (!isEntityIdParam(userId) || !isEntityIdParam(serviceId)) {
-    return <Navigate to="/chief/office-users" replace />;
+    return <Navigate to={`/chief/creators/${key}`} replace />;
   }
-  return <Navigate to={`/chief/office-users/${userId}/services/${serviceId}`} replace />;
+  return <Navigate to={`/chief/creators/${key}/${userId}/services/${serviceId}`} replace />;
 }
 
 function ChefServiceRapportListRoute({ token }: { token: string }) {
-  const { userId } = useParams();
-  if (!isEntityIdParam(userId)) return <Navigate to="/chief/office-users" replace />;
+  const { userId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
+  if (!isEntityIdParam(userId)) return <Navigate to={`/chief/creators/${key}`} replace />;
   return <WaliServiceRapportListPage token={token} userId={userId} reviewer="chef" />;
 }
 
 function WaliUserServicesRoute({ token }: { token: string }) {
-  const { userId } = useParams();
-  if (!isEntityIdParam(userId)) return <Navigate to="/governor/office-users" replace />;
+  const { userId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
+  if (!isEntityIdParam(userId)) return <Navigate to={`/governor/creators/${key}`} replace />;
   return <WaliUserServicesPage token={token} userId={userId} />;
 }
 
 function WaliServiceRapportTypesRoute({ token }: { token: string }) {
-  const { userId } = useParams();
-  if (!isEntityIdParam(userId)) return <Navigate to="/governor/office-users" replace />;
+  const { userId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
+  if (!isEntityIdParam(userId)) return <Navigate to={`/governor/creators/${key}`} replace />;
   return <WaliServiceRapportTypesPage token={token} userId={userId} />;
 }
 
 function WaliServiceKindRapportTypesRoute({ token: _token }: { token: string }) {
-  const { userId, serviceId } = useParams();
+  const { userId, serviceId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
   if (!isEntityIdParam(userId) || !isEntityIdParam(serviceId)) {
-    return <Navigate to="/governor/office-users" replace />;
+    return <Navigate to={`/governor/creators/${key}`} replace />;
   }
-  return <Navigate to={`/governor/office-users/${userId}/services/${serviceId}`} replace />;
+  return <Navigate to={`/governor/creators/${key}/${userId}/services/${serviceId}`} replace />;
 }
 
 function WaliServiceRapportListRoute({ token }: { token: string }) {
-  const { userId } = useParams();
-  if (!isEntityIdParam(userId)) return <Navigate to="/governor/office-users" replace />;
+  const { userId, creatorKey } = useParams();
+  const key = creatorKey && roleFromCreatorKey(creatorKey) ? creatorKey : "office";
+  if (!isEntityIdParam(userId)) return <Navigate to={`/governor/creators/${key}`} replace />;
   return <WaliServiceRapportListPage token={token} userId={userId} />;
 }
 
@@ -410,7 +431,7 @@ function AppShell() {
           {t("appTitle")}
         </div>
         <div className="topbarActions">
-          {me.role === "OFFICE_USER" ? (
+          {isCreatorRole(me.role) ? (
             <>
               <OfficeDiscussionBell token={token} />
               <OfficeNotificationsBell token={token} />
@@ -478,6 +499,10 @@ function AppShell() {
               <Route path="/modiriyat" element={<Navigate to="/directions" replace />} />
               <Route path="/users" element={<AdminUsersPage token={token} currentUserId={me.id} isSuperAdmin={Boolean(me.is_super_admin)} />} />
               <Route
+                path="/admin/workflow-role-settings"
+                element={<AdminWorkflowRoleSettingsPage token={token} />}
+              />
+              <Route
                 path="/admin/rapports"
                 element={<AdminRapportsListPage token={token} />}
               />
@@ -506,7 +531,7 @@ function AppShell() {
               ) : null}
             </>
           ) : null}
-          {me.role === "OFFICE_USER" || me.role === "ADMIN" ? (
+          {isCreatorRole(me.role) || me.role === "ADMIN" ? (
             <>
               <Route path="/cabinet" element={<OfficeHubPage token={token} />} />
               <Route
@@ -641,28 +666,52 @@ function AppShell() {
                 element={<WaliBroadcastDetailPage token={token} hub="wali" />}
               />
               <Route
-                path="/governor/office-users"
+                path="/governor/creators/:creatorKey"
                 element={<WaliOfficeUsersPage token={token} />}
               />
               <Route
-                path="/governor/office-users/:userId/services/folder/:folderId"
+                path="/governor/creators/:creatorKey/:userId/services/folder/:folderId"
                 element={<WaliUserServicesRoute token={token} />}
               />
               <Route
-                path="/governor/office-users/:userId/services"
+                path="/governor/creators/:creatorKey/:userId/services"
                 element={<WaliUserServicesRoute token={token} />}
               />
               <Route
-                path="/governor/office-users/:userId/services/:serviceId"
+                path="/governor/creators/:creatorKey/:userId/services/:serviceId"
                 element={<WaliServiceRapportTypesRoute token={token} />}
               />
               <Route
-                path="/governor/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                path="/governor/creators/:creatorKey/:userId/services/:serviceId/kinds/:contentKind"
                 element={<WaliServiceKindRapportTypesRoute token={token} />}
               />
               <Route
-                path="/governor/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                path="/governor/creators/:creatorKey/:userId/services/:serviceId/rapports/:rapportTypeId"
                 element={<WaliServiceRapportListRoute token={token} />}
+              />
+              <Route
+                path="/governor/office-users"
+                element={<Navigate to="/governor/creators/office" replace />}
+              />
+              <Route
+                path="/governor/office-users/:userId/services/folder/:folderId"
+                element={<LegacyOfficeUsersRedirect hub="governor" />}
+              />
+              <Route
+                path="/governor/office-users/:userId/services"
+                element={<LegacyOfficeUsersRedirect hub="governor" />}
+              />
+              <Route
+                path="/governor/office-users/:userId/services/:serviceId"
+                element={<LegacyOfficeUsersRedirect hub="governor" />}
+              />
+              <Route
+                path="/governor/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                element={<LegacyOfficeUsersRedirect hub="governor" />}
+              />
+              <Route
+                path="/governor/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                element={<LegacyOfficeUsersRedirect hub="governor" />}
               />
               <Route
                 path="/governor/instructions"
@@ -750,28 +799,52 @@ function AppShell() {
                 />
               ) : null}
               <Route
-                path="/chief/office-users"
+                path="/chief/creators/:creatorKey"
                 element={<WaliOfficeUsersPage token={token} reviewer="chef" />}
               />
               <Route
-                path="/chief/office-users/:userId/services/folder/:folderId"
+                path="/chief/creators/:creatorKey/:userId/services/folder/:folderId"
                 element={<ChefUserServicesRoute token={token} />}
               />
               <Route
-                path="/chief/office-users/:userId/services"
+                path="/chief/creators/:creatorKey/:userId/services"
                 element={<ChefUserServicesRoute token={token} />}
               />
               <Route
-                path="/chief/office-users/:userId/services/:serviceId"
+                path="/chief/creators/:creatorKey/:userId/services/:serviceId"
                 element={<ChefServiceRapportTypesRoute token={token} />}
               />
               <Route
-                path="/chief/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                path="/chief/creators/:creatorKey/:userId/services/:serviceId/kinds/:contentKind"
                 element={<ChefServiceKindRapportTypesRoute token={token} />}
               />
               <Route
-                path="/chief/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                path="/chief/creators/:creatorKey/:userId/services/:serviceId/rapports/:rapportTypeId"
                 element={<ChefServiceRapportListRoute token={token} />}
+              />
+              <Route
+                path="/chief/office-users"
+                element={<Navigate to="/chief/creators/office" replace />}
+              />
+              <Route
+                path="/chief/office-users/:userId/services/folder/:folderId"
+                element={<LegacyOfficeUsersRedirect hub="chief" />}
+              />
+              <Route
+                path="/chief/office-users/:userId/services"
+                element={<LegacyOfficeUsersRedirect hub="chief" />}
+              />
+              <Route
+                path="/chief/office-users/:userId/services/:serviceId"
+                element={<LegacyOfficeUsersRedirect hub="chief" />}
+              />
+              <Route
+                path="/chief/office-users/:userId/services/:serviceId/kinds/:contentKind"
+                element={<LegacyOfficeUsersRedirect hub="chief" />}
+              />
+              <Route
+                path="/chief/office-users/:userId/services/:serviceId/rapports/:rapportTypeId"
+                element={<LegacyOfficeUsersRedirect hub="chief" />}
               />
               <Route
                 path="/chief/rapports"

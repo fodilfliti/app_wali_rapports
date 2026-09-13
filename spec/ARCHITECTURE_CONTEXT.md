@@ -178,6 +178,7 @@ When creating a new report within a service content hub:
 | `npm run db:seed-test` | `backend/scripts/seed-test-fixtures.js` | Minimal automated-test fixtures |
 | `npm run db:seed-prod-bootstrap` | `backend/scripts/seed-prod-bootstrap.js` | **Once**: wipe domain + cabinet users + **root leaf** services; Excel + PDF in `private/bootstrap/` — `spec/data/PROD_BOOTSTRAP.md` (temporary; do not re-run) |
 | `npm run db:seed-prod-ensure` | `backend/scripts/seed-prod-ensure.js` | **Safe add**: create missing users/services/grants only; `credentials-added-*.xlsx` / `.pdf` for new passwords |
+| `npm run db:seed-org-heads` | `backend/scripts/seed-org-heads-bootstrap.js` | Seed dairas/directions + org-head users/services; Excel+PDF under `private/bootstrap/org-heads/` (rewritten each run) |
 | `npm run db:seed-demo-cabinet` | `backend/scripts/seed-demo-cabinet.js` | **Dev only**: fill existing cabinet services with presentation data (keeps users/services) |
 
 **Demo seed (`db:seed-demo`)** — each run **wipes then reseeds** (safe while iterating):

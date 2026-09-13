@@ -1,5 +1,10 @@
 const { Op } = require("sequelize");
-const { GuideVideo, UploadedFile } = require("../../db");
+const {
+  sequelize,
+  GuideVideo,
+  GuideVideoAudience,
+  UploadedFile,
+} = require("../../db");
 const {
   saveUploadedFile,
   serializeFile,
@@ -20,8 +25,27 @@ const {
   publicId,
 } = require("../access/idResolver");
 
-const AUDIENCES = ["general", "ADMIN", "OFFICE_USER", "CHEF_CABINET", "WALI"];
-const PUBLIC_AUDIENCES = ["general", "OFFICE_USER", "CHEF_CABINET", "WALI"];
+const AUDIENCES = [
+  "general",
+  "ADMIN",
+  "OFFICE_USER",
+  "PRESIDENT_DAIRA",
+  "PRESIDENT_COMMUNE",
+  "DIRECTEUR_DIRECTION",
+  "CHEF_CABINET",
+  "WALI",
+];
+const PUBLIC_AUDIENCES = [
+  "general",
+  "OFFICE_USER",
+  "PRESIDENT_DAIRA",
+  "PRESIDENT_COMMUNE",
+  "DIRECTEUR_DIRECTION",
+  "CHEF_CABINET",
+  "WALI",
+];
+
+const AUDIENCE_SORT_ORDER = new Map(AUDIENCES.map((a, i) => [a, i]));
 
 function parseBool(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -32,6 +56,22 @@ function parseBool(value, fallback = false) {
   return fallback;
 }
 
+function sortAudiences(list) {
+  return [...list].sort(
+    (a, b) => (AUDIENCE_SORT_ORDER.get(a) ?? 99) - (AUDIENCE_SORT_ORDER.get(b) ?? 99)
+  );
+}
+
+function audiencesFromRow(row) {
+  const g = row.toJSON ? row.toJSON() : row;
+  const raw = Array.isArray(g.audienceRows)
+    ? g.audienceRows.map((r) => r.audience).filter(Boolean)
+    : Array.isArray(g.audiences)
+      ? g.audiences
+      : [];
+  return sortAudiences([...new Set(raw)]);
+}
+
 function serializeGuideVideo(row) {
   const g = row.toJSON ? row.toJSON() : row;
   return {
@@ -40,7 +80,7 @@ function serializeGuideVideo(row) {
     title_fr: g.title_fr,
     description_ar: g.description_ar,
     description_fr: g.description_fr,
-    audience: g.audience,
+    audiences: audiencesFromRow(row),
     is_new: Boolean(g.is_new),
     sort_order: g.sort_order,
     created_by_user_id: g.created_by_user_id,
@@ -62,35 +102,65 @@ function parseListQuery(query) {
   return { page, pageSize, audience };
 }
 
-function visibilityWhere(viewerRole, audienceFilter) {
-  const where = {};
+function guideVideoIncludes() {
+  return [
+    { model: UploadedFile, as: "file" },
+    {
+      model: GuideVideoAudience,
+      as: "audienceRows",
+      attributes: ["audience"],
+      required: false,
+    },
+  ];
+}
+
+async function listWhere(viewerRole, audienceFilter) {
+  const and = [];
+
   if (viewerRole !== "ADMIN") {
-    where.audience = { [Op.in]: PUBLIC_AUDIENCES };
+    and.push(
+      sequelize.literal(`NOT EXISTS (
+        SELECT 1 FROM guide_video_audiences AS gva_admin
+        WHERE gva_admin.guide_video_id = "GuideVideo"."id"
+          AND gva_admin.audience = 'ADMIN'
+      )`)
+    );
   }
+
   if (audienceFilter) {
     if (viewerRole !== "ADMIN" && audienceFilter === "ADMIN") {
       const err = new Error("Forbidden");
       err.status = 403;
       throw err;
     }
-    where.audience = audienceFilter;
+    and.push(
+      sequelize.literal(`EXISTS (
+        SELECT 1 FROM guide_video_audiences AS gva_tab
+        WHERE gva_tab.guide_video_id = "GuideVideo"."id"
+          AND gva_tab.audience = ${sequelize.escape(audienceFilter)}
+      )`)
+    );
   }
-  return where;
+
+  if (!and.length) return {};
+  return { [Op.and]: and };
 }
 
 async function listGuideVideos(query, viewerRole) {
   const { page, pageSize, audience } = parseListQuery(query);
-  const where = visibilityWhere(viewerRole, audience);
+  const where = await listWhere(viewerRole, audience);
   const { rows, count } = await GuideVideo.findAndCountAll({
     where,
-    include: [{ model: UploadedFile, as: "file" }],
+    include: guideVideoIncludes(),
     order: [
       ["sort_order", "ASC"],
       ["created_at", "ASC"],
       ["id", "ASC"]
     ],
     offset: (page - 1) * pageSize,
-    limit: pageSize
+    limit: pageSize,
+    distinct: true,
+    col: "id",
   });
   return {
     videos: rows.map(serializeGuideVideo),
@@ -140,6 +210,23 @@ async function resolveVideoFileId({ fileInput, uploadedFileId, actor, req, start
   throw err;
 }
 
+function normalizeAudiencesInput(value) {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      /* comma-separated fallback */
+    }
+    return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  if (Array.isArray(value)) return value;
+  return [];
+}
+
 function normalizeGuideVideoBody(body) {
   const out = { ...(body || {}) };
   if (out.is_new !== undefined) out.is_new = parseBool(out.is_new, false);
@@ -149,7 +236,32 @@ function normalizeGuideVideoBody(body) {
   if (out.uploaded_file_id !== undefined && out.uploaded_file_id !== "") {
     out.uploaded_file_id = String(out.uploaded_file_id);
   }
+  if (out.audiences !== undefined) {
+    out.audiences = normalizeAudiencesInput(out.audiences);
+  } else if (out.audience !== undefined && out.audience !== "") {
+    // Accept legacy single audience during transition
+    out.audiences = [String(out.audience)];
+    delete out.audience;
+  }
+  delete out.audience;
   return out;
+}
+
+async function replaceAudiences(guideVideoId, audiences, transaction) {
+  const unique = sortAudiences([...new Set(audiences)]);
+  await GuideVideoAudience.destroy({
+    where: { guide_video_id: guideVideoId },
+    transaction,
+  });
+  if (unique.length) {
+    await GuideVideoAudience.bulkCreate(
+      unique.map((audience) => ({
+        guide_video_id: guideVideoId,
+        audience,
+      })),
+      { transaction }
+    );
+  }
 }
 
 async function createGuideVideo({ fileInput, body }, actor, req) {
@@ -172,34 +284,45 @@ async function createGuideVideo({ fileInput, body }, actor, req) {
   });
 
   const now = new Date();
-  const row = await GuideVideo.create({
-    title_ar: data.title_ar || "",
-    title_fr: data.title_fr || "",
-    description_ar: data.description_ar || null,
-    description_fr: data.description_fr || null,
-    audience: data.audience,
-    uploaded_file_id: fileId,
-    is_new: data.is_new,
-    sort_order: data.sort_order ?? 0,
-    created_by_user_id: actor.id,
-    created_at: now,
-    updated_at: now
+  const row = await sequelize.transaction(async (transaction) => {
+    const created = await GuideVideo.create(
+      {
+        title_ar: data.title_ar || "",
+        title_fr: data.title_fr || "",
+        description_ar: data.description_ar || null,
+        description_fr: data.description_fr || null,
+        uploaded_file_id: fileId,
+        is_new: data.is_new,
+        sort_order: data.sort_order ?? 0,
+        created_by_user_id: actor.id,
+        created_at: now,
+        updated_at: now,
+      },
+      { transaction }
+    );
+    await replaceAudiences(created.id, data.audiences, transaction);
+    return created;
   });
 
   await audit(actor.id, "GUIDE_VIDEO_CREATE", { guide_video_id: row.id }, { req });
   return getGuideVideoById(row.uuid || row.id, "ADMIN");
 }
 
+function hasAdminAudience(audiences) {
+  return audiences.includes("ADMIN");
+}
+
 async function getGuideVideoById(id, viewerRole) {
   const row = await findByPublicId(GuideVideo, id, {
-    include: [{ model: UploadedFile, as: "file" }]
+    include: guideVideoIncludes(),
   });
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
   }
-  if (viewerRole !== "ADMIN" && row.audience === "ADMIN") {
+  const audiences = audiencesFromRow(row);
+  if (viewerRole !== "ADMIN" && hasAdminAudience(audiences)) {
     const err = new Error("Not found");
     err.status = 404;
     throw err;
@@ -210,7 +333,9 @@ async function getGuideVideoById(id, viewerRole) {
 async function patchGuideVideo(id, { fileInput, body }, actor, req) {
   const { requireSuperAdmin } = require("../organization/organizationService");
   requireSuperAdmin(actor);
-  const row = await findByPublicId(GuideVideo, id);
+  const row = await findByPublicId(GuideVideo, id, {
+    include: guideVideoIncludes(),
+  });
   if (!row) {
     const err = new Error("Not found");
     err.status = 404;
@@ -239,29 +364,34 @@ async function patchGuideVideo(id, { fileInput, body }, actor, req) {
     }
   }
 
-  const previousFileId = row.uploaded_file_id;
-  if (fileInput?.sourcePath || fileInput?.buffer || data.uploaded_file_id) {
-    row.uploaded_file_id = await resolveVideoFileId({
-      fileInput,
-      uploadedFileId: data.uploaded_file_id,
-      actor,
-      req,
-      startedAt: req.uploadStartedAt,
-    });
-    if (previousFileId && Number(previousFileId) !== Number(row.uploaded_file_id)) {
-      await deleteUploadedFileById(previousFileId);
+  await sequelize.transaction(async (transaction) => {
+    const previousFileId = row.uploaded_file_id;
+    if (fileInput?.sourcePath || fileInput?.buffer || data.uploaded_file_id) {
+      row.uploaded_file_id = await resolveVideoFileId({
+        fileInput,
+        uploadedFileId: data.uploaded_file_id,
+        actor,
+        req,
+        startedAt: req.uploadStartedAt,
+      });
+      if (previousFileId && Number(previousFileId) !== Number(row.uploaded_file_id)) {
+        await deleteUploadedFileById(previousFileId);
+      }
     }
-  }
 
-  if (data.title_ar !== undefined) row.title_ar = data.title_ar;
-  if (data.title_fr !== undefined) row.title_fr = data.title_fr;
-  if (data.description_ar !== undefined) row.description_ar = data.description_ar || null;
-  if (data.description_fr !== undefined) row.description_fr = data.description_fr || null;
-  if (data.audience !== undefined) row.audience = data.audience;
-  if (data.is_new !== undefined) row.is_new = data.is_new;
-  if (data.sort_order !== undefined) row.sort_order = data.sort_order;
-  row.updated_at = new Date();
-  await row.save();
+    if (data.title_ar !== undefined) row.title_ar = data.title_ar;
+    if (data.title_fr !== undefined) row.title_fr = data.title_fr;
+    if (data.description_ar !== undefined) row.description_ar = data.description_ar || null;
+    if (data.description_fr !== undefined) row.description_fr = data.description_fr || null;
+    if (data.is_new !== undefined) row.is_new = data.is_new;
+    if (data.sort_order !== undefined) row.sort_order = data.sort_order;
+    row.updated_at = new Date();
+    await row.save({ transaction });
+
+    if (data.audiences !== undefined) {
+      await replaceAudiences(row.id, data.audiences, transaction);
+    }
+  });
 
   await audit(actor.id, "GUIDE_VIDEO_UPDATE", { guide_video_id: row.id }, { req });
   return getGuideVideoById(row.uuid || row.id, "ADMIN");
@@ -305,4 +435,5 @@ module.exports = {
   getGuideVideoById,
   parseMultipartBody,
   parseBool,
+  audiencesFromRow,
 };

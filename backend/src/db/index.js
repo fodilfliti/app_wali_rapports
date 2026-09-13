@@ -38,15 +38,24 @@ const ChefInstructionFile = require("./models/ChefInstructionFile")(sequelize);
 const ChefInstructionRecipient = require("./models/ChefInstructionRecipient")(sequelize);
 const RapportComment = require("./models/RapportComment")(sequelize);
 const GuideVideo = require("./models/GuideVideo")(sequelize);
+const GuideVideoAudience = require("./models/GuideVideoAudience")(sequelize);
 const RefreshToken = require("./models/RefreshToken")(sequelize);
 const UserNotificationPreference = require("./models/UserNotificationPreference")(sequelize);
 const WebPushSubscription = require("./models/WebPushSubscription")(sequelize);
+const WorkflowRoleSetting = require("./models/WorkflowRoleSetting")(sequelize);
 
 Daira.hasMany(Municipality, { foreignKey: "daira_id", as: "municipalities" });
 Municipality.belongsTo(Daira, { foreignKey: "daira_id", as: "daira" });
 
 Department.hasMany(User, { foreignKey: "department_id", as: "users" });
 User.belongsTo(Department, { foreignKey: "department_id", as: "department" });
+
+Daira.hasMany(User, { foreignKey: "daira_id", as: "presidentUsers" });
+User.belongsTo(Daira, { foreignKey: "daira_id", as: "daira" });
+Municipality.hasMany(User, { foreignKey: "municipality_id", as: "presidentUsers" });
+User.belongsTo(Municipality, { foreignKey: "municipality_id", as: "municipality" });
+Direction.hasMany(User, { foreignKey: "direction_id", as: "directeurUsers" });
+User.belongsTo(Direction, { foreignKey: "direction_id", as: "direction" });
 
 User.hasMany(RefreshToken, { foreignKey: "user_id", as: "refreshTokens" });
 RefreshToken.belongsTo(User, { foreignKey: "user_id", as: "user" });
@@ -70,6 +79,13 @@ AuditLog.belongsTo(User, { foreignKey: "actor_id" });
 
 Department.hasMany(Service, { foreignKey: "department_id", as: "services" });
 Service.belongsTo(Department, { foreignKey: "department_id", as: "department" });
+
+Daira.hasMany(Service, { foreignKey: "daira_id", as: "services" });
+Service.belongsTo(Daira, { foreignKey: "daira_id", as: "daira" });
+Municipality.hasMany(Service, { foreignKey: "municipality_id", as: "services" });
+Service.belongsTo(Municipality, { foreignKey: "municipality_id", as: "municipality" });
+Direction.hasMany(Service, { foreignKey: "direction_id", as: "services" });
+Service.belongsTo(Direction, { foreignKey: "direction_id", as: "direction" });
 
 Service.hasMany(Service, { foreignKey: "parent_service_id", as: "children" });
 Service.belongsTo(Service, { foreignKey: "parent_service_id", as: "parent" });
@@ -202,6 +218,8 @@ GuideVideo.belongsTo(UploadedFile, { foreignKey: "uploaded_file_id", as: "file" 
 UploadedFile.hasMany(GuideVideo, { foreignKey: "uploaded_file_id", as: "guideVideos" });
 User.hasMany(GuideVideo, { foreignKey: "created_by_user_id", as: "guideVideosCreated" });
 GuideVideo.belongsTo(User, { foreignKey: "created_by_user_id", as: "createdByUser" });
+GuideVideo.hasMany(GuideVideoAudience, { foreignKey: "guide_video_id", as: "audienceRows" });
+GuideVideoAudience.belongsTo(GuideVideo, { foreignKey: "guide_video_id", as: "guideVideo" });
 
 User.hasMany(UserServiceGrant, { foreignKey: "user_id", as: "serviceGrants" });
 UserServiceGrant.belongsTo(User, { foreignKey: "user_id", as: "user" });
@@ -243,7 +261,9 @@ module.exports = {
   ChefInstructionRecipient,
   RapportComment,
   GuideVideo,
+  GuideVideoAudience,
   RefreshToken,
   UserNotificationPreference,
-  WebPushSubscription
+  WebPushSubscription,
+  WorkflowRoleSetting
 };

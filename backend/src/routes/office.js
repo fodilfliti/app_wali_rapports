@@ -26,7 +26,7 @@ officeRouter.use(
   requireAuth,
   attachUser,
   checkBlocked,
-  requireRole(["OFFICE_USER", "ADMIN"]),
+  requireRole(["OFFICE_USER", "PRESIDENT_DAIRA", "PRESIDENT_COMMUNE", "DIRECTEUR_DIRECTION", "ADMIN"]),
 );
 
 officeRouter.get("/services/tree", async (req, res, next) => {

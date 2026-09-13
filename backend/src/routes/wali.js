@@ -28,6 +28,7 @@ const { generateRapportExcel } = require("../services/rapportExcelService");
 const {
   contentDispositionAttachment,
 } = require("../services/rapportExportFilename");
+const { roleFromCreatorKey } = require("../modules/access/creatorRoles");
 
 const waliRouter = express.Router();
 waliRouter.use(
@@ -37,15 +38,44 @@ waliRouter.use(
   requireRole(["WALI", "ADMIN"]),
 );
 
+function creatorListQuery(creatorKey, query = {}) {
+  return { ...query, creator_key: creatorKey };
+}
+
+waliRouter.get(
+  "/creators/:creatorKey",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      if (!roleFromCreatorKey(req.params.creatorKey)) {
+        return res.status(400).json({ error: "Invalid creator_key" });
+      }
+      res.json({
+        officeUsers: await navigationService.listOfficeUsersForWali(
+          undefined,
+          creatorListQuery(req.params.creatorKey, req.query),
+        ),
+      });
+    } catch (e) {
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
 waliRouter.get(
   "/office-users",
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
     try {
       res.json({
-        officeUsers: await navigationService.listOfficeUsersForWali(),
+        officeUsers: await navigationService.listOfficeUsersForWali(
+          undefined,
+          creatorListQuery("office", req.query),
+        ),
       });
     } catch (e) {
+      if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
   },
@@ -64,6 +94,30 @@ waliRouter.get(
 );
 
 waliRouter.get(
+  "/creators/:creatorKey/:userId/services",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      const expectedRole = roleFromCreatorKey(req.params.creatorKey);
+      if (!expectedRole) {
+        return res.status(400).json({ error: "Invalid creator_key" });
+      }
+      res.json(
+        await navigationService.getServiceTreeForUser(
+          req.params.userId,
+          expectedRole,
+          { creator_key: req.params.creatorKey },
+        ),
+      );
+    } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
+      next(e);
+    }
+  },
+);
+
+waliRouter.get(
   "/office-users/:userId/services",
   requirePermission("rapports.inbox.view", "view"),
   async (req, res, next) => {
@@ -72,9 +126,37 @@ waliRouter.get(
         await navigationService.getServiceTreeForUser(
           req.params.userId,
           "OFFICE_USER",
+          { creator_key: "office" },
         ),
       );
     } catch (e) {
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      next(e);
+    }
+  },
+);
+
+waliRouter.get(
+  "/creators/:creatorKey/:userId/services/:serviceId/content",
+  requirePermission("rapports.inbox.view", "view"),
+  async (req, res, next) => {
+    try {
+      if (!roleFromCreatorKey(req.params.creatorKey)) {
+        return res.status(400).json({ error: "Invalid creator_key" });
+      }
+      res.json(
+        await workspaceService.getServiceContentHub(
+          req.params.serviceId,
+          req.user,
+          {
+            waliForOfficeUserId: req.params.userId,
+          },
+        ),
+      );
+    } catch (e) {
+      if (e.status === 403) return res.status(403).json({ error: "Forbidden" });
+      if (e.status === 404) return res.status(404).json({ error: "Not found" });
+      if (e.status === 400) return res.status(400).json({ error: e.message });
       next(e);
     }
   },

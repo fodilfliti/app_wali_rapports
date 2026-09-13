@@ -1,11 +1,20 @@
 /** Rapport workflow status helpers — shared between UI and BE. */
 
+import { blocksOrgHeadReturnToDraft } from '../roles';
+
 export function canOfficeEditRapport(status: string): boolean {
   return status === 'draft' || status === 'changes_requested';
 }
 
-/** Office may recall a sent rapport to draft before Wali accept/view. */
-export function canOfficeReturnToDraft(status: string): boolean {
+/**
+ * Office may recall a sent rapport to draft before Wali accept/view.
+ * Pass `role` so org-head creators can be blocked via ORG_HEAD_FEATURE_FLAGS.
+ */
+export function canOfficeReturnToDraft(
+  status: string,
+  role?: string | null,
+): boolean {
+  if (blocksOrgHeadReturnToDraft(role)) return false;
   return (
     status === 'pending_chef' ||
     status === 'submitted' ||

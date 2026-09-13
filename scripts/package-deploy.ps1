@@ -15,8 +15,9 @@
   Skips: node_modules, env files, demo/dev/test seed scripts,
          local storage, docs, tests, old archives.
   Includes prod cabinet seeds only: seed-prod-bootstrap, seed-prod-ensure,
-         ensure-fiche-lecture, ensure-super-admin, load-env,
-         lib/prodCabinetUsers, lib/ensureSuperAdmin, data/prodBootstrapInventory.
+         seed-org-heads-bootstrap + orgHeadsInventory, ensure-fiche-lecture,
+         ensure-super-admin, load-env, lib/prodCabinetUsers, lib/ensureSuperAdmin,
+         data/prodBootstrapInventory.
 
 .EXAMPLE
   .\scripts\package-deploy.ps1
@@ -208,12 +209,14 @@ $ProdScriptFiles = @(
   "scripts\load-env.js",
   "scripts\seed-prod-bootstrap.js",
   "scripts\seed-prod-ensure.js",
+  "scripts\seed-org-heads-bootstrap.js",
   "scripts\ensure-fiche-lecture-types.js",
   "scripts\ensure-super-admin.js",
   "scripts\regenerate-credentials-handout-pdf.js",
   "scripts\lib\prodCabinetUsers.js",
   "scripts\lib\ensureSuperAdmin.js",
-  "scripts\data\prodBootstrapInventory.js"
+  "scripts\data\prodBootstrapInventory.js",
+  "scripts\data\orgHeadsInventory.js"
 )
 foreach ($rel in $ProdScriptFiles) {
   $src = Join-Path $BackendDir $rel
@@ -241,7 +244,7 @@ Write-Host ""
 Write-Host "Skipped on purpose (do not overwrite on server):"
 Write-Host "  - public_html/.htaccess (your cPanel version)"
 Write-Host "  - wali-api/.env and any env templates"
-Write-Host "  - demo/dev/test seed scripts (prod bootstrap + ensure are included)"
+  Write-Host "  - demo/dev/test seed scripts (prod bootstrap + ensure + org-heads are included)"
 Write-Host "  - node_modules (Run NPM Install on cPanel)"
 Write-Host "  - local storage/, uploads, docs, frontend src"
 Write-Host ""
